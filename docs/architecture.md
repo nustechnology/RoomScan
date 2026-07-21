@@ -9,7 +9,7 @@ RoomScan uses a shallow, feature-oriented MVVM structure:
 ```text
 roomscan/
 ├── App/
-│   ├── roomscanApp.swift
+│   ├── RoomScanApp.swift
 │   ├── AppView.swift
 │   ├── AppState.swift
 │   └── AppRoute.swift
@@ -21,11 +21,15 @@ roomscan/
 │   │   └── Models/
 │   └── Home/
 │       └── Views/
+├── Core/
+│   └── UI/                 # Shared design tokens, typography
+├── Resources/
+│   └── Fonts/
 ├── Localizable.xcstrings
 └── Assets.xcassets/
 ```
 
-`Core/` should be introduced only when code is shared by multiple features. Do not create empty scaffolding.
+`Core/` holds shared code used by multiple features (currently design-system UI). Expand it only when there are real consumers; do not add empty scaffolding.
 
 ## Architecture Principles
 
@@ -39,9 +43,10 @@ roomscan/
 
 ## Layer Responsibilities
 
-- **App:** owns the application entry point, dependency composition, root navigation, and app-wide state. `roomscanApp` creates the authentication service and `AppState`; `AppView` selects the root UI from `AppState.Phase`.
+- **App:** owns the application entry point, dependency composition, root navigation, and app-wide state. `RoomScanApp` creates the authentication service and `AppState`; `AppView` selects the root UI from `AppState.Phase`.
 - **Features:** contain user-facing functionality. A feature owns its presentation, state management, service boundaries, and feature-specific data types.
-- **Core (when needed):** contains code with multiple real feature consumers. Feature-specific code must not be moved here preemptively.
+- **Core:** contains shared code with multiple real feature consumers (for example `Core/UI` design tokens and typography). Feature-specific code must not be moved here preemptively.
+- **Resources:** contains bundled assets that are not managed by asset catalogs, such as custom fonts.
 
 Views render state and forward user actions. ViewModels own screen state and coordinate asynchronous work. Services isolate external or replaceable behavior. Models represent the data and errors used by the feature.
 
@@ -86,7 +91,7 @@ Concrete services conform to feature-owned protocols. Views and ViewModels shoul
 
 Authentication is the first feature and the reference implementation for future modules.
 
-- `roomscanApp` creates `MockAuthenticationService` and injects it into `AppState`.
+- `RoomScanApp` creates `MockAuthenticationService` and injects it into `AppState`.
 - `AppState` restores the session at launch and owns the app-wide authentication phase.
 - `AppView` switches between restoration, authentication, home, and retry UI.
 - `AuthenticationView` creates `AuthenticationViewModel` with the service received through `AppState`.

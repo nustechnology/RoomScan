@@ -29,9 +29,31 @@
 		8E1912B2300F0AAA00814F77 /* roomscanUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = roomscanUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		8E6F3299300F76B600655BC9 /* Exceptions for "roomscan" folder in "roomscanTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Resources/Fonts/Inter-Italic-VariableFont_opsz,wght.ttf",
+				"Resources/Fonts/Inter-VariableFont_opsz,wght.ttf",
+			);
+			target = 8E1912A7300F0AAA00814F77 /* roomscanTests */;
+		};
+		8E6F329B300F775700655BC9 /* Exceptions for "roomscan" folder in "roomscan" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 8E19129A300F0AA900814F77 /* roomscan */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		8E19129D300F0AA900814F77 /* roomscan */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				8E6F329B300F775700655BC9 /* Exceptions for "roomscan" folder in "roomscan" target */,
+				8E6F3299300F76B600655BC9 /* Exceptions for "roomscan" folder in "roomscanTests" target */,
+			);
 			path = roomscan;
 			sourceTree = "<group>";
 		};
@@ -235,6 +257,7 @@
 /* Begin PBXShellScriptBuildPhase section */
 		8E6F31C5300F593300655BC9 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -419,6 +442,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = roomscan/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Room Scan";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -452,6 +476,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = roomscan/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Room Scan";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

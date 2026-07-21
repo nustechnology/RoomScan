@@ -39,6 +39,22 @@ This document describes **how code should be written**, not product requirements
 - Move presentation state into ViewModels.
 - Prefer composition over deeply nested View hierarchies.
 - Extract reusable Components only when duplication appears.
+- Reuse shared UI components before creating new ones.
+
+---
+
+## Design System
+
+- Reuse the project's shared design system whenever possible.
+- Do not hardcode reusable design values inside Views.
+- Use shared design tokens for:
+  - Typography (`AppTypography`)
+  - Colors (`AppColors`)
+  - Spacing (`AppSpacing`)
+  - Corner Radius (`AppRadius`)
+- Extend the shared design system instead of introducing duplicate styles.
+- Use semantic names (for example, `bodyLarge`, `headingMedium`, `primary`) instead of size-based names (for example, `font16`, `text17`, `blue500`).
+- Use the bundled Inter variable font through `AppTypography`.
 
 ---
 
@@ -48,7 +64,7 @@ This document describes **how code should be written**, not product requirements
 - Write small, focused types and functions.
 - Use descriptive names.
 - Prefer composition over inheritance.
-- Avoid magic numbers and duplicated logic.
+- Avoid magic numbers, duplicated logic, and duplicated design values.
 - Remove unused code.
 - Minimize comments by writing self-explanatory code.
 

@@ -19,6 +19,19 @@ struct MockAuthenticationServiceTests {
         #expect(configuration.simulatedDelayNanoseconds == 300_000_000)
     }
 
+    @Test func restoreSessionReturnsConfiguredInitialSession() async throws {
+        let service = MockAuthenticationService(
+            configuration: .init(
+                initialSession: .mockAppleUser,
+                signInOutcome: .success,
+                restoreFails: false,
+                simulatedDelayNanoseconds: 0
+            )
+        )
+
+        #expect(try await service.restoreSession() == .mockAppleUser)
+    }
+
     @Test func signInPersistsSessionForRestore() async throws {
         let service = MockAuthenticationService(
             configuration: .init(
@@ -51,17 +64,48 @@ struct MockAuthenticationServiceTests {
         #expect(try await service.restoreSession() == nil)
     }
 
-    @Test func makeForCurrentProcessHonorsSignedInLaunchArgument() async throws {
-        // Directly exercise the configuration path used by UI tests.
+    @Test func signInThrowsCancelledForCancelledOutcome() async {
         let service = MockAuthenticationService(
             configuration: .init(
-                initialSession: .mockAppleUser,
-                signInOutcome: .success,
+                initialSession: nil,
+                signInOutcome: .cancelled,
                 restoreFails: false,
                 simulatedDelayNanoseconds: 0
             )
         )
 
-        #expect(try await service.restoreSession() == .mockAppleUser)
+        await #expect(throws: AuthenticationError.cancelled) {
+            try await service.signIn(with: .apple)
+        }
+    }
+
+    @Test func signInThrowsUnknownForFailureOutcome() async {
+        let service = MockAuthenticationService(
+            configuration: .init(
+                initialSession: nil,
+                signInOutcome: .failure,
+                restoreFails: false,
+                simulatedDelayNanoseconds: 0
+            )
+        )
+
+        await #expect(throws: AuthenticationError.unknown) {
+            try await service.signIn(with: .apple)
+        }
+    }
+
+    @Test func restoreSessionThrowsUnavailableWhenRestoreFails() async {
+        let service = MockAuthenticationService(
+            configuration: .init(
+                initialSession: .mockAppleUser,
+                signInOutcome: .success,
+                restoreFails: true,
+                simulatedDelayNanoseconds: 0
+            )
+        )
+
+        await #expect(throws: AuthenticationError.unavailable) {
+            try await service.restoreSession()
+        }
     }
 }
