@@ -1,8 +1,6 @@
 # Review Code
 
-Review:
-
-**[Current changes / commit / branch / pull request / specified files]**
+Review the current changes before they are committed.
 
 ---
 

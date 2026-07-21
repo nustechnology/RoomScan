@@ -3,6 +3,7 @@
 //  roomscanTests
 //
 
+import Foundation
 import Testing
 @testable import roomscan
 
@@ -23,6 +24,49 @@ struct AuthenticationViewModelTests {
 
         #expect(viewModel.viewState == .idle)
         #expect(session == .mockAppleUser)
+    }
+
+    @Test func signInWithAppleExposesSigningInStateWhileInProgress() async {
+        let service = MockAuthenticationService(
+            configuration: .init(
+                initialSession: nil,
+                signInOutcome: .success,
+                restoreFails: false,
+                simulatedDelayNanoseconds: 50_000_000
+            )
+        )
+        let viewModel = AuthenticationViewModel(authenticationService: service)
+
+        async let session = viewModel.signInWithApple()
+        await service.waitUntilSignInStarted()
+
+        #expect(viewModel.viewState == .signingIn)
+        #expect(viewModel.isSigningIn)
+
+        #expect(await session == .mockAppleUser)
+        #expect(viewModel.viewState == .idle)
+    }
+
+    @Test func signInWithAppleIgnoresReentrancyWhileSigningIn() async {
+        let service = MockAuthenticationService(
+            configuration: .init(
+                initialSession: nil,
+                signInOutcome: .success,
+                restoreFails: false,
+                simulatedDelayNanoseconds: 50_000_000
+            )
+        )
+        let viewModel = AuthenticationViewModel(authenticationService: service)
+
+        async let firstSession = viewModel.signInWithApple()
+        await service.waitUntilSignInStarted()
+        #expect(viewModel.isSigningIn)
+
+        let secondSession = await viewModel.signInWithApple()
+
+        #expect(secondSession == nil)
+        #expect(await firstSession == .mockAppleUser)
+        #expect(viewModel.viewState == .idle)
     }
 
     @Test func signInWithAppleCancellationKeepsIdleState() async {
@@ -56,7 +100,7 @@ struct AuthenticationViewModelTests {
         let session = await viewModel.signInWithApple()
 
         #expect(viewModel.viewState == .failed(.unknown))
-        #expect(viewModel.errorMessage != nil)
+        #expect(viewModel.errorMessage == AuthenticationError.unknown.localizedDescription)
         #expect(session == nil)
     }
 

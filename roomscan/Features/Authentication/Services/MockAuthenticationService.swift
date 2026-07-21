@@ -32,10 +32,24 @@ final class MockAuthenticationService: AuthenticationService {
 
     private var session: AuthenticationSession?
     private let configuration: Configuration
+    private var hasSignInStarted = false
+    private var signInStartedContinuations: [CheckedContinuation<Void, Never>] = []
 
     init(configuration: Configuration = .default) {
         self.configuration = configuration
         self.session = configuration.initialSession
+    }
+
+    /// Suspends until `signIn(with:)` has been entered (and any simulated delay has begun).
+    func waitUntilSignInStarted() async {
+        if hasSignInStarted { return }
+        await withCheckedContinuation { continuation in
+            if hasSignInStarted {
+                continuation.resume()
+            } else {
+                signInStartedContinuations.append(continuation)
+            }
+        }
     }
 
     /// Builds a mock configured from process launch arguments for UI tests.
@@ -77,6 +91,7 @@ final class MockAuthenticationService: AuthenticationService {
     }
 
     func signIn(with provider: AuthenticationProvider) async throws -> AuthenticationSession {
+        signalSignInStarted()
         try await simulateDelay()
 
         switch configuration.signInOutcome {
@@ -100,6 +115,15 @@ final class MockAuthenticationService: AuthenticationService {
         let delay = configuration.simulatedDelayNanoseconds
         guard delay > 0 else { return }
         try await Task.sleep(nanoseconds: delay)
+    }
+
+    private func signalSignInStarted() {
+        hasSignInStarted = true
+        let continuations = signInStartedContinuations
+        signInStartedContinuations.removeAll()
+        for continuation in continuations {
+            continuation.resume()
+        }
     }
 }
 

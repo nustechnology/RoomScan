@@ -1,13 +1,13 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "app.restoring" : {
+    "app.restoreFailed.retry" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Restoring session…"
+            "value" : "Try Again"
           }
         }
       }
@@ -23,134 +23,13 @@
         }
       }
     },
-    "app.restoreFailed.retry" : {
+    "app.restoring" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Try Again"
-          }
-        }
-      }
-    },
-    "auth.title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Welcome to RoomScan"
-          }
-        }
-      }
-    },
-    "auth.subtitle" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sign in to sync projects, share scans, and open invitations. This build uses a mock Apple sign-in for development."
-          }
-        }
-      }
-    },
-    "auth.continueWithApple" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Continue with Apple"
-          }
-        }
-      }
-    },
-    "auth.signingIn" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Signing in…"
-          }
-        }
-      }
-    },
-    "auth.retry" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Retry"
-          }
-        }
-      }
-    },
-    "auth.privacy" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Privacy Policy"
-          }
-        }
-      }
-    },
-    "auth.terms" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Terms of Service"
-          }
-        }
-      }
-    },
-    "auth.privacy.title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Privacy Policy"
-          }
-        }
-      }
-    },
-    "auth.terms.title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Terms of Service"
-          }
-        }
-      }
-    },
-    "auth.privacy.body" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Placeholder privacy policy for the RoomScan showcase. Replace this text with the published policy before release."
-          }
-        }
-      }
-    },
-    "auth.terms.body" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Placeholder terms of service for the RoomScan showcase. Replace this text with the published terms before release."
+            "value" : "Restoring session…"
           }
         }
       }
@@ -188,24 +67,57 @@
         }
       }
     },
-    "home.title" : {
+    "auth.legal" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Home"
+            "value" : "By continuing, you agree to the Privacy Policy and Terms of Service"
           }
         }
       }
     },
-    "home.welcome" : {
+    "auth.retry" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "You’re signed in"
+            "value" : "Retry"
+          }
+        }
+      }
+    },
+    "auth.signingIn" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Signing in…"
+          }
+        }
+      }
+    },
+    "auth.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan rooms into 3D models, pin notes in context, and share view-only projects in minutes."
+          }
+        }
+      }
+    },
+    "auth.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RoomScan"
           }
         }
       }
@@ -228,6 +140,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sign Out"
+          }
+        }
+      }
+    },
+    "home.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Home"
+          }
+        }
+      }
+    },
+    "home.welcome" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You’re signed in"
           }
         }
       }
