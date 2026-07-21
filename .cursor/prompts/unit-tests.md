@@ -147,6 +147,9 @@ After adding or updating tests:
 3. Run the broader unit test suite when practical.
 4. Confirm tests compile and execute successfully.
 5. Report failures with their root cause.
+6. Run SwiftLint.
+7. Fix all SwiftLint violations.
+8. Report any remaining warnings or errors.
 
 Do not automatically modify production code merely to make a failing test pass. Determine whether the failure indicates:
 

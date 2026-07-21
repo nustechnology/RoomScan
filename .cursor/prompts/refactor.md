@@ -62,6 +62,9 @@ After refactoring:
 - Run UI tests if affected.
 - Ensure behavior remains unchanged.
 - Review the result for unnecessary complexity.
+- Run SwiftLint.
+- Fix all SwiftLint violations.
+- Report any remaining warnings or errors.
 
 ---
 

@@ -68,6 +68,9 @@ After implementation:
 - Run lint checks if linting is configured.
 - Review the implementation for unnecessary complexity and duplication.
 - Confirm that no unrelated behavior was changed.
+- Run SwiftLint.
+- Fix all SwiftLint violations.
+- Report any remaining warnings or errors.
 
 ## Final Summary
 

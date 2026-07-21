@@ -1,5 +1,8 @@
 # AI Rules
 
+Code Quality
+- All code changes must pass SwiftLint before they are considered complete.
+
 Before making changes:
 
 - Read the relevant documentation under `docs/`.

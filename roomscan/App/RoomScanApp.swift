@@ -6,7 +6,7 @@
 import SwiftUI
 
 @main
-struct roomscanApp: App {
+struct RoomScanApp: App {
     @State private var appState: AppState
 
     init() {

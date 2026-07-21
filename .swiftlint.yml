@@ -1,0 +1,36 @@
+included:
+  - roomscan
+
+excluded:
+  - DerivedData
+  - .build
+
+disabled_rules:
+  - todo
+  - trailing_comma
+
+opt_in_rules:
+  - empty_count
+  - first_where
+  - redundant_nil_coalescing
+  - sorted_imports
+
+line_length:
+  warning: 120
+  error: 160
+
+type_body_length:
+  warning: 250
+
+function_body_length:
+  warning: 50
+
+file_length:
+  warning: 500
+
+identifier_name:
+  min_length: 2
+  excluded:
+    - id
+    - x
+    - y
