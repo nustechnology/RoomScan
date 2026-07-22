@@ -9,11 +9,12 @@ struct AppView: View {
     @Bindable var appState: AppState
 
     var body: some View {
+        // SplashScreenView()
+
         Group {
             switch appState.phase {
             case .restoring:
-                ProgressView(String(localized: "app.restoring"))
-                    .accessibilityIdentifier("app.loading")
+                SplashScreenView()
 
             case .signedOut:
                 AuthenticationView(appState: appState)
