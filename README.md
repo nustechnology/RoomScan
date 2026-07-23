@@ -17,7 +17,24 @@ Read the relevant documents before contributing or implementing new features. AI
 ## Getting Started
 
 1. Open `roomscan.xcodeproj`
-2. Use an Xcode version that supports the configured iOS 26.2 deployment target.
-3. Build and run the `roomscan` scheme.
+2. Install the shared Git hooks:
+
+   ```sh
+   ./scripts/install-git-hooks.sh
+   ```
+
+3. Use an Xcode version that supports the configured iOS 26.2 deployment target.
+4. Build and run the `roomscan` scheme.
+
+## Pre-Commit Checks
+
+The shared pre-commit hook runs:
+
+```sh
+git diff --check
+xcodebuild test -project roomscan.xcodeproj -scheme roomscan -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.2' -only-testing:roomscanTests -derivedDataPath .derivedData CODE_SIGNING_ALLOWED=NO
+```
+
+Run `./scripts/install-git-hooks.sh` once after cloning the repository to enable the hook locally.
 
 A LiDAR-capable device will be required once RoomPlan-based room scanning is implemented.
