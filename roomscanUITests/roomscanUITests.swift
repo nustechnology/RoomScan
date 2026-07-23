@@ -19,15 +19,22 @@ final class roomscanUITests: XCTestCase {
     }
 
     @MainActor
-    func testMockSignInReachesHomeAndSignOutReturns() throws {
+    func testMockSignInReachesProjectsAndSignOutReturns() throws {
         let app = launchApp(arguments: ["-UITesting"])
 
         XCTAssertTrue(app.buttons["auth.signInWithApple"].waitForExistence(timeout: 5))
         app.buttons["auth.signInWithApple"].tap()
 
-        XCTAssertTrue(app.buttons["home.signOut"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["home.welcome"].exists)
-        app.buttons["home.signOut"].tap()
+        XCTAssertTrue(app.scrollViews["projects.list"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["projects.card.title.project-1"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["projects.card.scanCount.project-1"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["projects.card.menu.project-1"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["projects.scan.project-1-scan-1"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["projects.scan.status.uploading"].waitForExistence(timeout: 5))
+
+        app.buttons["tab.account"].tap()
+        XCTAssertTrue(app.buttons["account.signOut"].waitForExistence(timeout: 5))
+        app.buttons["account.signOut"].tap()
 
         XCTAssertTrue(app.staticTexts["auth.title"].waitForExistence(timeout: 5))
     }
@@ -43,11 +50,20 @@ final class roomscanUITests: XCTestCase {
     }
 
     @MainActor
-    func testPersistedSessionLaunchOpensHome() throws {
+    func testPersistedSessionLaunchOpensProjectsTab() throws {
         let app = launchApp(arguments: ["-UITesting", "-UITestSignedIn"])
 
-        XCTAssertTrue(app.buttons["home.signOut"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["home.welcome"].exists)
+        XCTAssertTrue(app.scrollViews["projects.list"].waitForExistence(timeout: 5))
+        let projectsTab = app.buttons["tab.projects"]
+        XCTAssertTrue(projectsTab.waitForExistence(timeout: 5))
+        XCTAssertTrue(projectsTab.isSelected)
+    }
+
+    @MainActor
+    func testEmptyProjectsStateShowsRequiredMessage() throws {
+        let app = launchApp(arguments: ["-UITesting", "-UITestSignedIn", "-UITestProjectsEmpty"])
+
+        XCTAssertTrue(app.staticTexts["projects.emptyState"].waitForExistence(timeout: 5))
     }
 
     @MainActor
