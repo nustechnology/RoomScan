@@ -85,8 +85,10 @@ GoogleService-Info.plist
 
 # Cursor local (keep shared .cursor/rules & prompts tracked)
 .cursor/mcp.json
+.codegraph/
 
 # Misc
+.swiftlint-cache/
 *.log
 *.tmp
 *.bak
