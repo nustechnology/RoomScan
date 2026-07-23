@@ -47,12 +47,7 @@ struct AuthenticationView: View {
                         VStack(spacing: 0) {
                             signInButton
                             statusContent
-                            Text("auth.legal")
-                                .appTypography(AppTypography.captionMedium)
-                                .foregroundStyle(AppColors.secondaryText)
-                                .multilineTextAlignment(.center)
-                                .padding(.top, AppSpacing.medium)
-                                .accessibilityIdentifier("auth.legal")
+                            legalLinks
                         }
                     }
                     .padding(.horizontal, AppSpacing.extraLarge)
@@ -65,7 +60,40 @@ struct AuthenticationView: View {
                 }
             }
             .background(AppColors.background.ignoresSafeArea())
+            .navigationDestination(for: AppRoute.self) { route in
+                switch route {
+                case .privacyPolicy:
+                    Text("auth.privacy.title")
+                        .navigationTitle(String(localized: "auth.privacy.title"))
+                case .termsOfService:
+                    Text("auth.terms.title")
+                        .navigationTitle(String(localized: "auth.terms.title"))
+                }
+            }
         }
+    }
+
+    private var legalLinks: some View {
+        VStack(spacing: AppSpacing.extraSmall) {
+            Text("auth.legal")
+                .appTypography(AppTypography.captionMedium)
+                .foregroundStyle(AppColors.secondaryText)
+                .multilineTextAlignment(.center)
+                .accessibilityIdentifier("auth.legal")
+
+            NavigationLink(value: AppRoute.privacyPolicy) {
+                Text("auth.privacy.title")
+                    .appTypography(AppTypography.captionMediumStrong)
+            }
+            .accessibilityIdentifier("auth.privacy")
+
+            NavigationLink(value: AppRoute.termsOfService) {
+                Text("auth.terms.title")
+                    .appTypography(AppTypography.captionMediumStrong)
+            }
+            .accessibilityIdentifier("auth.terms")
+        }
+        .padding(.top, AppSpacing.medium)
     }
 
     @ViewBuilder
