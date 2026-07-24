@@ -19,9 +19,14 @@ final class AppState {
     private(set) var phase: Phase = .restoring
 
     let authenticationService: any AuthenticationService
+    private let activityTracker: SessionActivityTracker
 
-    init(authenticationService: any AuthenticationService) {
+    init(
+        authenticationService: any AuthenticationService,
+        activityTracker: SessionActivityTracker? = nil
+    ) {
         self.authenticationService = authenticationService
+        self.activityTracker = activityTracker ?? SessionActivityTracker()
     }
 
     var isAuthenticated: Bool {
@@ -41,7 +46,14 @@ final class AppState {
 
         do {
             if let session = try await authenticationService.restoreSession() {
-                phase = .authenticated(session)
+                if activityTracker.isSessionExpired() {
+                    try await authenticationService.signOut()
+                    activityTracker.clearActivity()
+                    phase = .signedOut
+                } else {
+                    activityTracker.recordActivity()
+                    phase = .authenticated(session)
+                }
             } else {
                 phase = .signedOut
             }
@@ -53,12 +65,25 @@ final class AppState {
     }
 
     func applySignedInSession(_ session: AuthenticationSession) {
+        activityTracker.recordActivity()
         phase = .authenticated(session)
+    }
+
+    func recordActivity() {
+        guard isAuthenticated else { return }
+        if activityTracker.isSessionExpired() {
+            Task {
+                await signOut()
+            }
+        } else {
+            activityTracker.recordActivity()
+        }
     }
 
     func signOut() async {
         do {
             try await authenticationService.signOut()
+            activityTracker.clearActivity()
             phase = .signedOut
         } catch {
             // Keep the existing session if sign-out fails so local data ownership stays clear.

@@ -7,7 +7,5 @@
 		<string>Inter-VariableFont_opsz,wght.ttf</string>
 		<string>Inter-Italic-VariableFont_opsz,wght.ttf</string>
 	</array>
-	<key>UILaunchStoryboardName</key>
-	<string>LaunchScreen</string>
 </dict>
 </plist>

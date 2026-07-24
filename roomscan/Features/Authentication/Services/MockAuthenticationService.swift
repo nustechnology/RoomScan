@@ -3,6 +3,7 @@
 //  roomscan
 //
 
+import AuthenticationServices
 import Foundation
 
 /// Deterministic in-memory authentication used for development, previews, and tests.
@@ -12,6 +13,9 @@ final class MockAuthenticationService: AuthenticationService {
     enum SignInOutcome: Equatable, Sendable {
         case success
         case cancelled
+        case appleSystemError
+        case invalidCredential
+        case networkError
         case failure
     }
 
@@ -73,6 +77,18 @@ final class MockAuthenticationService: AuthenticationService {
             configuration.signInOutcome = .cancelled
         }
 
+        if arguments.contains("-UITestAppleSystemError") {
+            configuration.signInOutcome = .appleSystemError
+        }
+
+        if arguments.contains("-UITestInvalidCredential") {
+            configuration.signInOutcome = .invalidCredential
+        }
+
+        if arguments.contains("-UITestNetworkError") {
+            configuration.signInOutcome = .networkError
+        }
+
         if arguments.contains("-UITestRestoreFails") {
             configuration.restoreFails = true
         }
@@ -97,6 +113,12 @@ final class MockAuthenticationService: AuthenticationService {
         switch configuration.signInOutcome {
         case .cancelled:
             throw AuthenticationError.cancelled
+        case .appleSystemError:
+            throw AuthenticationError.appleSystemError
+        case .invalidCredential:
+            throw AuthenticationError.invalidCredential
+        case .networkError:
+            throw AuthenticationError.networkError
         case .failure:
             throw AuthenticationError.unknown
         case .success:
@@ -104,6 +126,10 @@ final class MockAuthenticationService: AuthenticationService {
             self.session = session
             return session
         }
+    }
+
+    func signInWithApple(authorization: ASAuthorization, rawNonce: String) async throws -> AuthenticationSession {
+        try await signIn(with: .apple)
     }
 
     func signOut() async throws {

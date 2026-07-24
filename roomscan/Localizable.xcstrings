@@ -78,6 +78,17 @@
         }
       }
     },
+    "auth.error.appleSystem" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to complete Apple Sign-In. Please try again."
+          }
+        }
+      }
+    },
     "auth.error.cancelled" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -85,6 +96,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sign-in was cancelled."
+          }
+        }
+      }
+    },
+    "auth.error.invalidCredential" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authentication failed. Invalid Apple credential."
+          }
+        }
+      }
+    },
+    "auth.error.network" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Network or server error. Please try again."
           }
         }
       }

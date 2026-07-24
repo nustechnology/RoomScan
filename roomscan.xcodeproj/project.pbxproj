@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C79F8FDF3011CC81000812F6 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = C79F8FDE3011CC81000812F6 /* FirebaseAuth */; };
+		C79F8FE13011CC87000812F6 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = C79F8FE03011CC87000812F6 /* FirebaseCore */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		8E1912A9300F0AAA00814F77 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -65,6 +70,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C79F8FE13011CC87000812F6 /* FirebaseCore in Frameworks */,
+				C79F8FDF3011CC81000812F6 /* FirebaseAuth in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -91,6 +98,7 @@
 				8E19129D300F0AA900814F77 /* roomscan */,
 				8E1912AB300F0AAA00814F77 /* roomscanTests */,
 				8E1912B5300F0AAA00814F77 /* roomscanUITests */,
+				C79F8FDD3011CC81000812F6 /* Frameworks */,
 				8E19129C300F0AA900814F77 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -103,6 +111,13 @@
 				8E1912B2300F0AAA00814F77 /* roomscanUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		C79F8FDD3011CC81000812F6 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -126,6 +141,8 @@
 			);
 			name = roomscan;
 			packageProductDependencies = (
+				C79F8FDE3011CC81000812F6 /* FirebaseAuth */,
+				C79F8FE03011CC87000812F6 /* FirebaseCore */,
 			);
 			productName = roomscan;
 			productReference = 8E19129B300F0AA900814F77 /* roomscan.app */;
@@ -209,6 +226,9 @@
 			);
 			mainGroup = 8E191292300F0AA900814F77;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C79F8FDC3011CB16000812F6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 8E19129C300F0AA900814F77 /* Products */;
 			projectDirPath = "";
@@ -428,8 +448,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = roomscan/roomscan.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B66DTGYFS9;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -438,6 +460,7 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
@@ -446,7 +469,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.nus.showcase.roomscan;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nus.roomscan;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -463,8 +486,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = roomscan/roomscan.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B66DTGYFS9;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -473,6 +498,7 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
@@ -481,7 +507,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.nus.showcase.roomscan;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nus.roomscan;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -615,6 +641,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C79F8FDC3011CB16000812F6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.16.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C79F8FDE3011CC81000812F6 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C79F8FDC3011CB16000812F6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		C79F8FE03011CC87000812F6 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C79F8FDC3011CB16000812F6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 8E191293300F0AA900814F77 /* Project object */;
 }
