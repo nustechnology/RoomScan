@@ -18,6 +18,7 @@ struct HomeView: View {
 
     @State private var selectedTab: Tab = .projects
     @State private var projectsViewModel: ProjectsViewModel
+    @State private var showsNewProject = false
 
     init(
         session: AuthenticationSession,
@@ -34,13 +35,29 @@ struct HomeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HomeHeader(title: selectedTab.headerTitle)
+            HomeHeader(
+                title: selectedTab.headerTitle,
+                showsCreateProjectButton: selectedTab == .projects,
+                onCreateProject: {
+                    showsNewProject = true
+                }
+            )
 
             currentTabContent
                 .padding(.top, 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             HomeBottomNav(selectedTab: $selectedTab)
+        }
+        .fullScreenCover(isPresented: $showsNewProject) {
+            NewProjectView(
+                onSave: { _, _ in
+                    showsNewProject = false
+                },
+                onCancel: {
+                    showsNewProject = false
+                }
+            )
         }
     }
 
@@ -151,6 +168,8 @@ extension HomeView.Tab: CaseIterable {
 
 private struct HomeHeader: View {
     let title: String
+    let showsCreateProjectButton: Bool
+    let onCreateProject: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -158,6 +177,17 @@ private struct HomeHeader: View {
                 .font(.largeTitle.bold())
                 .lineLimit(1)
                 .accessibilityIdentifier("home.header.title")
+
+            if showsCreateProjectButton {
+                Button(action: onCreateProject) {
+                    Image(systemName: "plus")
+                        .font(.title2.weight(.semibold))
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "projects.create.accessibility"))
+                .accessibilityIdentifier("projects.create")
+            }
 
             Spacer()
 

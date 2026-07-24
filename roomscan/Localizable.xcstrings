@@ -35,6 +35,16 @@
         }
       }
     },
+    "common.back" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back"
+          }
+        }
+      }
+    },
     "app.restoreFailed.retry" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -317,6 +327,52 @@
           }
         }
       }
+    },
+    "projects.create.accessibility" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create project"
+          }
+        }
+      }
+    },
+    "projects.form.cancel" : {
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Cancel" } } }
+    },
+    "projects.form.description.label" : {
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Description" } } }
+    },
+    "projects.form.description.placeholder" : {
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Tell more about your project" } } }
+    },
+    "projects.form.helper" : {
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Vietnamese and other Unicode characters are supported. Names do not have to be unique - you can rename a project later." } } }
+    },
+    "projects.form.name.error" : {
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter a project name with at least one non-whitespace character, up to 50 characters." } } }
+    },
+    "projects.form.name.label" : {
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Project name *" } } }
+    },
+    "projects.form.name.placeholder" : {
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter your project name (e.g. L.A Apartment)" } } }
+    },
+    "projects.form.save" : {
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Save Project" } } }
+    },
+    "projects.form.title" : {
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "New Project" } } }
+    },
+    "projects.form.discard.action" : {
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Discard" } } }
+    },
+    "projects.form.discard.keepEditing" : {
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Keep Editing" } } }
+    },
+    "projects.form.discard.title" : {
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Discard unsaved project?" } } }
     },
     "projects.card.menu.accessibility" : {
       "comment" : "An accessibility label for the menu button in the project card.",
