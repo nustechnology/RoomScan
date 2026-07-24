@@ -9,6 +9,8 @@ struct ProjectsView: View {
     @State var viewModel: ProjectsViewModel
     var showsNavigationTitle = true
 
+    @State private var showsScanCheck = false
+
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
@@ -26,6 +28,13 @@ struct ProjectsView: View {
             }
             .navigationTitle(showsNavigationTitle ? String(localized: "projects.title") : "")
             .toolbar(showsNavigationTitle ? .visible : .hidden, for: .navigationBar)
+            .navigationDestination(isPresented: $showsScanCheck) {
+                ScanCheckView(
+                    viewModel: ScanCheckViewModel(readinessService: RealScanReadinessService()),
+                    // TODO: Route to scan capture flow (MOB-XX) when capture feature is implemented.
+                    onStartScan: { showsScanCheck = false }
+                )
+            }
             .task {
                 await viewModel.loadInitialProjects()
             }
@@ -55,7 +64,7 @@ struct ProjectsView: View {
                         RefreshingBannerView()
                     }
 
-                    ProjectsControlsView()
+                    ProjectsControlsView(onNewScan: { showsScanCheck = true })
 
                     ForEach(viewModel.projects) { project in
                         ProjectCardView(
@@ -130,6 +139,8 @@ private struct LoadingMoreFooterView: View {
 }
 
 private struct ProjectsControlsView: View {
+    let onNewScan: () -> Void
+
     var body: some View {
         VStack(spacing: 16) {
             SearchPlaceholderView()
@@ -138,7 +149,7 @@ private struct ProjectsControlsView: View {
                 title: String(localized: "home.newScan"),
                 systemImageName: "plus",
                 color: .blue,
-                action: {},
+                action: onNewScan,
                 accessibilityIdentifier: "home.newScan"
             )
             .padding(.bottom, 6)
