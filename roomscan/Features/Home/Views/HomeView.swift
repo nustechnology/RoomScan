@@ -93,6 +93,7 @@ struct HomeView: View {
             ownerName: "You",
             createdAt: Date(),
             updatedAt: Date(),
+            description: "",
             sharedUserCount: 0,
             roomScans: []
         )

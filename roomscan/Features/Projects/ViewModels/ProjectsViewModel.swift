@@ -29,6 +29,8 @@ final class ProjectsViewModel {
     private(set) var isLoadingNextPage = false
     private(set) var hasMoreProjects = false
     private(set) var showsPaginationError = false
+    private(set) var showsDeleteSuccessToast = false
+    private(set) var showsActionErrorToast = false
     private(set) var expandedProjectIDs: Set<ProjectSummary.ID> = []
 
     init(service: any ProjectsService) {
@@ -77,6 +79,54 @@ final class ProjectsViewModel {
 
     func showsExpandControl(for project: ProjectSummary) -> Bool {
         project.roomScans.count > 3
+    }
+
+    @discardableResult
+    func updateProject(id: ProjectSummary.ID, name: String, description: String) async -> Bool {
+        do {
+            let updated = try await service.updateProject(id: id, name: name, description: description)
+            if let index = projects.firstIndex(where: { $0.id == id }) {
+                projects[index] = updated
+                projects.sort { $0.updatedAt > $1.updatedAt }
+            }
+            showsActionErrorToast = false
+            return true
+        } catch {
+            showsActionErrorToast = true
+            return false
+        }
+    }
+
+    @discardableResult
+    func deleteProject(id: ProjectSummary.ID) async -> Bool {
+        do {
+            try await service.deleteProject(id: id)
+            projects.removeAll { $0.id == id }
+            expandedProjectIDs.remove(id)
+            if projects.isEmpty {
+                if hasMoreProjects {
+                    await reloadProjects(collapseExpanded: false)
+                } else {
+                    hasMoreProjects = false
+                    viewState = .empty
+                }
+            }
+            showsActionErrorToast = false
+            showsDeleteSuccessToast = true
+            return true
+        } catch {
+            showsDeleteSuccessToast = false
+            showsActionErrorToast = true
+            return false
+        }
+    }
+
+    func dismissDeleteSuccessToast() {
+        showsDeleteSuccessToast = false
+    }
+
+    func dismissActionErrorToast() {
+        showsActionErrorToast = false
     }
 
     private func reloadProjects(collapseExpanded: Bool) async {

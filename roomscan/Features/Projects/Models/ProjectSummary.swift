@@ -16,6 +16,7 @@ struct ProjectSummary: Identifiable, Equatable, Sendable {
     let ownerName: String
     let createdAt: Date
     let updatedAt: Date
+    let description: String
     let sharedUserCount: Int
     let roomScans: [RoomScanSummary]
 }

@@ -11,6 +11,8 @@ struct ProjectsView: View {
     var showsNavigationTitle = true
 
     @State private var showsScanCheck = false
+    @State private var projectToEdit: ProjectSummary?
+    @State private var projectPendingDelete: ProjectSummary?
 
     var body: some View {
         NavigationStack {
@@ -25,6 +27,18 @@ struct ProjectsView: View {
                     }
                     .padding()
                     .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
+                if viewModel.showsDeleteSuccessToast {
+                    DeleteSuccessToast()
+                        .padding()
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
+                if viewModel.showsActionErrorToast && projectToEdit == nil {
+                    ActionErrorToast()
+                        .padding()
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
             .navigationTitle(showsNavigationTitle ? String(localized: "projects.title") : "")
@@ -43,6 +57,82 @@ struct ProjectsView: View {
                 await viewModel.loadInitialProjects()
             }
             .animation(.default, value: viewModel.showsPaginationError)
+            .animation(.default, value: viewModel.showsDeleteSuccessToast)
+            .animation(.default, value: viewModel.showsActionErrorToast)
+            .fullScreenCover(item: $projectToEdit) { project in
+                NewProjectView(
+                    mode: .edit,
+                    initialName: project.name,
+                    initialDescription: project.description,
+                    onSave: { name, description in
+                        Task {
+                            let didUpdate = await viewModel.updateProject(
+                                id: project.id,
+                                name: name,
+                                description: description
+                            )
+                            if didUpdate {
+                                projectToEdit = nil
+                            }
+                        }
+                    },
+                    onCancel: {
+                        projectToEdit = nil
+                        viewModel.dismissActionErrorToast()
+                    }
+                )
+                .alert(
+                    String(localized: "projects.action.error"),
+                    isPresented: Binding(
+                        get: { viewModel.showsActionErrorToast },
+                        set: { if !$0 { viewModel.dismissActionErrorToast() } }
+                    )
+                ) {
+                    Button(String(localized: "projects.action.error.dismiss"), role: .cancel) {
+                        viewModel.dismissActionErrorToast()
+                    }
+                }
+            }
+            .alert(
+                String(localized: "projects.delete.title"),
+                isPresented: Binding(
+                    get: { projectPendingDelete != nil },
+                    set: { if !$0 { projectPendingDelete = nil } }
+                ),
+                presenting: projectPendingDelete
+            ) { project in
+                Button(String(localized: "projects.delete.cancel"), role: .cancel) {
+                    projectPendingDelete = nil
+                }
+                Button(String(localized: "projects.delete.confirm"), role: .destructive) {
+                    Task {
+                        await viewModel.deleteProject(id: project.id)
+                        projectPendingDelete = nil
+                    }
+                }
+            } message: { project in
+                Text(
+                    String.localizedStringWithFormat(
+                        String(localized: "projects.delete.message.format"),
+                        project.roomScans.count,
+                        project.name
+                    )
+                )
+            }
+            .onChange(of: viewModel.showsDeleteSuccessToast) { _, showsToast in
+                guard showsToast else { return }
+                Task {
+                    try? await Task.sleep(nanoseconds: 2_500_000_000)
+                    viewModel.dismissDeleteSuccessToast()
+                }
+            }
+            .onChange(of: viewModel.showsActionErrorToast) { _, showsToast in
+                guard showsToast, projectToEdit == nil else { return }
+                Task {
+                    try? await Task.sleep(nanoseconds: 2_500_000_000)
+                    viewModel.dismissActionErrorToast()
+                }
+            }
         }
     }
 
@@ -82,7 +172,13 @@ struct ProjectsView: View {
                             onToggleExpansion: {
                                 viewModel.toggleExpansion(for: project.id)
                             },
-                            onRoomTap: {}
+                            onRoomTap: {},
+                            onEdit: {
+                                projectToEdit = project
+                            },
+                            onDelete: {
+                                projectPendingDelete = project
+                            }
                         )
                         .onAppear {
                             Task {
@@ -209,6 +305,34 @@ private struct PaginationErrorToast: View {
         .background(.black.opacity(0.88))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .accessibilityIdentifier("projects.pagination.toast")
+    }
+}
+
+private struct DeleteSuccessToast: View {
+    var body: some View {
+        Text("projects.delete.success")
+            .font(.subheadline)
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(.black.opacity(0.88))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .accessibilityIdentifier("projects.delete.toast")
+    }
+}
+
+private struct ActionErrorToast: View {
+    var body: some View {
+        Text("projects.action.error")
+            .font(.subheadline)
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(.black.opacity(0.88))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .accessibilityIdentifier("projects.action.error.toast")
     }
 }
 

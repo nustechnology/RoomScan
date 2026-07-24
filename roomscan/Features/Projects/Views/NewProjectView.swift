@@ -6,19 +6,43 @@
 import SwiftUI
 
 struct NewProjectView: View {
+    enum Mode: Equatable {
+        case create
+        case edit
+    }
+
+    let mode: Mode
+    let initialName: String
+    let initialDescription: String
     let onSave: (String, String) -> Void
     let onCancel: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @FocusState private var focusedField: Field?
-    @State private var projectName = ""
-    @State private var description = ""
+    @State private var projectName: String
+    @State private var description: String
     @State private var showsNameError = false
     @State private var showsDiscardAlert = false
 
     private enum Field {
         case name
         case description
+    }
+
+    init(
+        mode: Mode = .create,
+        initialName: String = "",
+        initialDescription: String = "",
+        onSave: @escaping (String, String) -> Void,
+        onCancel: @escaping () -> Void
+    ) {
+        self.mode = mode
+        self.initialName = initialName
+        self.initialDescription = initialDescription
+        self.onSave = onSave
+        self.onCancel = onCancel
+        _projectName = State(initialValue: initialName)
+        _description = State(initialValue: initialDescription)
     }
 
     var body: some View {
@@ -46,25 +70,54 @@ struct NewProjectView: View {
         }
         .background(AppColors.background)
         .interactiveDismissDisabled(isDirty)
-        .alert("projects.form.discard.title", isPresented: $showsDiscardAlert) {
+        .alert(discardTitleKey, isPresented: $showsDiscardAlert) {
             Button("projects.form.discard.keepEditing", role: .cancel) {}
             Button("projects.form.discard.action", role: .destructive) {
                 discard()
             }
         }
+        .accessibilityIdentifier(accessibilityRootID)
+    }
+
+    private var accessibilityRootID: String {
+        mode == .create ? "projects.newProject" : "projects.editProject"
+    }
+
+    private var titleKey: LocalizedStringKey {
+        mode == .create ? "projects.form.title" : "projects.form.edit.title"
+    }
+
+    private var saveKey: LocalizedStringKey {
+        mode == .create ? "projects.form.save" : "projects.form.edit.save"
+    }
+
+    private var discardTitleKey: LocalizedStringKey {
+        mode == .create ? "projects.form.discard.title" : "projects.form.edit.discard.title"
     }
 
     private var isDirty: Bool {
-        !projectName.isEmpty || !description.isEmpty
+        ProjectValidation.isDirty(
+            name: projectName,
+            description: description,
+            originalName: initialName,
+            originalDescription: initialDescription,
+            mode: mode
+        )
     }
 
     private var canSave: Bool {
-        ProjectValidation.isValidName(projectName)
+        ProjectValidation.canSave(
+            name: projectName,
+            description: description,
+            originalName: initialName,
+            originalDescription: initialDescription,
+            mode: mode
+        )
     }
 
     private var header: some View {
         ZStack {
-            Text("projects.form.title")
+            Text(titleKey)
                 .appTypography(AppTypography.headingLarge)
                 .foregroundStyle(AppColors.primaryText)
 
@@ -78,7 +131,7 @@ struct NewProjectView: View {
                 .buttonStyle(.plain)
                 .background(.quaternary.opacity(0.45), in: Circle())
                 .accessibilityLabel(String(localized: "common.back"))
-                .accessibilityIdentifier("projects.newProject.back")
+                .accessibilityIdentifier("\(accessibilityRootID).back")
 
                 Spacer()
             }
@@ -119,7 +172,7 @@ struct NewProjectView: View {
                         )
                 }
                 .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large))
-                .accessibilityIdentifier("projects.newProject.name")
+                .accessibilityIdentifier("\(accessibilityRootID).name")
 
             if showsNameError {
                 Text("projects.form.name.error")
@@ -163,14 +216,14 @@ struct NewProjectView: View {
                     .stroke(Color(uiColor: .systemGray4), lineWidth: 1.5)
             }
             .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large))
-            .accessibilityIdentifier("projects.newProject.description")
+            .accessibilityIdentifier("\(accessibilityRootID).description")
         }
     }
 
     private var actions: some View {
         VStack(spacing: AppSpacing.large) {
             Button(action: save) {
-                Text("projects.form.save")
+                Text(saveKey)
                     .appTypography(AppTypography.labelButton)
                     .foregroundStyle(AppColors.primaryActionLabel)
                     .frame(maxWidth: .infinity)
@@ -183,7 +236,7 @@ struct NewProjectView: View {
             .buttonStyle(.plain)
             .disabled(!canSave)
             .opacity(canSave ? 1 : 0.3)
-            .accessibilityIdentifier("projects.newProject.save")
+            .accessibilityIdentifier("\(accessibilityRootID).save")
 
             Button(action: cancel) {
                 Text("projects.form.cancel")
@@ -201,7 +254,7 @@ struct NewProjectView: View {
                     }
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("projects.newProject.cancel")
+            .accessibilityIdentifier("\(accessibilityRootID).cancel")
         }
         .padding(.horizontal, AppSpacing.extraLarge)
         .padding(.top, AppSpacing.large)
@@ -249,8 +302,62 @@ enum ProjectValidation {
     static func isValidDescription(_ description: String) -> Bool {
         description.count <= descriptionLimit
     }
+
+    static func isDirty(
+        name: String,
+        description: String,
+        originalName: String,
+        originalDescription: String,
+        mode: NewProjectView.Mode
+    ) -> Bool {
+        switch mode {
+        case .create:
+            return !name.isEmpty || !description.isEmpty
+        case .edit:
+            let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedOriginalName = originalName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedOriginalDescription = originalDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmedName != trimmedOriginalName || trimmedDescription != trimmedOriginalDescription
+        }
+    }
+
+    static func canSave(
+        name: String,
+        description: String,
+        originalName: String,
+        originalDescription: String,
+        mode: NewProjectView.Mode
+    ) -> Bool {
+        guard isValidName(name), isValidDescription(description) else {
+            return false
+        }
+
+        switch mode {
+        case .create:
+            return true
+        case .edit:
+            return isDirty(
+                name: name,
+                description: description,
+                originalName: originalName,
+                originalDescription: originalDescription,
+                mode: .edit
+            )
+        }
+    }
 }
 
-#Preview {
+#Preview("Create") {
     NewProjectView(onSave: { _, _ in }, onCancel: {})
+}
+
+#Preview("Edit") {
+    NewProjectView(
+        mode: .edit,
+        initialName: "Lakeside Remodel",
+        initialDescription: "Kitchen and living room refresh",
+        onSave: { _, _ in },
+        onCancel: {}
+    )
 }
