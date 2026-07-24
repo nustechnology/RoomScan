@@ -24,6 +24,9 @@ struct AuthenticationSession: Equatable, Codable, Sendable {
 
 enum AuthenticationError: Error, Equatable, Sendable, LocalizedError {
     case cancelled
+    case appleSystemError
+    case invalidCredential
+    case networkError
     case unavailable
     case unknown
 
@@ -31,6 +34,12 @@ enum AuthenticationError: Error, Equatable, Sendable, LocalizedError {
         switch self {
         case .cancelled:
             String(localized: "auth.error.cancelled")
+        case .appleSystemError:
+            String(localized: "auth.error.appleSystem")
+        case .invalidCredential:
+            String(localized: "auth.error.invalidCredential")
+        case .networkError:
+            String(localized: "auth.error.network")
         case .unavailable:
             String(localized: "auth.error.unavailable")
         case .unknown:

@@ -10,6 +10,7 @@ struct AuthenticationView: View {
     @Bindable var appState: AppState
     @State private var viewModel: AuthenticationViewModel
     @State private var path = NavigationPath()
+    @State private var currentRawNonce: String?
 
     init(appState: AppState) {
         self.appState = appState
@@ -71,6 +72,8 @@ struct AuthenticationView: View {
                 }
             }
         }
+        .toast(message: $viewModel.toastMessage)
+        .preferredColorScheme(.light)
     }
 
     private var legalLinks: some View {
@@ -98,20 +101,26 @@ struct AuthenticationView: View {
 
     @ViewBuilder
     private var signInButton: some View {
-        let control = SignInWithAppleButton(.signIn) { _ in
+        let control = SignInWithAppleButton(.signIn) { request in
+            let rawNonce = viewModel.generateRawNonce()
+            currentRawNonce = rawNonce
+            request.requestedScopes = [.fullName, .email]
+            request.nonce = viewModel.sha256(rawNonce)
         } onCompletion: { result in
-            if case .failure(let error) = result,
-               let authorizationError = error as? ASAuthorizationError,
-               authorizationError.code == .canceled {
-                return
-            }
-
-            Task {
-                await applySignInWithApple()
+            switch result {
+            case .success(let authorization):
+                guard let rawNonce = currentRawNonce else { return }
+                Task {
+                    if let session = await viewModel.signInWithApple(authorization: authorization, rawNonce: rawNonce) {
+                        appState.applySignedInSession(session)
+                    }
+                }
+            case .failure(let error):
+                viewModel.handleAppleSignInError(error)
             }
         }
         .signInWithAppleButtonStyle(.black)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: AuthenticationMetrics.maximumButtonWidth)
         .frame(height: AuthenticationMetrics.actionHeight)
         .clipShape(
             RoundedRectangle(
@@ -162,32 +171,6 @@ struct AuthenticationView: View {
                 .padding(.top, AppSpacing.large)
                 .accessibilityIdentifier("auth.signingIn")
         }
-
-        if let errorMessage = viewModel.errorMessage {
-            VStack(spacing: AppSpacing.small) {
-                Text(errorMessage)
-                    .appTypography(AppTypography.captionMedium)
-                    .foregroundStyle(AppColors.error)
-                    .multilineTextAlignment(.center)
-                    .accessibilityIdentifier("auth.error")
-
-                Button("auth.retry") {
-                    Task {
-                        if let session = await viewModel.retrySignIn() {
-                            appState.applySignedInSession(session)
-                        }
-                    }
-                }
-                .appTypography(AppTypography.captionMediumStrong)
-                .frame(
-                    minWidth: AuthenticationMetrics.minimumHitTarget,
-                    minHeight: AuthenticationMetrics.minimumHitTarget
-                )
-                .contentShape(Rectangle())
-                .accessibilityIdentifier("auth.retry")
-            }
-            .padding(.top, AppSpacing.large)
-        }
     }
 }
 
@@ -214,6 +197,7 @@ private enum AuthenticationMetrics {
     static let subtitleMaximumWidth: CGFloat = 310
     static let minimumContentSpacing: CGFloat = 40
     static let actionHeight: CGFloat = 56
+    static let maximumButtonWidth: CGFloat = 375
     static let disabledOpacity = 0.6
     static let minimumHitTarget: CGFloat = 44
 

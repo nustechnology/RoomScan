@@ -119,5 +119,42 @@ struct AuthenticationViewModelTests {
         viewModel.dismissError()
 
         #expect(viewModel.viewState == .idle)
+        #expect(viewModel.toastMessage == nil)
+    }
+
+    @Test func networkErrorExposesNetworkToastMessage() async {
+        let service = MockAuthenticationService(
+            configuration: .init(
+                initialSession: nil,
+                signInOutcome: .networkError,
+                restoreFails: false,
+                simulatedDelayNanoseconds: 0
+            )
+        )
+        let viewModel = AuthenticationViewModel(authenticationService: service)
+
+        let session = await viewModel.signInWithApple()
+
+        #expect(session == nil)
+        #expect(viewModel.viewState == .failed(.networkError))
+        #expect(viewModel.toastMessage == AuthenticationError.networkError.errorDescription)
+    }
+
+    @Test func invalidCredentialErrorExposesCredentialToastMessage() async {
+        let service = MockAuthenticationService(
+            configuration: .init(
+                initialSession: nil,
+                signInOutcome: .invalidCredential,
+                restoreFails: false,
+                simulatedDelayNanoseconds: 0
+            )
+        )
+        let viewModel = AuthenticationViewModel(authenticationService: service)
+
+        let session = await viewModel.signInWithApple()
+
+        #expect(session == nil)
+        #expect(viewModel.viewState == .failed(.invalidCredential))
+        #expect(viewModel.toastMessage == AuthenticationError.invalidCredential.errorDescription)
     }
 }
