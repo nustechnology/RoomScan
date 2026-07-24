@@ -653,6 +653,182 @@
           }
         }
       }
+    },
+    "scancheck.banner.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Move slowly and keep all walls, corners, doors, and furniture visible."
+          }
+        }
+      }
+    },
+    "scancheck.banner.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ready to capture"
+          }
+        }
+      }
+    },
+    "scancheck.camera.denied.action" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Settings \u003e"
+          }
+        }
+      }
+    },
+    "scancheck.camera.denied.message" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Camera access is required to capture 3D rooms. Please enable it in Settings."
+          }
+        }
+      }
+    },
+    "scancheck.camera.unavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Camera is currently in use by another app or unavailable."
+          }
+        }
+      }
+    },
+    "scancheck.cameraPermission.label" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Camera permission"
+          }
+        }
+      }
+    },
+    "scancheck.cameraStatus.label" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Camera status"
+          }
+        }
+      }
+    },
+    "scancheck.device.label" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Device supports 3D scanning"
+          }
+        }
+      }
+    },
+    "scancheck.device.unsupported.message" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your device does not support 3D/LiDAR room scanning. You can still view shared 3D projects."
+          }
+        }
+      }
+    },
+    "scancheck.section.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System Readiness"
+          }
+        }
+      }
+    },
+    "scancheck.startScan" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start Scan"
+          }
+        }
+      }
+    },
+    "scancheck.storage.insufficient.message" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not enough storage space. Please free up space on your device to continue."
+          }
+        }
+      }
+    },
+    "scancheck.storage.label" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Storage available"
+          }
+        }
+      }
+    },
+    "scancheck.tips.content" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Walk slowly around the room. Scan corners first, then large surfaces and furniture. Keep the lens uncovered and the room well lit."
+          }
+        }
+      }
+    },
+    "scancheck.tips.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scanning Tips"
+          }
+        }
+      }
+    },
+    "scancheck.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Before You Scan"
+          }
+        }
+      }
     }
   },
   "version" : "1.1"
