@@ -67,6 +67,26 @@ final class roomscanUITests: XCTestCase {
     }
 
     @MainActor
+    func testSavingNewProjectOpensEmptyProjectDetail() throws {
+        let app = launchApp(arguments: ["-UITesting", "-UITestSignedIn"])
+
+        XCTAssertTrue(app.buttons["projects.create"].waitForExistence(timeout: 5))
+        app.buttons["projects.create"].tap()
+
+        let nameField = app.textFields["projects.newProject.name"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 5))
+        nameField.tap()
+        nameField.typeText("Client Walkthrough")
+        app.buttons["projects.newProject.save"].tap()
+
+        XCTAssertTrue(app.buttons["projects.detail.close"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Client Walkthrough"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["projects.detail.emptyScans"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["projects.detail.addScan"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["projects.detail.shareProject"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testRestoreFailureShowsRetry() throws {
         let app = launchApp(arguments: ["-UITesting", "-UITestRestoreFails"])
 

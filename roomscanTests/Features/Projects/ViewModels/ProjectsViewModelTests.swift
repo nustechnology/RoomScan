@@ -31,6 +31,18 @@ struct ProjectsViewModelTests {
         #expect(viewModel.projects.map(\.id) == ["project-3", "project-1", "project-5", "project-2", "project-4"])
     }
 
+    @Test func initialLoadPreservesProjectMetadata() async {
+        let project = makeProject(index: 1, scanCount: 0)
+        let service = TestProjectsService(projects: [project])
+        let viewModel = ProjectsViewModel(service: service)
+
+        await viewModel.loadInitialProjects()
+
+        #expect(viewModel.projects.first?.ownerName == "You")
+        #expect(viewModel.projects.first?.createdAt == project.createdAt)
+        #expect(viewModel.projects.first?.sharedUserCount == 2)
+    }
+
     @Test func lazyLoadingAppendsNextFiveWithoutDuplicates() async {
         let service = TestProjectsService(projects: makeProjects(count: 12))
         let viewModel = ProjectsViewModel(service: service)
@@ -172,18 +184,27 @@ struct ProjectsViewModelTests {
         ProjectSummary(
             id: "project-\(index)",
             name: "Project \(index)",
+            ownerName: "You",
+            createdAt: Date(timeIntervalSince1970: TimeInterval(20_000 - index)),
             updatedAt: Date(timeIntervalSince1970: TimeInterval(10_000 - index)),
-            roomScans: (1...scanCount).map {
-                RoomScanSummary(
-                    id: "project-\(index)-scan-\($0)",
-                    name: "Room \($0)",
-                    createdAt: Date(timeIntervalSince1970: TimeInterval(1_000 - $0)),
-                    thumbnailName: "thumbnail-\($0)",
-                    syncStatus: .synced,
-                    notes: []
-                )
-            }
+            sharedUserCount: 2,
+            roomScans: makeScans(projectIndex: index, count: scanCount)
         )
+    }
+
+    private func makeScans(projectIndex: Int, count: Int) -> [RoomScanSummary] {
+        guard count > 0 else { return [] }
+
+        return (1...count).map {
+            RoomScanSummary(
+                id: "project-\(projectIndex)-scan-\($0)",
+                name: "Room \($0)",
+                createdAt: Date(timeIntervalSince1970: TimeInterval(1_000 - $0)),
+                thumbnailName: "thumbnail-\($0)",
+                syncStatus: .synced,
+                notes: []
+            )
+        }
     }
 }
 

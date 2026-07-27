@@ -86,7 +86,10 @@ actor MockProjectsService: ProjectsService {
             ProjectSummary(
                 id: "project-\(index)",
                 name: projectNames[index - 1],
+                ownerName: "You",
+                createdAt: baseDate.addingTimeInterval(TimeInterval(-index * 86_400)),
                 updatedAt: baseDate.addingTimeInterval(TimeInterval(-index * 3_600)),
+                sharedUserCount: 4,
                 roomScans: makeRoomScans(projectIndex: index)
             )
         }
@@ -116,7 +119,10 @@ actor MockProjectsService: ProjectsService {
             ProjectSummary(
                 id: $0.id,
                 name: $0.name,
+                ownerName: $0.ownerName,
+                createdAt: $0.createdAt,
                 updatedAt: $0.updatedAt,
+                sharedUserCount: $0.sharedUserCount,
                 roomScans: []
             )
         }

@@ -7,6 +7,7 @@ import SwiftUI
 
 struct ProjectsView: View {
     @State var viewModel: ProjectsViewModel
+    @State private var selectedProject: ProjectSummary?
     var showsNavigationTitle = true
 
     @State private var showsScanCheck = false
@@ -28,6 +29,9 @@ struct ProjectsView: View {
             }
             .navigationTitle(showsNavigationTitle ? String(localized: "projects.title") : "")
             .toolbar(showsNavigationTitle ? .visible : .hidden, for: .navigationBar)
+            .fullScreenCover(item: $selectedProject) { project in
+                ProjectDetailView(project: project)
+            }
             .navigationDestination(isPresented: $showsScanCheck) {
                 ScanCheckView(
                     viewModel: ScanCheckViewModel(readinessService: RealScanReadinessService()),
@@ -72,6 +76,9 @@ struct ProjectsView: View {
                             visibleRoomScans: viewModel.visibleRoomScans(for: project),
                             isExpanded: viewModel.isExpanded(project.id),
                             showsExpandControl: viewModel.showsExpandControl(for: project),
+                            onProjectTap: {
+                                selectedProject = project
+                            },
                             onToggleExpansion: {
                                 viewModel.toggleExpansion(for: project.id)
                             },

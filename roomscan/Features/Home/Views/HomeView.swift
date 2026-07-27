@@ -19,6 +19,8 @@ struct HomeView: View {
     @State private var selectedTab: Tab = .projects
     @State private var projectsViewModel: ProjectsViewModel
     @State private var showsNewProject = false
+    @State private var pendingCreatedProject: ProjectSummary?
+    @State private var selectedCreatedProject: ProjectSummary?
 
     init(
         session: AuthenticationSession,
@@ -49,15 +51,23 @@ struct HomeView: View {
 
             HomeBottomNav(selectedTab: $selectedTab)
         }
-        .fullScreenCover(isPresented: $showsNewProject) {
+        .fullScreenCover(isPresented: $showsNewProject, onDismiss: {
+            selectedCreatedProject = pendingCreatedProject
+            pendingCreatedProject = nil
+        }) {
             NewProjectView(
-                onSave: { _, _ in
+                onSave: { name, _ in
+                    let createdProject = makeCreatedProject(named: name)
+                    pendingCreatedProject = createdProject
                     showsNewProject = false
                 },
                 onCancel: {
                     showsNewProject = false
                 }
             )
+        }
+        .fullScreenCover(item: $selectedCreatedProject) { project in
+            ProjectDetailView(project: project)
         }
     }
 
@@ -74,6 +84,18 @@ struct HomeView: View {
         case .account:
             AccountHomeView(session: session, onSignOut: onSignOut)
         }
+    }
+
+    private func makeCreatedProject(named name: String) -> ProjectSummary {
+        ProjectSummary(
+            id: "created-project-\(UUID().uuidString)",
+            name: name,
+            ownerName: "You",
+            createdAt: Date(),
+            updatedAt: Date(),
+            sharedUserCount: 0,
+            roomScans: []
+        )
     }
 }
 
