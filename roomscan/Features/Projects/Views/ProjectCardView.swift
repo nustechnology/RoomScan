@@ -14,15 +14,16 @@ struct ProjectCardView: View {
     let onProjectTap: () -> Void
     let onShare: () -> Void
     let onToggleExpansion: () -> Void
-    let onRoomTap: (RoomScanSummary) -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
+    var onRoomTap: (RoomScanSummary) -> Void = { _ in }
+    var onAddScan: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
             if project.roomScans.isEmpty {
-                EmptyRoomScansView()
+                EmptyRoomScansView(onTap: onAddScan)
             } else {
                 roomScanList
             }
@@ -124,13 +125,27 @@ struct ProjectCardView: View {
 }
 
 private struct EmptyRoomScansView: View {
+    var onTap: (() -> Void)? = nil
+
     var body: some View {
+        if let onTap {
+            Button(action: onTap) {
+                content
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("projects.card.emptyScans")
+        } else {
+            content
+                .accessibilityIdentifier("projects.card.emptyScans")
+        }
+    }
+
+    private var content: some View {
         Text("projects.card.emptyScans")
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 12)
-            .accessibilityIdentifier("projects.card.emptyScans")
     }
 }
 

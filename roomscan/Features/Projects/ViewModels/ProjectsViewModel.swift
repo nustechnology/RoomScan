@@ -19,7 +19,7 @@ final class ProjectsViewModel {
         case failed
     }
 
-    struct VisibleProject: Identifiable, Equatable {
+struct VisibleProject: Identifiable, Equatable {
         let project: ProjectSummary
         let roomScans: [RoomScanSummary]
         let showsAllRoomScans: Bool

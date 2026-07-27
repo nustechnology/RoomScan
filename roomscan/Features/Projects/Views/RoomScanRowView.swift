@@ -80,3 +80,4 @@ private struct ThumbnailView: View {
             .accessibilityHidden(true)
     }
 }
+
