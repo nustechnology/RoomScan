@@ -3,9 +3,9 @@
 //  roomscan
 //
 
-import Foundation
 import ARKit
 import AVFoundation
+import Foundation
 
 struct RealScanReadinessService: ScanReadinessService {
     func isDeviceSupported() -> Bool {

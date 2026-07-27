@@ -3,8 +3,8 @@
 //  roomscan
 //
 
-import Foundation
 import AVFoundation
+import Foundation
 
 protocol ScanReadinessService: Sendable {
     func isDeviceSupported() -> Bool

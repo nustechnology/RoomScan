@@ -13,6 +13,8 @@ struct ProjectCardView: View {
     let onProjectTap: () -> Void
     let onToggleExpansion: () -> Void
     let onRoomTap: () -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -60,9 +62,8 @@ struct ProjectCardView: View {
             Spacer()
 
             Menu {
-                Button(String(localized: "projects.card.menu.viewDetail"), action: onProjectTap)
-                Button(String(localized: "projects.card.menu.rename")) {}
-                Button(String(localized: "projects.card.menu.delete"), role: .destructive) {}
+                Button(String(localized: "projects.card.menu.edit"), action: onEdit)
+                Button(String(localized: "projects.card.menu.delete"), role: .destructive, action: onDelete)
             } label: {
                 Image(systemName: "ellipsis")
                     .foregroundStyle(.primary)

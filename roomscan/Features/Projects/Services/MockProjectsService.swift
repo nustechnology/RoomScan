@@ -14,7 +14,7 @@ actor MockProjectsService: ProjectsService {
     }
 
     private let scenario: Scenario
-    private let projects: [ProjectSummary]
+    private var projects: [ProjectSummary]
     private let simulatedDelayNanoseconds: UInt64
 
     init(
@@ -53,16 +53,7 @@ actor MockProjectsService: ProjectsService {
             throw ProjectsServiceError.network
         }
 
-        let sourceProjects: [ProjectSummary]
-
-        switch scenario {
-        case .empty:
-            sourceProjects = []
-        case .projectsWithoutScans:
-            sourceProjects = projectsWithoutScans
-        case .success, .failPage:
-            sourceProjects = projects
-        }
+        let sourceProjects = sourceProjectsForScenario()
 
         guard page >= 1, pageSize > 0 else {
             throw ProjectsServiceError.invalidPagination
@@ -80,6 +71,39 @@ actor MockProjectsService: ProjectsService {
         )
     }
 
+    func updateProject(id: String, name: String, description: String) async throws -> ProjectSummary {
+        try await simulateDelay()
+
+        guard let index = projects.firstIndex(where: { $0.id == id }) else {
+            throw ProjectsServiceError.notFound
+        }
+
+        let existing = projects[index]
+        let updated = ProjectSummary(
+            id: existing.id,
+            name: name,
+            ownerName: existing.ownerName,
+            createdAt: existing.createdAt,
+            updatedAt: Date(),
+            description: description,
+            sharedUserCount: existing.sharedUserCount,
+            roomScans: existing.roomScans
+        )
+        projects[index] = updated
+        projects.sort { $0.updatedAt > $1.updatedAt }
+        return updated
+    }
+
+    func deleteProject(id: String) async throws {
+        try await simulateDelay()
+
+        guard projects.contains(where: { $0.id == id }) else {
+            throw ProjectsServiceError.notFound
+        }
+
+        projects.removeAll { $0.id == id }
+    }
+
     nonisolated static func makeSeedProjects() -> [ProjectSummary] {
         let baseDate = fixtureBaseDate
         return (1...14).map { index in
@@ -89,6 +113,7 @@ actor MockProjectsService: ProjectsService {
                 ownerName: "You",
                 createdAt: baseDate.addingTimeInterval(TimeInterval(-index * 86_400)),
                 updatedAt: baseDate.addingTimeInterval(TimeInterval(-index * 3_600)),
+                description: "",
                 sharedUserCount: 4,
                 roomScans: makeRoomScans(projectIndex: index)
             )
@@ -114,17 +139,25 @@ actor MockProjectsService: ProjectsService {
         "Union Hall"
     ]
 
-    private var projectsWithoutScans: [ProjectSummary] {
-        projects.map {
-            ProjectSummary(
-                id: $0.id,
-                name: $0.name,
-                ownerName: $0.ownerName,
-                createdAt: $0.createdAt,
-                updatedAt: $0.updatedAt,
-                sharedUserCount: $0.sharedUserCount,
-                roomScans: []
-            )
+    private func sourceProjectsForScenario() -> [ProjectSummary] {
+        switch scenario {
+        case .empty:
+            return []
+        case .projectsWithoutScans:
+            return projects.map {
+                ProjectSummary(
+                    id: $0.id,
+                    name: $0.name,
+                    ownerName: $0.ownerName,
+                    createdAt: $0.createdAt,
+                    updatedAt: $0.updatedAt,
+                    description: $0.description,
+                    sharedUserCount: $0.sharedUserCount,
+                    roomScans: []
+                )
+            }
+        case .success, .failPage:
+            return projects
         }
     }
 
