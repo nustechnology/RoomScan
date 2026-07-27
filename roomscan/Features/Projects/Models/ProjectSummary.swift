@@ -13,7 +13,10 @@ struct ProjectPage: Equatable, Sendable {
 struct ProjectSummary: Identifiable, Equatable, Sendable {
     let id: String
     let name: String
+    let ownerName: String
+    let createdAt: Date
     let updatedAt: Date
+    let sharedUserCount: Int
     let roomScans: [RoomScanSummary]
 }
 

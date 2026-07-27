@@ -52,7 +52,6 @@ struct NewProjectView: View {
                 discard()
             }
         }
-        .accessibilityIdentifier("projects.newProject")
     }
 
     private var isDirty: Bool {

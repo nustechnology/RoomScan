@@ -10,6 +10,7 @@ struct ProjectCardView: View {
     let visibleRoomScans: [RoomScanSummary]
     let isExpanded: Bool
     let showsExpandControl: Bool
+    let onProjectTap: () -> Void
     let onToggleExpansion: () -> Void
     let onRoomTap: () -> Void
 
@@ -24,12 +25,22 @@ struct ProjectCardView: View {
             expandButton
         }
         .padding(14)
-        .background(.background)
+        .background {
+            Button(action: onProjectTap) {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(.background)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(project.name)
+            .accessibilityIdentifier("projects.card.open.\(project.id)")
+        }
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(.quaternary)
         }
+        .contentShape(RoundedRectangle(cornerRadius: 8))
+        .onTapGesture(perform: onProjectTap)
     }
 
     private var header: some View {
@@ -49,7 +60,7 @@ struct ProjectCardView: View {
             Spacer()
 
             Menu {
-                Button(String(localized: "projects.card.menu.viewDetail")) {}
+                Button(String(localized: "projects.card.menu.viewDetail"), action: onProjectTap)
                 Button(String(localized: "projects.card.menu.rename")) {}
                 Button(String(localized: "projects.card.menu.delete"), role: .destructive) {}
             } label: {
