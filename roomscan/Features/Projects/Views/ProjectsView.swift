@@ -17,10 +17,19 @@ struct ProjectsView: View {
     var showsNavigationTitle = true
     @Binding var isShowingDetail: Bool
 
-    @State private var showsScanCheck = false
     @State private var projectToEdit: ProjectSummary?
     @State private var projectPendingDelete: ProjectSummary?
     @FocusState private var isSearchFocused: Bool
+
+    @State private var scanningSourceProjectID: String?
+    @State private var pendingScanSourceProjectID: String?
+    @State private var recoveredDraft: RoomScanDraft?
+    @State private var recoveredDraftToPrompt: RoomScanDraft?
+    @State private var savedScanForDetails: RoomScanSummary?
+    @State private var pendingSavedScanForDetails: RoomScanSummary?
+    @State private var showsScanFlow = false
+
+    private let storageService: ScanStorageService = LocalScanStorageService()
 
     init(
         viewModel: ProjectsViewModel,
@@ -54,7 +63,6 @@ struct ProjectsView: View {
                 selectedProject: $selectedProject,
                 selectedScanDetail: $selectedScanDetail,
                 shareInput: $shareInput,
-                showsScanCheck: $showsScanCheck,
                 projectToEdit: $projectToEdit,
                 projectPendingDelete: $projectPendingDelete,
                 isShowingDetail: $isShowingDetail,
@@ -62,7 +70,15 @@ struct ProjectsView: View {
                 projectsService: projectsService,
                 notesService: notesService,
                 shareService: shareService,
-                currentUserID: currentUserID
+                currentUserID: currentUserID,
+                showsScanFlow: $showsScanFlow,
+                scanningSourceProjectID: $scanningSourceProjectID,
+                pendingScanSourceProjectID: $pendingScanSourceProjectID,
+                recoveredDraft: $recoveredDraft,
+                recoveredDraftToPrompt: $recoveredDraftToPrompt,
+                savedScanForDetails: $savedScanForDetails,
+                pendingSavedScanForDetails: $pendingSavedScanForDetails,
+                storageService: storageService
             ))
     }
 
@@ -134,7 +150,10 @@ struct ProjectsView: View {
                     )
                     ProjectsContentSection(
                         viewModel: viewModel,
-                        onNewScan: { showsScanCheck = true },
+                        onNewScan: {
+                            scanningSourceProjectID = nil
+                            showsScanFlow = true
+                        },
                         onProjectTap: { project in
                             selectedProject = project
                         },
@@ -156,6 +175,10 @@ struct ProjectsView: View {
                         },
                         onDelete: { project in
                             projectPendingDelete = project
+                        },
+                        onAddScan: { project in
+                            scanningSourceProjectID = project.id
+                            showsScanFlow = true
                         }
                     )
                 }
@@ -174,7 +197,6 @@ private struct ProjectsPresentationModifier: ViewModifier {
     @Binding var selectedProject: ProjectSummary?
     @Binding var selectedScanDetail: ScanDetailDestination?
     @Binding var shareInput: ShareScreenInput?
-    @Binding var showsScanCheck: Bool
     @Binding var projectToEdit: ProjectSummary?
     @Binding var projectPendingDelete: ProjectSummary?
     @Binding var isShowingDetail: Bool
@@ -184,20 +206,28 @@ private struct ProjectsPresentationModifier: ViewModifier {
     let shareService: any ShareService
     var currentUserID: String
 
+    @Binding var showsScanFlow: Bool
+    @Binding var scanningSourceProjectID: String?
+    @Binding var pendingScanSourceProjectID: String?
+    @Binding var recoveredDraft: RoomScanDraft?
+    @Binding var recoveredDraftToPrompt: RoomScanDraft?
+    @Binding var savedScanForDetails: RoomScanSummary?
+    @Binding var pendingSavedScanForDetails: RoomScanSummary?
+    var storageService: ScanStorageService
+
     func body(content: Content) -> some View {
         content
-            .fullScreenCover(item: $selectedProject) { project in
+            .fullScreenCover(item: $selectedProject, onDismiss: {
+                if let projectID = pendingScanSourceProjectID {
+                    pendingScanSourceProjectID = nil
+                    scanningSourceProjectID = projectID
+                    showsScanFlow = true
+                }
+            }) { project in
                 projectDetailCover(for: project)
             }
             .fullScreenCover(item: $shareInput) { input in
                 ShareView(input: input, service: shareService)
-            }
-            .navigationDestination(isPresented: $showsScanCheck) {
-                ScanCheckView(
-                    viewModel: ScanCheckViewModel(readinessService: RealScanReadinessService()),
-                    // TODO: Route to scan capture flow (MOB-XX) when capture feature is implemented.
-                    onStartScan: { showsScanCheck = false }
-                )
             }
             .fullScreenCover(item: $selectedScanDetail) { destination in
                 NavigationStack {
@@ -209,6 +239,64 @@ private struct ProjectsPresentationModifier: ViewModifier {
             }
             .task {
                 await viewModel.loadInitialProjects()
+                checkDraftRecovery()
+            }
+            .fullScreenCover(isPresented: $showsScanFlow, onDismiss: {
+                if let savedScan = pendingSavedScanForDetails {
+                    pendingSavedScanForDetails = nil
+                    savedScanForDetails = savedScan
+                }
+            }) {
+                ScanFlowCoordinatorView(
+                    sourceProjectID: scanningSourceProjectID,
+                    recoveredDraft: recoveredDraft,
+                    projectsService: projectsService,
+                    onComplete: { savedScan in
+                        recoveredDraft = nil
+                        showsScanFlow = false
+                        if let savedScan {
+                            pendingSavedScanForDetails = savedScan
+                        }
+                        Task {
+                            await viewModel.refreshProjects()
+                        }
+                    },
+                    onCancel: {
+                        recoveredDraft = nil
+                        showsScanFlow = false
+                    }
+                )
+            }
+            .fullScreenCover(item: $savedScanForDetails) { savedScan in
+                ScanDetailsView(
+                    scan: savedScan,
+                    onDone: {
+                        savedScanForDetails = nil
+                    }
+                )
+            }
+            .alert(
+                String(localized: "scan.recovery.title"),
+                isPresented: Binding(
+                    get: { recoveredDraftToPrompt != nil },
+                    set: { if !$0 { recoveredDraftToPrompt = nil } }
+                ),
+                presenting: recoveredDraftToPrompt
+            ) { draft in
+                Button(String(localized: "scan.recovery.resume")) {
+                    recoveredDraft = draft
+                    scanningSourceProjectID = draft.projectID
+                    showsScanFlow = true
+                    recoveredDraftToPrompt = nil
+                }
+                Button(String(localized: "scan.recovery.discard"), role: .destructive) {
+                    storageService.clearDraftManifest()
+                    try? FileManager.default.removeItem(at: draft.meshFileURL)
+                    try? FileManager.default.removeItem(at: draft.thumbnailFileURL)
+                    recoveredDraftToPrompt = nil
+                }
+            } message: { _ in
+                Text(String(localized: "scan.recovery.message"))
             }
             .fullScreenCover(item: $projectToEdit) { project in
                 editProjectCover(for: project)
@@ -256,20 +344,10 @@ private struct ProjectsPresentationModifier: ViewModifier {
             .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
-    private func projectDetailView(for project: ProjectSummary) -> some View {
-        ProjectDetailView(
-            project: project,
-            projectsService: projectsService,
-            notesService: notesService,
-            shareService: shareService,
-            currentUserID: currentUserID,
-            onScanUpdated: { updatedScan in
-                viewModel.applyUpdatedScan(projectID: project.id, scan: updatedScan)
-            },
-            onScanDeleted: { scanID in
-                viewModel.applyDeletedScan(projectID: project.id, scanID: scanID)
-            }
-        )
+    private func checkDraftRecovery() {
+        if let draft = storageService.loadDraftManifest() {
+            recoveredDraftToPrompt = draft
+        }
     }
 
     private func scanDetailView(for destination: ScanDetailDestination) -> some View {
@@ -296,7 +374,6 @@ private struct ProjectsPresentationModifier: ViewModifier {
                     scanID: destination.scan.id
                 )
             },
-            // TODO: Implement scan sharing.
             onShare: {}
         )
     }
@@ -319,6 +396,10 @@ private struct ProjectsPresentationModifier: ViewModifier {
                     projectID: project.id,
                     scanID: scanID
                 )
+            },
+            onAddScan: { projectID in
+                pendingScanSourceProjectID = projectID
+                selectedProject = nil
             }
         )
     }
@@ -407,6 +488,7 @@ private struct ProjectsContentSection: View {
     let onToggleExpansion: (ProjectSummary.ID) -> Void
     let onEdit: (ProjectSummary) -> Void
     let onDelete: (ProjectSummary) -> Void
+    let onAddScan: (ProjectSummary) -> Void
 
     var body: some View {
         VStack(spacing: 16) {
@@ -448,6 +530,9 @@ private struct ProjectsContentSection: View {
                     },
                     onDelete: {
                         onDelete(visibleProject.project)
+                    },
+                    onAddScan: {
+                        onAddScan(visibleProject.project)
                     }
                 )
                 .onAppear {

@@ -104,6 +104,91 @@ actor MockProjectsService: ProjectsService {
         projects.removeAll { $0.id == id }
     }
 
+    func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] {
+        try await simulateDelay()
+        if case .failPage = scenario {
+            throw ProjectsServiceError.network
+        }
+        return projects.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    func createProject(name: String) async throws -> ProjectSummary {
+        try await simulateDelay()
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 50 else {
+            throw ProjectsServiceError.invalidProjectName
+        }
+
+        let newProject = ProjectSummary(
+            id: UUID().uuidString,
+            name: trimmed,
+            ownerName: "You",
+            createdAt: Date(),
+            updatedAt: Date(),
+            sharedUserCount: 0,
+            roomScans: []
+        )
+        projects.insert(newProject, at: 0)
+        return newProject
+    }
+
+    func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool {
+        try await simulateDelay()
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let project = projects.first(where: { $0.id == projectID }) else {
+            return false
+        }
+        return project.roomScans.contains { $0.name.lowercased() == trimmed.lowercased() }
+    }
+
+    func saveScan(draft: RoomScanDraft, name: String, projectID: String) async throws -> RoomScanSummary {
+        try await simulateDelay()
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty, trimmedName.count <= 50 else {
+            throw ProjectsServiceError.invalidScanName
+        }
+
+        guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else {
+            throw ProjectsServiceError.projectNotFound
+        }
+
+        let isDuplicate = projects[projectIndex].roomScans.contains {
+            $0.name.lowercased() == trimmedName.lowercased()
+        }
+        if isDuplicate {
+            throw ProjectsServiceError.duplicateScanName
+        }
+
+        let newScan = RoomScanSummary(
+            id: draft.id,
+            name: trimmedName,
+            createdAt: draft.createdAt,
+            thumbnailName: "thumbnail-0",
+            syncStatus: .pending,
+            notes: []
+        )
+
+        var updatedScans = projects[projectIndex].roomScans
+        updatedScans.insert(newScan, at: 0)
+
+        let existing = projects[projectIndex]
+        let updatedProject = ProjectSummary(
+            id: existing.id,
+            name: existing.name,
+            ownerName: existing.ownerName,
+            createdAt: existing.createdAt,
+            updatedAt: Date(),
+            description: existing.description,
+            sharedUserCount: existing.sharedUserCount,
+            roomScans: updatedScans
+        )
+
+        projects[projectIndex] = updatedProject
+        projects.sort { $0.updatedAt > $1.updatedAt }
+
+        return newScan
+    }
+
     func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary {
         try await simulateDelay()
 

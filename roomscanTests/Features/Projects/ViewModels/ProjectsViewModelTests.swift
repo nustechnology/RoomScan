@@ -723,4 +723,35 @@ private actor TestProjectsService: ProjectsService {
     func setDelayedPages(_ pages: [Int: UInt64]) {
         delayedPages = pages
     }
+
+    func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] {
+        projects.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    func createProject(name: String) async throws -> ProjectSummary {
+        ProjectSummary(
+            id: UUID().uuidString,
+            name: name,
+            ownerName: "You",
+            createdAt: Date(),
+            updatedAt: Date(),
+            sharedUserCount: 0,
+            roomScans: []
+        )
+    }
+
+    func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool {
+        false
+    }
+
+    func saveScan(draft: RoomScanDraft, name: String, projectID: String) async throws -> RoomScanSummary {
+        RoomScanSummary(
+            id: draft.id,
+            name: name,
+            createdAt: draft.createdAt,
+            thumbnailName: "thumbnail-0",
+            syncStatus: .pending,
+            notes: []
+        )
+    }
 }

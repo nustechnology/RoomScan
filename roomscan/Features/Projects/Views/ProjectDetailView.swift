@@ -14,6 +14,7 @@ struct ProjectDetailView: View {
     var accessPolicy: DetailAccessPolicy = .editable
     var onScanUpdated: (RoomScanSummary) -> Void = { _ in }
     var onScanDeleted: (RoomScanSummary.ID) -> Void = { _ in }
+    var onAddScan: ((String) -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var selectedScanDetail: ProjectDetailScanDestination?
     @State private var shareInput: ShareScreenInput?
@@ -78,7 +79,9 @@ struct ProjectDetailView: View {
                                 title: String(localized: "projects.detail.addScan"),
                                 systemImageName: "plus",
                                 color: AppColors.background,
-                                action: {},
+                                action: {
+                                    onAddScan?(project.id)
+                                },
                                 foregroundColor: .primary,
                                 borderColor: .secondary.opacity(0.35),
                                 cornerRadius: 16,
