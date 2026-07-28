@@ -27,6 +27,8 @@ struct MockProjectsServiceTests {
                             localModelURL: nil,
                             thumbnailName: "thumbnail-0",
                             syncStatus: .synced,
+                            creatorUserID: AuthenticationSession.mockAppleUser.user.id,
+                            creatorDisplayName: "Mock Apple User",
                             notes: [
                                 RoomScanNoteSummary(
                                     id: "note-1",
@@ -85,6 +87,8 @@ struct MockProjectsServiceTests {
                             localModelURL: nil,
                             thumbnailName: "thumbnail-1",
                             syncStatus: .synced,
+                            creatorUserID: AuthenticationSession.mockAppleUser.user.id,
+                            creatorDisplayName: "Mock Apple User",
                             notes: [
                                 RoomScanNoteSummary(
                                     id: "note-2",
@@ -113,6 +117,154 @@ struct MockProjectsServiceTests {
         }
         await #expect(throws: ProjectsServiceError.notFound) {
             try await service.deleteProject(id: "missing")
+        }
+    }
+
+    @Test func renameScanUpdatesStoredScanName() async throws {
+        let service = MockProjectsService(
+            projects: [
+                ProjectSummary(
+                    id: "project-1",
+                    name: "Project",
+                    ownerName: "You",
+                    createdAt: Date(timeIntervalSince1970: 900),
+                    updatedAt: Date(timeIntervalSince1970: 1_000),
+                    description: "",
+                    sharedUserCount: 0,
+                    roomScans: [
+                        RoomScanSummary(
+                            id: "scan-1",
+                            name: "Living Room",
+                            createdAt: Date(timeIntervalSince1970: 900),
+                            localModelURL: nil,
+                            thumbnailName: "thumbnail-0",
+                            syncStatus: .synced,
+                            creatorUserID: AuthenticationSession.mockAppleUser.user.id,
+                            creatorDisplayName: "Mock Apple User",
+                            notes: []
+                        )
+                    ]
+                )
+            ],
+            simulatedDelayNanoseconds: 0
+        )
+
+        let updated = try await service.renameScan(
+            projectID: "project-1",
+            scanID: "scan-1",
+            name: "  Dining Room  "
+        )
+
+        #expect(updated.name == "Dining Room")
+
+        let page = try await service.fetchProjects(page: 1, pageSize: 5)
+        #expect(page.projects.first?.roomScans.first?.name == "Dining Room")
+    }
+
+    @Test func deleteScanRemovesScanFromProject() async throws {
+        let service = MockProjectsService(
+            projects: [
+                ProjectSummary(
+                    id: "project-1",
+                    name: "Project",
+                    ownerName: "You",
+                    createdAt: Date(timeIntervalSince1970: 900),
+                    updatedAt: Date(timeIntervalSince1970: 1_000),
+                    description: "",
+                    sharedUserCount: 0,
+                    roomScans: [
+                        RoomScanSummary(
+                            id: "scan-1",
+                            name: "Living Room",
+                            createdAt: Date(timeIntervalSince1970: 900),
+                            localModelURL: nil,
+                            thumbnailName: "thumbnail-0",
+                            syncStatus: .synced,
+                            creatorUserID: AuthenticationSession.mockAppleUser.user.id,
+                            creatorDisplayName: "Mock Apple User",
+                            notes: []
+                        ),
+                        RoomScanSummary(
+                            id: "scan-2",
+                            name: "Kitchen",
+                            createdAt: Date(timeIntervalSince1970: 800),
+                            localModelURL: nil,
+                            thumbnailName: "thumbnail-1",
+                            syncStatus: .synced,
+                            creatorUserID: AuthenticationSession.mockAppleUser.user.id,
+                            creatorDisplayName: "Mock Apple User",
+                            notes: []
+                        )
+                    ]
+                )
+            ],
+            simulatedDelayNanoseconds: 0
+        )
+
+        try await service.deleteScan(projectID: "project-1", scanID: "scan-1")
+
+        let page = try await service.fetchProjects(page: 1, pageSize: 5)
+        #expect(page.projects.first?.roomScans.map(\.id) == ["scan-2"])
+    }
+
+    @Test func retryScanUploadSetsStatusToSynced() async throws {
+        let service = MockProjectsService(
+            projects: [
+                ProjectSummary(
+                    id: "project-1",
+                    name: "Project",
+                    ownerName: "You",
+                    createdAt: Date(timeIntervalSince1970: 900),
+                    updatedAt: Date(timeIntervalSince1970: 1_000),
+                    description: "",
+                    sharedUserCount: 0,
+                    roomScans: [
+                        RoomScanSummary(
+                            id: "scan-1",
+                            name: "Living Room",
+                            createdAt: Date(timeIntervalSince1970: 900),
+                            localModelURL: nil,
+                            thumbnailName: "thumbnail-0",
+                            syncStatus: .failed,
+                            creatorUserID: AuthenticationSession.mockAppleUser.user.id,
+                            creatorDisplayName: "Mock Apple User",
+                            notes: []
+                        )
+                    ]
+                )
+            ],
+            simulatedDelayNanoseconds: 0
+        )
+
+        let updated = try await service.retryScanUpload(projectID: "project-1", scanID: "scan-1")
+        #expect(updated.syncStatus == .synced)
+    }
+
+    @Test func renameOrDeleteMissingScanThrowsNotFound() async {
+        let service = MockProjectsService(
+            projects: [
+                ProjectSummary(
+                    id: "project-1",
+                    name: "Project",
+                    ownerName: "You",
+                    createdAt: Date(timeIntervalSince1970: 900),
+                    updatedAt: Date(timeIntervalSince1970: 1_000),
+                    description: "",
+                    sharedUserCount: 0,
+                    roomScans: []
+                )
+            ],
+            simulatedDelayNanoseconds: 0
+        )
+
+        await #expect(throws: ProjectsServiceError.notFound) {
+            _ = try await service.renameScan(projectID: "project-1", scanID: "missing", name: "Name")
+        }
+        await #expect(throws: ProjectsServiceError.notFound) {
+            try await service.deleteScan(projectID: "project-1", scanID: "missing")
+        }
+        await #expect(throws: ProjectsServiceError.invalidName) {
+            _ = try await service.renameScan(projectID: "project-1", scanID: "scan-1", name: "   ")
         }
     }
 }

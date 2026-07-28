@@ -62,11 +62,10 @@ struct ProjectDetailView: View {
 
                     VStack(spacing: 12) {
                         PrimaryActionButton(
-                            title: "Add Scan",
+                            title: String(localized: "projects.detail.addScan"),
                             systemImageName: "plus",
                             color: .white,
                             action: {},
-                            font: .headline.weight(.semibold),
                             foregroundColor: .primary,
                             borderColor: .secondary.opacity(0.35),
                             cornerRadius: 16,
@@ -74,11 +73,10 @@ struct ProjectDetailView: View {
                         )
 
                         PrimaryActionButton(
-                            title: "Share Project",
+                            title: String(localized: "projects.detail.shareProject"),
                             systemImageName: "square.and.arrow.up",
                             color: .white,
                             action: {},
-                            font: .headline.weight(.semibold),
                             foregroundColor: .primary,
                             borderColor: .secondary.opacity(0.35),
                             cornerRadius: 16,
@@ -130,19 +128,19 @@ struct ProjectDetailView: View {
     private var projectMetadata: some View {
         VStack(spacing: 0) {
             DetailMetadataRow(
-                title: "Owner",
+                title: String(localized: "projects.detail.metadata.owner"),
                 value: project.ownerName,
                 accessibilityIdentifier: "projects.detail.metadata.owner"
             )
             metadataDivider
             DetailMetadataRow(
-                title: "Created",
+                title: String(localized: "projects.detail.metadata.created"),
                 value: createdDateText,
                 accessibilityIdentifier: "projects.detail.metadata.created"
             )
             metadataDivider
             DetailMetadataRow(
-                title: "Shared with",
+                title: String(localized: "projects.detail.metadata.shared"),
                 value: sharedUserCountText,
                 showsDisclosure: true,
                 accessibilityIdentifier: "projects.detail.metadata.shared"

@@ -417,7 +417,6 @@ private struct ViewerCanvasErrorState: View {
                 systemImageName: "arrow.clockwise",
                 color: AppColors.background,
                 action: onRetry,
-                font: .body.bold(),
                 foregroundColor: AppColors.primaryText,
                 borderColor: Color.primary.opacity(0.12),
                 accessibilityIdentifier: "viewer.load.retry"

@@ -269,6 +269,20 @@ final class ViewerViewModel {
         operationErrorMessage = nil
     }
 
+    func openEditor(for note: SpatialNote) {
+        editorMode = .edit(note)
+    }
+
+    func requestDelete(_ note: SpatialNote) {
+        notePendingDeletion = note
+    }
+
+    func cancelDelete() {
+        notePendingDeletion = nil
+    }
+}
+
+extension ViewerViewModel {
     func saveEditor(title: String, description: String, color: NoteColor) async -> Bool {
         guard let editorMode, !isBusy else { return false }
         isBusy = true
@@ -303,20 +317,9 @@ final class ViewerViewModel {
             self.editorMode = nil
             return true
         } catch {
+            operationErrorMessage = String(localized: "viewer.note.save.error")
             return false
         }
-    }
-
-    func openEditor(for note: SpatialNote) {
-        editorMode = .edit(note)
-    }
-
-    func requestDelete(_ note: SpatialNote) {
-        notePendingDeletion = note
-    }
-
-    func cancelDelete() {
-        notePendingDeletion = nil
     }
 
     func confirmDelete(_ note: SpatialNote) async {

@@ -27,7 +27,7 @@ struct RoomScanRowView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
 
-                    StatusChipView(syncStatus: scan.syncStatus)
+                    ScanSyncStatusBadge(syncStatus: scan.syncStatus)
                 }
 
                 Spacer(minLength: 0)
@@ -55,49 +55,5 @@ private struct ThumbnailView: View {
             .scaledToFill()
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .accessibilityHidden(true)
-    }
-}
-
-private struct StatusChipView: View {
-    let syncStatus: RoomScanSyncStatus
-
-    var body: some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(syncStatus.badgeForegroundColor)
-                .frame(width: 6, height: 6)
-                .accessibilityHidden(true)
-
-            Text(syncStatus.localizedTitle)
-                .font(.system(size: 12, weight: .black))
-                .lineLimit(1)
-        }
-        .foregroundStyle(syncStatus.badgeForegroundColor)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(syncStatus.badgeBackgroundColor)
-        .clipShape(Capsule())
-        .accessibilityIdentifier("projects.scan.status.\(syncStatus.rawValue)")
-    }
-}
-
-private extension RoomScanSyncStatus {
-    var badgeForegroundColor: Color {
-        switch self {
-        case .synced:
-            return .green
-        case .uploading:
-            return .brown
-        case .failed:
-            return .red
-        }
-    }
-
-    var badgeBackgroundColor: Color {
-        if self == .uploading {
-            return .yellow.opacity(0.26)
-        }
-
-        return badgeForegroundColor.opacity(0.16)
     }
 }

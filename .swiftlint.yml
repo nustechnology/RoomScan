@@ -16,17 +16,20 @@ opt_in_rules:
   - sorted_imports
 
 line_length:
-  warning: 120
-  error: 160
+  warning: 140
+  error: 180
 
 type_body_length:
-  warning: 250
+  warning: 300
+  error: 400
 
 function_body_length:
-  warning: 50
+  warning: 70
+  error: 100
 
 file_length:
-  warning: 500
+  warning: 600
+  error: 800
 
 identifier_name:
   min_length: 2

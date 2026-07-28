@@ -187,7 +187,6 @@ struct NoteEditorSheet: View {
                     ? AppColors.brandBlueBottom
                     : Color(uiColor: .systemGray3),
                 action: save,
-                font: .body.bold(),
                 accessibilityIdentifier: "viewer.note.editor.save"
             )
             .disabled(!viewModel.canSave || viewModel.isSaving)
@@ -197,7 +196,6 @@ struct NoteEditorSheet: View {
                 systemImageName: nil,
                 color: AppColors.background,
                 action: onCancel,
-                font: .body.bold(),
                 foregroundColor: viewModel.isSaving ? AppColors.secondaryText : AppColors.primaryText,
                 borderColor: Color(uiColor: .systemGray4),
                 borderWidth: 1.5,

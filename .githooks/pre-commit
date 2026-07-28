@@ -5,10 +5,23 @@ set -eu
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 cd "$ROOT_DIR"
 
+# Match the Xcode Build Phase environment
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin${PATH:+:$PATH}"
+
 echo "Running whitespace/conflict-marker check..."
-git diff --check
+git diff --cached --check
+
+echo "Running SwiftLint..."
+
+if command -v swiftlint >/dev/null 2>&1; then
+    swiftlint lint --strict --cache-path "${ROOT_DIR}/.swiftlint-cache"
+else
+    echo "error: SwiftLint is not installed. Install it with: brew install swiftlint"
+    exit 1
+fi
 
 echo "Running roomscan test suite..."
+
 xcodebuild test \
   -project roomscan.xcodeproj \
   -scheme roomscan \
