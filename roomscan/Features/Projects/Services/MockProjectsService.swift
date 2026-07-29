@@ -189,11 +189,17 @@ actor MockProjectsService: ProjectsService {
                 id: scanID,
                 name: roomNames[index],
                 createdAt: createdAt,
+                localModelURL: mockModelURL(forProjectIndex: projectIndex),
                 thumbnailName: thumbnailName,
                 syncStatus: syncStatus,
                 notes: notes
             )
         }
+    }
+
+    private nonisolated static func mockModelURL(forProjectIndex projectIndex: Int) -> URL? {
+        guard projectIndex <= 3 else { return nil }
+        return DefaultModelLoadingService.mockSampleURL
     }
 
     private nonisolated static func makeNotes(projectIndex: Int, scanIndex: Int) -> [RoomScanNoteSummary] {

@@ -8,6 +8,7 @@ import SwiftUI
 struct ProjectDetailView: View {
     let project: ProjectSummary
     @Environment(\.dismiss) private var dismiss
+    @State private var viewerInput: ViewerInput?
 
     var body: some View {
         NavigationStack {
@@ -33,7 +34,16 @@ struct ProjectDetailView: View {
                                 .accessibilityIdentifier("projects.detail.emptyScans")
                         } else {
                             ForEach(Array(project.roomScans.enumerated()), id: \.element.id) { index, scan in
-                                RoomScanRowView(scan: scan, onTap: {})
+                                RoomScanRowView(
+                                    scan: scan,
+                                    onTap: {
+                                        viewerInput = ViewerInput(
+                                            scanID: scan.id,
+                                            scanName: scan.name,
+                                            modelURL: scan.localModelURL
+                                        )
+                                    }
+                                )
                                     .padding(12)
 
                                 if index < project.roomScans.count - 1 {
@@ -106,6 +116,13 @@ struct ProjectDetailView: View {
                 }
             }
             .accessibilityIdentifier("projects.detail")
+            .fullScreenCover(item: $viewerInput) { input in
+                ViewerView(
+                    input: input,
+                    notesService: MockNotesService.shared,
+                    onBack: { viewerInput = nil }
+                )
+            }
         }
         .background(.white)
     }

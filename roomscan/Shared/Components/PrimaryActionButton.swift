@@ -7,7 +7,7 @@ import SwiftUI
 
 struct PrimaryActionButton: View {
     let title: String
-    let systemImageName: String
+    let systemImageName: String?
     let color: Color
     let action: () -> Void
     var font: Font = .title2.bold()
@@ -21,10 +21,16 @@ struct PrimaryActionButton: View {
         Button(
             action: action,
             label: {
-                Label(title, systemImage: systemImageName)
-                    .font(font)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 60)
+                Group {
+                    if let systemImageName {
+                        Label(title, systemImage: systemImageName)
+                    } else {
+                        Text(title)
+                    }
+                }
+                .font(font)
+                .frame(maxWidth: .infinity)
+                .frame(height: 60)
             }
         )
         .buttonStyle(.plain)

@@ -24,6 +24,7 @@ struct MockProjectsServiceTests {
                             id: "scan-1",
                             name: "Living Room",
                             createdAt: Date(timeIntervalSince1970: 900),
+                            localModelURL: nil,
                             thumbnailName: "thumbnail-0",
                             syncStatus: .synced,
                             notes: [
@@ -81,6 +82,7 @@ struct MockProjectsServiceTests {
                             id: "scan-2",
                             name: "Kitchen",
                             createdAt: Date(timeIntervalSince1970: 900),
+                            localModelURL: nil,
                             thumbnailName: "thumbnail-1",
                             syncStatus: .synced,
                             notes: [

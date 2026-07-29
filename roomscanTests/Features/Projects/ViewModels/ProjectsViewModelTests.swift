@@ -297,6 +297,7 @@ struct ProjectsViewModelTests {
                 id: "project-\(projectIndex)-scan-\($0)",
                 name: "Room \($0)",
                 createdAt: Date(timeIntervalSince1970: TimeInterval(1_000 - $0)),
+                localModelURL: nil,
                 thumbnailName: "thumbnail-\($0)",
                 syncStatus: .synced,
                 notes: []

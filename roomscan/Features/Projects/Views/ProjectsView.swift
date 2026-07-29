@@ -7,6 +7,8 @@ import SwiftUI
 
 struct ProjectsView: View {
     @State var viewModel: ProjectsViewModel
+    /// Temporary entry into MOB-17 viewer until Scan Detail (MOB-15) provides "Open 3D Model".
+    @State private var viewerInput: ViewerInput?
     @State private var selectedProject: ProjectSummary?
     var showsNavigationTitle = true
 
@@ -57,6 +59,13 @@ struct ProjectsView: View {
                 await viewModel.loadInitialProjects()
             }
             .animation(.default, value: viewModel.showsPaginationError)
+            .fullScreenCover(item: $viewerInput) { input in
+                ViewerView(
+                    input: input,
+                    notesService: MockNotesService.shared,
+                    onBack: { viewerInput = nil }
+                )
+            }
             .animation(.default, value: viewModel.showsDeleteSuccessToast)
             .animation(.default, value: viewModel.showsActionErrorToast)
             .fullScreenCover(item: $projectToEdit) { project in
@@ -172,7 +181,13 @@ struct ProjectsView: View {
                             onToggleExpansion: {
                                 viewModel.toggleExpansion(for: project.id)
                             },
-                            onRoomTap: {},
+                            onRoomTap: { scan in
+                                viewerInput = ViewerInput(
+                                    scanID: scan.id,
+                                    scanName: scan.name,
+                                    modelURL: scan.localModelURL
+                                )
+                            },
                             onEdit: {
                                 projectToEdit = project
                             },
