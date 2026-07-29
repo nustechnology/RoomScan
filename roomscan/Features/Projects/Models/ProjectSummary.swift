@@ -25,6 +25,7 @@ struct RoomScanSummary: Identifiable, Equatable, Sendable {
     let id: String
     let name: String
     let createdAt: Date
+    let localModelURL: URL?
     let thumbnailName: String
     let syncStatus: RoomScanSyncStatus
     let notes: [RoomScanNoteSummary]

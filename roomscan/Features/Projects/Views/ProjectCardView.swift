@@ -12,7 +12,7 @@ struct ProjectCardView: View {
     let showsExpandControl: Bool
     let onProjectTap: () -> Void
     let onToggleExpansion: () -> Void
-    let onRoomTap: () -> Void
+    let onRoomTap: (RoomScanSummary) -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
 
@@ -78,7 +78,7 @@ struct ProjectCardView: View {
     private var roomScanList: some View {
         VStack(spacing: 10) {
             ForEach(visibleRoomScans) { scan in
-                RoomScanRowView(scan: scan, onTap: onRoomTap)
+                RoomScanRowView(scan: scan, onTap: { onRoomTap(scan) })
             }
         }
     }

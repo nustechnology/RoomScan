@@ -76,7 +76,6 @@ struct NewProjectView: View {
                 discard()
             }
         }
-        .accessibilityIdentifier(accessibilityRootID)
     }
 
     private var accessibilityRootID: String {
