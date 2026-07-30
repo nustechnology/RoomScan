@@ -21,6 +21,7 @@ struct HomeView: View {
     @State private var showsNewProject = false
     @State private var pendingCreatedProject: ProjectSummary?
     @State private var selectedCreatedProject: ProjectSummary?
+    @State private var isShowingProjectsDetail = false
 
     init(
         session: AuthenticationSession,
@@ -37,24 +38,28 @@ struct HomeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HomeHeader(
-                title: selectedTab.headerTitle,
-                showsCreateProjectButton: selectedTab == .projects,
-                onCreateProject: {
-                    showsNewProject = true
-                }
-            )
+            if !isShowingProjectsDetail {
+                HomeHeader(
+                    title: selectedTab.headerTitle,
+                    showsCreateProjectButton: selectedTab == .projects,
+                    onCreateProject: {
+                        showsNewProject = true
+                    }
+                )
+            }
 
             currentTabContent
-                .padding(.top, 8)
+                .padding(.top, isShowingProjectsDetail ? 0 : 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            HomeBottomNav(selectedTab: $selectedTab)
+            if !isShowingProjectsDetail {
+                HomeBottomNav(selectedTab: $selectedTab)
+            }
         }
         .fullScreenCover(isPresented: $showsNewProject, onDismiss: {
             selectedCreatedProject = pendingCreatedProject
             pendingCreatedProject = nil
-        }) {
+        }, content: {
             NewProjectView(
                 onSave: { name, _ in
                     let createdProject = makeCreatedProject(named: name)
@@ -65,7 +70,7 @@ struct HomeView: View {
                     showsNewProject = false
                 }
             )
-        }
+        })
         .fullScreenCover(item: $selectedCreatedProject) { project in
             ProjectDetailView(project: project)
         }
@@ -77,7 +82,10 @@ struct HomeView: View {
         case .projects:
             ProjectsView(
                 viewModel: projectsViewModel,
-                showsNavigationTitle: false
+                projectsService: projectsService,
+                currentUserID: session.user.id,
+                showsNavigationTitle: false,
+                isShowingDetail: $isShowingProjectsDetail
             )
         case .share:
             ShareHomeView()
@@ -119,7 +127,7 @@ private struct HomeBottomNav: View {
                                 .font(.caption2.weight(.semibold))
                                 .lineLimit(1)
                         }
-                        .foregroundStyle(selectedTab == tab ? .blue : .secondary)
+                        .foregroundStyle(selectedTab == tab ? AppColors.brandBlueBottom : .secondary)
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
                         .contentShape(Rectangle())

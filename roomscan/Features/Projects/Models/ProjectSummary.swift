@@ -21,17 +21,19 @@ struct ProjectSummary: Identifiable, Equatable, Sendable {
     let roomScans: [RoomScanSummary]
 }
 
-struct RoomScanSummary: Identifiable, Equatable, Sendable {
+struct RoomScanSummary: Identifiable, Equatable, Hashable, Sendable {
     let id: String
     let name: String
     let createdAt: Date
     let localModelURL: URL?
     let thumbnailName: String
     let syncStatus: RoomScanSyncStatus
+    let creatorUserID: String
+    let creatorDisplayName: String
     let notes: [RoomScanNoteSummary]
 }
 
-struct RoomScanNoteSummary: Identifiable, Equatable, Sendable {
+struct RoomScanNoteSummary: Identifiable, Equatable, Hashable, Sendable {
     let id: String
     let text: String
     let createdAt: Date

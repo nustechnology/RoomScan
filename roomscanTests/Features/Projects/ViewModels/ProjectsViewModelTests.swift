@@ -300,6 +300,8 @@ struct ProjectsViewModelTests {
                 localModelURL: nil,
                 thumbnailName: "thumbnail-\($0)",
                 syncStatus: .synced,
+                creatorUserID: AuthenticationSession.mockAppleUser.user.id,
+                creatorDisplayName: "Mock Apple User",
                 notes: []
             )
         }
@@ -398,6 +400,98 @@ private actor TestProjectsService: ProjectsService {
 
         projects.removeAll { $0.id == id }
         deletedProjectIDs.append(id)
+    }
+
+    func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw ProjectsServiceError.invalidName
+        }
+
+        let (projectIndex, scanIndex) = try indices(projectID: projectID, scanID: scanID)
+        let project = projects[projectIndex]
+        let existing = project.roomScans[scanIndex]
+        let updatedScan = RoomScanSummary(
+            id: existing.id,
+            name: trimmedName,
+            createdAt: existing.createdAt,
+            localModelURL: existing.localModelURL,
+            thumbnailName: existing.thumbnailName,
+            syncStatus: existing.syncStatus,
+            creatorUserID: existing.creatorUserID,
+            creatorDisplayName: existing.creatorDisplayName,
+            notes: existing.notes
+        )
+        var roomScans = project.roomScans
+        roomScans[scanIndex] = updatedScan
+        projects[projectIndex] = ProjectSummary(
+            id: project.id,
+            name: project.name,
+            ownerName: project.ownerName,
+            createdAt: project.createdAt,
+            updatedAt: Date(timeIntervalSince1970: 20_000),
+            description: project.description,
+            sharedUserCount: project.sharedUserCount,
+            roomScans: roomScans
+        )
+        return updatedScan
+    }
+
+    func deleteScan(projectID: String, scanID: String) async throws {
+        let (projectIndex, scanIndex) = try indices(projectID: projectID, scanID: scanID)
+        let project = projects[projectIndex]
+        var roomScans = project.roomScans
+        roomScans.remove(at: scanIndex)
+        projects[projectIndex] = ProjectSummary(
+            id: project.id,
+            name: project.name,
+            ownerName: project.ownerName,
+            createdAt: project.createdAt,
+            updatedAt: Date(timeIntervalSince1970: 20_000),
+            description: project.description,
+            sharedUserCount: project.sharedUserCount,
+            roomScans: roomScans
+        )
+    }
+
+    func retryScanUpload(projectID: String, scanID: String) async throws -> RoomScanSummary {
+        let (projectIndex, scanIndex) = try indices(projectID: projectID, scanID: scanID)
+        let project = projects[projectIndex]
+        let existing = project.roomScans[scanIndex]
+        let updatedScan = RoomScanSummary(
+            id: existing.id,
+            name: existing.name,
+            createdAt: existing.createdAt,
+            localModelURL: existing.localModelURL,
+            thumbnailName: existing.thumbnailName,
+            syncStatus: .synced,
+            creatorUserID: existing.creatorUserID,
+            creatorDisplayName: existing.creatorDisplayName,
+            notes: existing.notes
+        )
+        var roomScans = project.roomScans
+        roomScans[scanIndex] = updatedScan
+        projects[projectIndex] = ProjectSummary(
+            id: project.id,
+            name: project.name,
+            ownerName: project.ownerName,
+            createdAt: project.createdAt,
+            updatedAt: Date(timeIntervalSince1970: 20_000),
+            description: project.description,
+            sharedUserCount: project.sharedUserCount,
+            roomScans: roomScans
+        )
+        return updatedScan
+    }
+
+    private func indices(projectID: String, scanID: String) throws -> (Int, Int) {
+        guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else {
+            throw ProjectsServiceError.notFound
+        }
+        guard let scanIndex = projects[projectIndex].roomScans.firstIndex(where: { $0.id == scanID }) else {
+            throw ProjectsServiceError.notFound
+        }
+        return (projectIndex, scanIndex)
     }
 
     func clearFailures() {

@@ -544,6 +544,17 @@
         }
       }
     },
+    "projects.detail.addScan" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Scan"
+          }
+        }
+      }
+    },
     "projects.detail.emptyScans.message" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -555,6 +566,39 @@
         }
       }
     },
+    "projects.detail.metadata.created" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Created"
+          }
+        }
+      }
+    },
+    "projects.detail.metadata.owner" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Owner"
+          }
+        }
+      }
+    },
+    "projects.detail.metadata.shared" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shared with"
+          }
+        }
+      }
+    },
     "projects.detail.scans.title.format" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -562,6 +606,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scans (%lld)"
+          }
+        }
+      }
+    },
+    "projects.detail.shareProject" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share Project"
           }
         }
       }
@@ -1074,6 +1129,16 @@
         }
       }
     },
+    "scanDetail.action.error" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Something went wrong. Please try again."
+          }
+        }
+      }
+    },
     "viewer.header.more" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1536,6 +1601,27 @@
         }
       }
     },
+    "scanDetail.action.error.dismiss" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        }
+      }
+    },
+    "scanDetail.addNote.accessibility" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add note"
+          }
+        }
+      }
+    },
     "viewer.note.operationError.title" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1543,6 +1629,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Something went wrong"
+          }
+        }
+      }
+    },
+    "scanDetail.createdBy" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Created by"
           }
         }
       }
@@ -1558,6 +1654,16 @@
         }
       }
     },
+    "scanDetail.createdBy.you" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You"
+          }
+        }
+      }
+    },
     "viewer.note.validation.descriptionRequired" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1565,6 +1671,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Description is required."
+          }
+        }
+      }
+    },
+   "scanDetail.date" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Date"
           }
         }
       }
@@ -1646,6 +1762,26 @@
         }
       }
     },
+    "scanDetail.delete.cancel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        }
+      }
+    },
+    "scanDetail.delete.confirm" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete"
+          }
+        }
+      }
+    },
     "viewer.scan.rename.cancel" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1657,6 +1793,16 @@
         }
       }
     },
+    "scanDetail.delete.message" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete this scan permanently?"
+          }
+        }
+      }
+    },
     "viewer.scan.rename.placeholder" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1664,6 +1810,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scan title"
+          }
+        }
+      }
+    },
+    "scanDetail.delete.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Scan"
           }
         }
       }
@@ -1690,6 +1846,46 @@
         }
       }
     },
+    "scanDetail.menu.accessibility" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan options"
+          }
+        }
+      }
+    },
+    "scanDetail.menu.delete" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Scan"
+          }
+        }
+      }
+    },
+    "scanDetail.menu.rename" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rename Scan"
+          }
+        }
+      }
+    },
+    "scanDetail.menu.share" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share Scan"
+          }
+        }
+      }
+    },
     "viewer.share.copyLink" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1697,6 +1893,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Copy Share Link"
+          }
+        }
+      }
+    },
+    "scanDetail.notes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notes"
           }
         }
       }
@@ -1712,13 +1918,34 @@
         }
       }
     },
-    "viewer.share.email.placeholder" : {
+    "scanDetail.open3DModel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open 3D Model"
+          }
+        }
+      }
+    },
+     "viewer.share.email.placeholder" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Email address"
+          }
+        }
+      }
+    },
+    "scanDetail.open3DModel.unavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3D Viewer Coming Soon"
           }
         }
       }
@@ -1734,7 +1961,17 @@
         }
       }
     },
-    "viewer.share.invite.header" : {
+    "scanDetail.rename.cancel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        }
+      }
+    },
+        "viewer.share.invite.header" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -1745,7 +1982,17 @@
         }
       }
     },
-    "viewer.share.link.header" : {
+    "scanDetail.rename.placeholder" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan name"
+          }
+        }
+      }
+    },
+        "viewer.share.link.header" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -1756,7 +2003,17 @@
         }
       }
     },
-    "viewer.toolbar.exitFullscreen" : {
+     "scanDetail.rename.save" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save"
+          }
+        }
+      }
+    },
+        "viewer.toolbar.exitFullscreen" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -1767,13 +2024,33 @@
         }
       }
     },
-    "viewer.toolbar.fullscreen" : {
+    "scanDetail.rename.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rename Scan"
+          }
+        }
+      }
+    },
+        "viewer.toolbar.fullscreen" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Enter fullscreen"
+          }
+        }
+      }
+    },
+    "scanDetail.status" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Status"
           }
         }
       }
@@ -1789,7 +2066,17 @@
         }
       }
     },
-    "viewer.toolbar.zoomIn" : {
+    "scanDetail.status.retry.accessibility" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry upload"
+          }
+        }
+      }
+    },
+       "viewer.toolbar.zoomIn" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -1800,13 +2087,34 @@
         }
       }
     },
-    "viewer.toolbar.zoomOut" : {
+    "scanDetail.thumbnail.accessibility" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open 3D model preview"
+          }
+        }
+      }
+    },
+     "viewer.toolbar.zoomOut" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zoom out"
+          }
+        }
+      }
+    },
+    "scanDetail.thumbnail.preview.accessibility" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan preview"
           }
         }
       }

@@ -121,6 +121,43 @@ final class ProjectsViewModel {
         }
     }
 
+    func applyUpdatedScan(projectID: ProjectSummary.ID, scan: RoomScanSummary) {
+        guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else { return }
+        let project = projects[projectIndex]
+        guard let scanIndex = project.roomScans.firstIndex(where: { $0.id == scan.id }) else { return }
+
+        var roomScans = project.roomScans
+        roomScans[scanIndex] = scan
+        projects[projectIndex] = ProjectSummary(
+            id: project.id,
+            name: project.name,
+            ownerName: project.ownerName,
+            createdAt: project.createdAt,
+            updatedAt: Date(),
+            description: project.description,
+            sharedUserCount: project.sharedUserCount,
+            roomScans: roomScans
+        )
+        projects.sort { $0.updatedAt > $1.updatedAt }
+    }
+
+    func applyDeletedScan(projectID: ProjectSummary.ID, scanID: RoomScanSummary.ID) {
+        guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else { return }
+        let project = projects[projectIndex]
+        let roomScans = project.roomScans.filter { $0.id != scanID }
+        projects[projectIndex] = ProjectSummary(
+            id: project.id,
+            name: project.name,
+            ownerName: project.ownerName,
+            createdAt: project.createdAt,
+            updatedAt: Date(),
+            description: project.description,
+            sharedUserCount: project.sharedUserCount,
+            roomScans: roomScans
+        )
+        projects.sort { $0.updatedAt > $1.updatedAt }
+    }
+
     func dismissDeleteSuccessToast() {
         showsDeleteSuccessToast = false
     }

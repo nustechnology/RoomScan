@@ -12,7 +12,7 @@ The repository currently includes a minimal `App` / `Features` architecture and 
 - [Coding guidelines](docs/coding-guidelines.md) — development conventions
 - [Tech stack](docs/tech-stack.md) — configured and planned technologies
 
-Read the relevant documents before contributing or implementing new features. AI development guidance is provided in `.cursor/rules.md`, with reusable task prompts under `.cursor/prompts/`.
+Read the relevant documents before contributing or implementing new features. AI development guidance is provided in `.cursor/rules.md` and `CLAUDE.md`, with reusable task prompts under `.cursor/prompts/`.
 
 ## Getting Started
 

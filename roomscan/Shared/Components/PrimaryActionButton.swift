@@ -10,11 +10,11 @@ struct PrimaryActionButton: View {
     let systemImageName: String?
     let color: Color
     let action: () -> Void
-    var font: Font = .title2.bold()
+    var typography: AppTypographyStyle = AppTypography.labelButton
     var foregroundColor: Color = .white
     var borderColor: Color?
     var borderWidth: CGFloat = 1
-    var cornerRadius: CGFloat = 12
+    var cornerRadius: CGFloat = 18
     var accessibilityIdentifier: String?
 
     var body: some View {
@@ -28,7 +28,7 @@ struct PrimaryActionButton: View {
                         Text(title)
                     }
                 }
-                .font(font)
+                .appTypography(typography)
                 .frame(maxWidth: .infinity)
                 .frame(height: 60)
             }
@@ -61,9 +61,9 @@ private extension View {
 
 #Preview {
     PrimaryActionButton(
-        title: "New Scan",
+        title: String(localized: "projects.detail.addScan"),
         systemImageName: "plus",
-        color: .blue,
+        color: AppColors.background,
         action: {}
     )
     .padding()
