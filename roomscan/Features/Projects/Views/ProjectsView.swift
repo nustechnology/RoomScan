@@ -174,7 +174,7 @@ private struct ProjectsPresentationModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .fullScreenCover(item: $selectedProject) { project in
-                ProjectDetailView(project: project)
+                projectDetailView(for: project)
             }
             .navigationDestination(isPresented: $showsScanCheck) {
                 ScanCheckView(
@@ -236,6 +236,20 @@ private struct ProjectsPresentationModifier: ViewModifier {
                 }
             }
             .ignoresSafeArea(.keyboard, edges: .bottom)
+    }
+
+    private func projectDetailView(for project: ProjectSummary) -> some View {
+        ProjectDetailView(
+            project: project,
+            projectsService: projectsService,
+            currentUserID: currentUserID,
+            onScanUpdated: { updatedScan in
+                viewModel.applyUpdatedScan(projectID: project.id, scan: updatedScan)
+            },
+            onScanDeleted: { scanID in
+                viewModel.applyDeletedScan(projectID: project.id, scanID: scanID)
+            }
+        )
     }
 
     private func scanDetailView(for destination: ScanDetailDestination) -> some View {

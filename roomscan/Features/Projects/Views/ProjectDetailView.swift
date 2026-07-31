@@ -6,11 +6,31 @@
 import SwiftUI
 
 struct ProjectDetailView: View {
-    let project: ProjectSummary
     var accessPolicy: DetailAccessPolicy = .editable
+    @State private var project: ProjectSummary
+    let projectsService: any ProjectsService
+    let currentUserID: String
+    var onScanUpdated: ((RoomScanSummary) -> Void)?
+    var onScanDeleted: ((RoomScanSummary.ID) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
-    @State private var viewerInput: ViewerInput?
+    @State private var selectedScan: RoomScanSummary?
+
+    init(
+        project: ProjectSummary,
+        projectsService: any ProjectsService,
+        currentUserID: String,
+        accessPolicy: DetailAccessPolicy = .editable,
+        onScanUpdated: ((RoomScanSummary) -> Void)? = nil,
+        onScanDeleted: ((RoomScanSummary.ID) -> Void)? = nil
+    ) {
+        self.accessPolicy = accessPolicy
+        _project = State(initialValue: project)
+        self.projectsService = projectsService
+        self.currentUserID = currentUserID
+        self.onScanUpdated = onScanUpdated
+        self.onScanDeleted = onScanDeleted
+    }
 
     private var showsOwnerActions: Bool {
         ProjectDetailPresentation.showsOwnerActions(for: accessPolicy)
@@ -43,11 +63,7 @@ struct ProjectDetailView: View {
                                 RoomScanRowView(
                                     scan: scan,
                                     onTap: {
-                                        viewerInput = ViewerInput(
-                                            scanID: scan.id,
-                                            scanName: scan.name,
-                                            modelURL: scan.localModelURL
-                                        )
+                                        selectedScan = scan
                                     }
                                 )
                                     .padding(12)
@@ -122,15 +138,43 @@ struct ProjectDetailView: View {
                 }
             }
             .accessibilityIdentifier("projects.detail")
-            .fullScreenCover(item: $viewerInput) { input in
-                ViewerView(
-                    input: input,
-                    notesService: MockNotesService.shared,
-                    onBack: { viewerInput = nil }
-                )
+            .navigationDestination(item: $selectedScan) { scan in
+                scanDetailView(for: scan)
             }
         }
         .background(.white)
+    }
+
+    private func scanDetailView(for scan: RoomScanSummary) -> some View {
+        ScanDetailView(
+            viewModel: ScanDetailViewModel(
+                projectID: project.id,
+                scan: scan,
+                currentUserID: currentUserID,
+                service: projectsService,
+                accessPolicy: accessPolicy
+            ),
+            onScanUpdated: { updatedScan in
+                applyUpdatedScan(updatedScan)
+                onScanUpdated?(updatedScan)
+            },
+            onScanDeleted: {
+                applyDeletedScan(id: scan.id)
+                onScanDeleted?(scan.id)
+                selectedScan = nil
+            },
+            // TODO: Implement scan sharing.
+            onShare: {}
+        )
+    }
+
+    private func applyUpdatedScan(_ scan: RoomScanSummary) {
+        guard let updated = project.replacingScan(scan) else { return }
+        project = updated
+    }
+
+    private func applyDeletedScan(id: RoomScanSummary.ID) {
+        project = project.removingScan(id: id)
     }
 
     private var projectMetadata: some View {

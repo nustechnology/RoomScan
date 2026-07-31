@@ -7,7 +7,9 @@ import Foundation
 import simd
 import SwiftUI
 
-struct ViewerInput: Hashable, Identifiable, Sendable {
+/// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so actors and
+/// tests can construct and compare this Sendable value freely.
+nonisolated struct ViewerInput: Hashable, Identifiable, Sendable {
     var id: String { scanID }
 
     let scanID: String

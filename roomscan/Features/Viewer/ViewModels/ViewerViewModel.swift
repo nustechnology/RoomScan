@@ -167,10 +167,12 @@ final class ViewerViewModel {
         isFullscreen.toggle()
     }
 
-    func renameScan(to title: String) {
+    @discardableResult
+    func renameScan(to title: String) -> Bool {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty else { return }
+        guard !trimmedTitle.isEmpty else { return false }
         scanTitle = trimmedTitle
+        return true
     }
 
     func toggleNotesVisibility() {

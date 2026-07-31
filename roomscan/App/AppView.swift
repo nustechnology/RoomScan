@@ -23,7 +23,16 @@ struct AppView: View {
                 HomeView(
                     session: session,
                     projectsService: MockProjectsService.makeForCurrentProcess(),
-                    sharedService: MockSharedService.makeForCurrentProcess()
+                    sharedService: MockSharedService.makeForCurrentProcess(),
+                    invitationService: LocalInvitationService.makeForCurrentProcess(),
+                    pendingInvitation: Binding(
+                        get: { appState.pendingInvitation },
+                        set: { newValue in
+                            if newValue == nil {
+                                appState.clearPendingInvitation()
+                            }
+                        }
+                    )
                 ) {
                     Task {
                         await appState.signOut()

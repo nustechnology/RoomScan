@@ -126,18 +126,10 @@ actor MockProjectsService: ProjectsService {
             creatorDisplayName: existing.creatorDisplayName,
             notes: existing.notes
         )
-        var roomScans = project.roomScans
-        roomScans[scanIndex] = updatedScan
-        projects[projectIndex] = ProjectSummary(
-            id: project.id,
-            name: project.name,
-            ownerName: project.ownerName,
-            createdAt: project.createdAt,
-            updatedAt: Date(),
-            description: project.description,
-            sharedUserCount: project.sharedUserCount,
-            roomScans: roomScans
-        )
+        guard let updatedProject = project.replacingScan(updatedScan) else {
+            throw ProjectsServiceError.notFound
+        }
+        projects[projectIndex] = updatedProject
         projects.sort { $0.updatedAt > $1.updatedAt }
         return updatedScan
     }
@@ -145,20 +137,9 @@ actor MockProjectsService: ProjectsService {
     func deleteScan(projectID: String, scanID: String) async throws {
         try await simulateDelay()
 
-        let (projectIndex, scanIndex) = try indices(projectID: projectID, scanID: scanID)
+        let (projectIndex, _) = try indices(projectID: projectID, scanID: scanID)
         let project = projects[projectIndex]
-        var roomScans = project.roomScans
-        roomScans.remove(at: scanIndex)
-        projects[projectIndex] = ProjectSummary(
-            id: project.id,
-            name: project.name,
-            ownerName: project.ownerName,
-            createdAt: project.createdAt,
-            updatedAt: Date(),
-            description: project.description,
-            sharedUserCount: project.sharedUserCount,
-            roomScans: roomScans
-        )
+        projects[projectIndex] = project.removingScan(id: scanID)
         projects.sort { $0.updatedAt > $1.updatedAt }
     }
 
@@ -179,18 +160,10 @@ actor MockProjectsService: ProjectsService {
             creatorDisplayName: existing.creatorDisplayName,
             notes: existing.notes
         )
-        var roomScans = project.roomScans
-        roomScans[scanIndex] = updatedScan
-        projects[projectIndex] = ProjectSummary(
-            id: project.id,
-            name: project.name,
-            ownerName: project.ownerName,
-            createdAt: project.createdAt,
-            updatedAt: Date(),
-            description: project.description,
-            sharedUserCount: project.sharedUserCount,
-            roomScans: roomScans
-        )
+        guard let updatedProject = project.replacingScan(updatedScan) else {
+            throw ProjectsServiceError.notFound
+        }
+        projects[projectIndex] = updatedProject
         projects.sort { $0.updatedAt > $1.updatedAt }
         return updatedScan
     }

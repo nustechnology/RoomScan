@@ -10,7 +10,9 @@ struct ProjectPage: Equatable, Sendable {
     let hasMore: Bool
 }
 
-struct ProjectSummary: Identifiable, Equatable, Sendable {
+/// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so actors and
+/// tests can construct and compare this Sendable value freely.
+nonisolated struct ProjectSummary: Identifiable, Equatable, Sendable {
     let id: String
     let name: String
     let ownerName: String
@@ -19,9 +21,34 @@ struct ProjectSummary: Identifiable, Equatable, Sendable {
     let description: String
     let sharedUserCount: Int
     let roomScans: [RoomScanSummary]
+
+    func withRoomScans(_ roomScans: [RoomScanSummary], updatedAt: Date = Date()) -> ProjectSummary {
+        ProjectSummary(
+            id: id,
+            name: name,
+            ownerName: ownerName,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            description: description,
+            sharedUserCount: sharedUserCount,
+            roomScans: roomScans
+        )
+    }
+
+    func replacingScan(_ scan: RoomScanSummary, updatedAt: Date = Date()) -> ProjectSummary? {
+        guard let scanIndex = roomScans.firstIndex(where: { $0.id == scan.id }) else { return nil }
+        var roomScans = self.roomScans
+        roomScans[scanIndex] = scan
+        return withRoomScans(roomScans, updatedAt: updatedAt)
+    }
+
+    func removingScan(id scanID: RoomScanSummary.ID, updatedAt: Date = Date()) -> ProjectSummary {
+        guard roomScans.contains(where: { $0.id == scanID }) else { return self }
+        return withRoomScans(roomScans.filter { $0.id != scanID }, updatedAt: updatedAt)
+    }
 }
 
-struct RoomScanSummary: Identifiable, Equatable, Hashable, Sendable {
+nonisolated struct RoomScanSummary: Identifiable, Equatable, Hashable, Sendable {
     let id: String
     let name: String
     let createdAt: Date
@@ -33,13 +60,13 @@ struct RoomScanSummary: Identifiable, Equatable, Hashable, Sendable {
     let notes: [RoomScanNoteSummary]
 }
 
-struct RoomScanNoteSummary: Identifiable, Equatable, Hashable, Sendable {
+nonisolated struct RoomScanNoteSummary: Identifiable, Equatable, Hashable, Sendable {
     let id: String
     let text: String
     let createdAt: Date
 }
 
-enum RoomScanSyncStatus: String, CaseIterable, Equatable, Sendable {
+nonisolated enum RoomScanSyncStatus: String, CaseIterable, Equatable, Sendable {
     case synced
     case uploading
     case failed

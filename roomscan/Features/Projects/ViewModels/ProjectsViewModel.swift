@@ -175,6 +175,9 @@ final class ProjectsViewModel {
             projectID: projectID,
             scan: scan
         )
+        guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else { return }
+        guard let updated = projects[projectIndex].replacingScan(scan) else { return }
+        projects[projectIndex] = updated
         projects.sort { $0.updatedAt > $1.updatedAt }
         allProjects.sort { $0.updatedAt > $1.updatedAt }
     }
@@ -190,6 +193,8 @@ final class ProjectsViewModel {
             projectID: projectID,
             scanID: scanID
         )
+        guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else { return }
+        projects[projectIndex] = projects[projectIndex].removingScan(id: scanID)
         projects.sort { $0.updatedAt > $1.updatedAt }
         allProjects.sort { $0.updatedAt > $1.updatedAt }
     }

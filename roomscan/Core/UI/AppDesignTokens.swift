@@ -13,8 +13,18 @@ enum AppColors {
     static let primaryActionLabel = Color.white
     static let brandBlueTop = Color(red: 0.04, green: 0.53, blue: 1)
     static let brandBlueBottom = Color(red: 0.02, green: 0.36, blue: 0.88)
+    /// Figma `--rs-color-bg-brand` (#1265F6).
+    static let brandPrimary = Color(red: 18 / 255, green: 101 / 255, blue: 246 / 255)
     static let brandMark = Color.white
     static let error = Color(uiColor: .systemRed)
+    /// Figma `--rs-color-bg-icon-button` (#F3F6FB).
+    static let iconButtonBackground = Color(red: 243 / 255, green: 246 / 255, blue: 251 / 255)
+    /// Figma `--rs-color-border-default` (#DDE3EC).
+    static let borderDefault = Color(red: 221 / 255, green: 227 / 255, blue: 236 / 255)
+    /// Figma `--rs-color-border-strong` (#D7E0EC).
+    static let borderStrong = Color(red: 215 / 255, green: 224 / 255, blue: 236 / 255)
+    /// Figma `--rs-color-bg-neutral-subtle` (#EEF2F7).
+    static let badgeNeutralBackground = Color(red: 238 / 255, green: 242 / 255, blue: 247 / 255)
 
     static let noteRed = Color(red: 0.90, green: 0.22, blue: 0.21)
     static let noteOrange = Color(red: 0.96, green: 0.53, blue: 0.12)

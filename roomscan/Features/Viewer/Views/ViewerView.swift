@@ -11,12 +11,14 @@ struct ViewerView: View {
     @State private var isRenamePresented = false
     @State private var isSharePresented = false
     var onBack: (() -> Void)?
+    var onScanRenamed: ((String) -> Void)?
 
     init(
         input: ViewerInput,
         notesService: any NotesService,
         modelLoadingService: any ModelLoadingService,
-        onBack: (() -> Void)? = nil
+        onBack: (() -> Void)? = nil,
+        onScanRenamed: ((String) -> Void)? = nil
     ) {
         _viewModel = State(
             initialValue: ViewerViewModel(
@@ -26,24 +28,32 @@ struct ViewerView: View {
             )
         )
         self.onBack = onBack
+        self.onScanRenamed = onScanRenamed
     }
 
     init(
         input: ViewerInput,
         notesService: any NotesService,
-        onBack: (() -> Void)? = nil
+        onBack: (() -> Void)? = nil,
+        onScanRenamed: ((String) -> Void)? = nil
     ) {
         self.init(
             input: input,
             notesService: notesService,
             modelLoadingService: DefaultModelLoadingService(),
-            onBack: onBack
+            onBack: onBack,
+            onScanRenamed: onScanRenamed
         )
     }
 
-    init(viewModel: ViewerViewModel, onBack: (() -> Void)? = nil) {
+    init(
+        viewModel: ViewerViewModel,
+        onBack: (() -> Void)? = nil,
+        onScanRenamed: ((String) -> Void)? = nil
+    ) {
         _viewModel = State(initialValue: viewModel)
         self.onBack = onBack
+        self.onScanRenamed = onScanRenamed
     }
 
     var body: some View {
@@ -127,7 +137,9 @@ struct ViewerView: View {
             TextField(String(localized: "viewer.scan.rename.placeholder"), text: $renameTitle)
             Button(String(localized: "viewer.scan.rename.cancel"), role: .cancel) {}
             Button(String(localized: "viewer.scan.rename.save")) {
-                viewModel.renameScan(to: renameTitle)
+                if viewModel.renameScan(to: renameTitle) {
+                    onScanRenamed?(viewModel.scanTitle)
+                }
             }
         }
         .sheet(isPresented: $isSharePresented) {

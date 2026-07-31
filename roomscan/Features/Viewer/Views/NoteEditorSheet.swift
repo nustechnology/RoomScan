@@ -7,12 +7,14 @@ import SwiftUI
 
 struct NoteEditorSheet: View {
     @State private var viewModel: NoteEditorViewModel
-    let onSave: (String, String, NoteColor) async -> Bool
+    // `@MainActor` required: without it, Approachable Concurrency miscompiles async
+    // closure ABI and the first String arg becomes the isolation token (crash in createNote).
+    let onSave: @MainActor (String, String, NoteColor) async -> Bool
     let onCancel: () -> Void
 
     init(
         mode: NoteEditorMode,
-        onSave: @escaping (String, String, NoteColor) async -> Bool,
+        onSave: @escaping @MainActor (String, String, NoteColor) async -> Bool,
         onCancel: @escaping () -> Void
     ) {
         _viewModel = State(initialValue: NoteEditorViewModel(mode: mode))

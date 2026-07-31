@@ -9,14 +9,14 @@ struct ScanDetailView: View {
     @State var viewModel: ScanDetailViewModel
     let onScanUpdated: (RoomScanSummary) -> Void
     let onScanDeleted: () -> Void
-    var onOpen3DModel: (() -> Void)?
     let onShare: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var showsRenameAlert = false
     @State private var showsDeleteConfirmation = false
+    @State private var viewerInput: ViewerInput?
 
-    private var canOpen3DModel: Bool { onOpen3DModel != nil }
+    private var canOpen3DModel: Bool { viewModel.scan.localModelURL != nil }
 
     private var open3DModelButtonTitle: String {
         if canOpen3DModel {
@@ -117,6 +117,13 @@ struct ScanDetailView: View {
                 viewModel.dismissActionError()
             }
         }
+        .fullScreenCover(item: $viewerInput) { input in
+            ViewerView(
+                input: input,
+                notesService: MockNotesService.shared,
+                onBack: { viewerInput = nil }
+            )
+        }
         .disabled(viewModel.isPerformingAction)
     }
 
@@ -125,7 +132,7 @@ struct ScanDetailView: View {
             title: open3DModelButtonTitle,
             systemImageName: "cube",
             color: AppColors.brandBlueBottom,
-            action: { onOpen3DModel?() },
+            action: open3DModel,
             accessibilityIdentifier: "scanDetail.open3DModel"
         )
         .disabled(!canOpen3DModel)
@@ -134,8 +141,8 @@ struct ScanDetailView: View {
 
     @ViewBuilder
     private var thumbnailCard: some View {
-        if let onOpen3DModel {
-            Button(action: onOpen3DModel) {
+        if canOpen3DModel {
+            Button(action: open3DModel) {
                 thumbnailContent
             }
             .buttonStyle(.plain)
@@ -147,6 +154,15 @@ struct ScanDetailView: View {
                 .accessibilityLabel(String(localized: "scanDetail.thumbnail.preview.accessibility"))
                 .accessibilityIdentifier("scanDetail.thumbnail")
         }
+    }
+
+    private func open3DModel() {
+        guard let modelURL = viewModel.scan.localModelURL else { return }
+        viewerInput = ViewerInput(
+            scanID: viewModel.scan.id,
+            scanName: viewModel.scan.name,
+            modelURL: modelURL
+        )
     }
 
     private var thumbnailContent: some View {

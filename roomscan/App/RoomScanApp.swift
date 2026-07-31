@@ -42,6 +42,9 @@ struct RoomScanApp: App {
                         appState.recordActivity()
                     }
                 }
+                .onOpenURL { url in
+                    appState.handleIncomingURL(url)
+                }
         }
     }
 }

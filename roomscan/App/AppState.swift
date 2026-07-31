@@ -17,6 +17,7 @@ final class AppState {
     }
 
     private(set) var phase: Phase = .restoring
+    private(set) var pendingInvitation: PendingInvitation?
 
     let authenticationService: any AuthenticationService
     private let activityTracker: SessionActivityTracker
@@ -92,5 +93,14 @@ final class AppState {
 
     func retryRestore() async {
         await restoreSession()
+    }
+
+    func handleIncomingURL(_ url: URL) {
+        guard let invitation = InvitationDeepLinkParser.parse(url) else { return }
+        pendingInvitation = invitation
+    }
+
+    func clearPendingInvitation() {
+        pendingInvitation = nil
     }
 }
