@@ -57,6 +57,12 @@ struct SharedProjectItem: Identifiable, Equatable, Sendable {
     }
 }
 
+struct SharedScanParent: Equatable, Sendable {
+    let ownerName: String
+    let projectID: String
+    let projectName: String
+}
+
 struct SharedScanItem: Identifiable, Equatable, Sendable {
     let id: String
     let name: String
@@ -71,6 +77,38 @@ struct SharedScanItem: Identifiable, Equatable, Sendable {
     let detailScan: RoomScanSummary?
 
     var isInactive: Bool { !status.isActive }
+
+    /// Builds a shared scan card from a `RoomScanSummary` and parent project metadata.
+    nonisolated static func make(
+        from scan: RoomScanSummary,
+        parent: SharedScanParent,
+        status: SharedAccessStatus,
+        statusChangedAt: Date,
+        includeDetail: Bool = true
+    ) -> SharedScanItem {
+        SharedScanItem(
+            id: scan.id,
+            name: scan.name,
+            ownerName: parent.ownerName,
+            noteCount: scan.notes.count,
+            projectID: parent.projectID,
+            projectName: parent.projectName,
+            thumbnailName: scan.thumbnailName,
+            status: status,
+            statusChangedAt: statusChangedAt,
+            detailScan: includeDetail && status.isActive ? scan : nil
+        )
+    }
+
+    nonisolated var viewerInput: ViewerInput {
+        ViewerInput(
+            projectID: projectID,
+            projectName: projectName,
+            scanID: id,
+            scanName: name,
+            modelURL: detailScan?.localModelURL
+        )
+    }
 }
 
 enum SharedServiceError: Error, Equatable {

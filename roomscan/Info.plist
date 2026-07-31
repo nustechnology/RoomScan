@@ -11,5 +11,16 @@
 	<string>LaunchScreen</string>
 	<key>NSCameraUsageDescription</key>
 	<string>RoomScan needs camera access to scan rooms and create 3D models.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.nus.roomscan.invite</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>roomscan</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

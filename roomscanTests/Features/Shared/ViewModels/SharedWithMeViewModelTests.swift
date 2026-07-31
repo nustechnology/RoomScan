@@ -193,6 +193,83 @@ struct SharedWithMeViewModelTests {
         #expect(viewModel.scans.isEmpty)
         #expect(viewModel.toastMessage == nil)
     }
+
+    @Test func failedAcceptedProjectIngestAppearsAfterSuccessfulRefresh() async {
+        let project = ProjectSummary(
+            id: "accepted-project",
+            name: "Accepted Project",
+            ownerName: "Owner",
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            updatedAt: Date(timeIntervalSince1970: 2_000),
+            description: "Shared via invitation",
+            sharedUserCount: 1,
+            roomScans: []
+        )
+        let destination = AcceptedInvitationDestination.project(project)
+        let service = MockSharedService(
+            scenario: .empty,
+            projects: [],
+            scans: [],
+            simulatedDelayNanoseconds: 0
+        )
+        let viewModel = SharedWithMeViewModel(service: service)
+        await viewModel.loadInitialContent()
+
+        await service.setScenario(.failLoad)
+        await viewModel.ingestAcceptedDestination(destination)
+        await viewModel.refreshAllContent()
+        #expect(viewModel.projects.contains(where: { $0.id == project.id }) == false)
+
+        await service.setScenario(.success)
+        await viewModel.refreshAllContent()
+
+        #expect(viewModel.projects.contains(where: { $0.id == project.id }))
+        #expect(viewModel.projectsViewState == .loaded)
+    }
+
+    @Test func failedAcceptedScanIngestAppearsAfterSuccessfulRefresh() async {
+        let scan = SharedScanItem.make(
+            from: RoomScanSummary(
+                id: "accepted-scan",
+                name: "Accepted Scan",
+                createdAt: Date(timeIntervalSince1970: 1_500),
+                localModelURL: nil,
+                thumbnailName: "thumbnail",
+                syncStatus: .synced,
+                creatorUserID: "owner-1",
+                creatorDisplayName: "Owner",
+                notes: []
+            ),
+            parent: SharedScanParent(
+                ownerName: "Owner",
+                projectID: "shared-project",
+                projectName: "Shared Project"
+            ),
+            status: .active,
+            statusChangedAt: Date(timeIntervalSince1970: 1_500)
+        )
+        let destination = AcceptedInvitationDestination.scan(scan)
+        let service = MockSharedService(
+            scenario: .empty,
+            projects: [],
+            scans: [],
+            simulatedDelayNanoseconds: 0
+        )
+        let viewModel = SharedWithMeViewModel(service: service)
+        await viewModel.loadInitialContent()
+        viewModel.selectSubTab(.scans)
+
+        await service.setScenario(.failLoad)
+        await viewModel.ingestAcceptedDestination(destination)
+        await viewModel.refreshSelectedTab()
+        #expect(viewModel.scans.contains(where: { $0.id == scan.id }) == false)
+
+        await service.setScenario(.success)
+        await viewModel.refreshSelectedTab()
+
+        #expect(viewModel.scans.contains(where: { $0.id == scan.id }))
+        #expect(viewModel.scansViewState == .loaded)
+    }
 }
 
 struct SharedInactiveRetentionTests {

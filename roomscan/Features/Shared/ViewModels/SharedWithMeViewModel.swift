@@ -28,6 +28,7 @@ final class SharedWithMeViewModel {
     }
 
     private let service: any SharedService
+    private let ingestQueue: PendingAcceptedSharedIngestQueue
     private var projectsRequestGeneration = 0
     private var scansRequestGeneration = 0
 
@@ -41,6 +42,7 @@ final class SharedWithMeViewModel {
 
     init(service: any SharedService) {
         self.service = service
+        self.ingestQueue = PendingAcceptedSharedIngestQueue(service: service)
     }
 
     func selectSubTab(_ tab: SubTab) {
@@ -53,13 +55,27 @@ final class SharedWithMeViewModel {
         _ = await (projectsLoad, scansLoad)
     }
 
+    /// Upserts an accepted invitation into Shared With Me. Failures are retained and
+    /// retried on the next Shared With Me refresh.
+    func ingestAcceptedDestination(_ destination: AcceptedInvitationDestination) async {
+        _ = await ingestQueue.ingest(destination)
+    }
+
     func refreshSelectedTab() async {
+        await ingestQueue.retryPending()
         switch selectedSubTab {
         case .projects:
             await reloadProjects()
         case .scans:
             await reloadScans()
         }
+    }
+
+    func refreshAllContent() async {
+        await ingestQueue.retryPending()
+        async let projectsReload: Void = reloadProjects()
+        async let scansReload: Void = reloadScans()
+        _ = await (projectsReload, scansReload)
     }
 
     func retrySelectedTab() async {

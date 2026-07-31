@@ -12,6 +12,7 @@ struct ViewerView: View {
     @State private var isRenamePresented = false
     @State private var isSharePresented = false
     var onBack: (() -> Void)?
+    var onScanRenamed: ((String) -> Void)?
 
     init(
         input: ViewerInput,
@@ -19,7 +20,8 @@ struct ViewerView: View {
         modelLoadingService: any ModelLoadingService,
         accessPolicy: DetailAccessPolicy = .editable,
         shareService: any ShareService,
-        onBack: (() -> Void)? = nil
+        onBack: (() -> Void)? = nil,
+        onScanRenamed: ((String) -> Void)? = nil
     ) {
         _viewModel = State(
             initialValue: ViewerViewModel(
@@ -31,6 +33,7 @@ struct ViewerView: View {
         )
         self.shareService = shareService
         self.onBack = onBack
+        self.onScanRenamed = onScanRenamed
     }
 
     init(
@@ -38,7 +41,8 @@ struct ViewerView: View {
         notesService: any NotesService,
         accessPolicy: DetailAccessPolicy = .editable,
         shareService: any ShareService,
-        onBack: (() -> Void)? = nil
+        onBack: (() -> Void)? = nil,
+        onScanRenamed: ((String) -> Void)? = nil
     ) {
         self.init(
             input: input,
@@ -46,18 +50,21 @@ struct ViewerView: View {
             modelLoadingService: DefaultModelLoadingService(),
             accessPolicy: accessPolicy,
             shareService: shareService,
-            onBack: onBack
+            onBack: onBack,
+            onScanRenamed: onScanRenamed
         )
     }
 
     init(
         viewModel: ViewerViewModel,
         shareService: any ShareService,
-        onBack: (() -> Void)? = nil
+        onBack: (() -> Void)? = nil,
+        onScanRenamed: ((String) -> Void)? = nil
     ) {
         _viewModel = State(initialValue: viewModel)
         self.shareService = shareService
         self.onBack = onBack
+        self.onScanRenamed = onScanRenamed
     }
 
     var body: some View {
@@ -67,9 +74,13 @@ struct ViewerView: View {
                 .padding(.top, AppSpacing.small)
                 .padding(.bottom, AppSpacing.medium)
 
-            modeSwitcher
-                .padding(.horizontal, AppSpacing.extraLarge)
-                .padding(.bottom, AppSpacing.medium)
+            ViewerModeSwitcher(
+                selectedMode: viewModel.viewMode,
+                isEnabled: viewModel.isModelReady,
+                onSelect: { viewModel.setViewMode($0) }
+            )
+            .padding(.horizontal, AppSpacing.extraLarge)
+            .padding(.bottom, AppSpacing.medium)
 
             canvasSection
                 .padding(.horizontal, viewModel.isFullscreen ? 0 : AppSpacing.extraLarge)
@@ -142,7 +153,9 @@ struct ViewerView: View {
             TextField(String(localized: "viewer.scan.rename.placeholder"), text: $renameTitle)
             Button(String(localized: "viewer.scan.rename.cancel"), role: .cancel) {}
             Button(String(localized: "viewer.scan.rename.save")) {
-                viewModel.renameScan(to: renameTitle)
+                if viewModel.renameScan(to: renameTitle) {
+                    onScanRenamed?(viewModel.scanTitle)
+                }
             }
         }
         .fullScreenCover(isPresented: $isSharePresented) {
@@ -222,37 +235,6 @@ struct ViewerView: View {
         )
     }
 
-    private var modeSwitcher: some View {
-        HStack(spacing: 0) {
-            ForEach(ViewerMode.allCases) { mode in
-                let isSelected = viewModel.viewMode == mode
-                Button {
-                    viewModel.setViewMode(mode)
-                } label: {
-                    Text(mode.localizedTitle)
-                        .appTypography(AppTypography.bodyMediumStrong)
-                        .foregroundStyle(AppColors.primaryText)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background {
-                            if isSelected {
-                                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                    .fill(AppColors.background)
-                                    .shadow(color: Color.black.opacity(0.08), radius: 4, y: 1)
-                            }
-                        }
-                }
-                .buttonStyle(.plain)
-                .disabled(!viewModel.isModelReady)
-                .accessibilityAddTraits(isSelected ? .isSelected : [])
-            }
-        }
-        .padding(4)
-        .background(Color.primary.opacity(0.06), in: Capsule())
-        .opacity(viewModel.isModelReady ? 1 : 0.45)
-        .accessibilityIdentifier("viewer.mode.switcher")
-    }
-
     @ViewBuilder
     private var canvasSection: some View {
         ZStack(alignment: .top) {
@@ -317,6 +299,43 @@ struct ViewerView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+    }
+}
+
+private struct ViewerModeSwitcher: View {
+    let selectedMode: ViewerMode
+    let isEnabled: Bool
+    let onSelect: (ViewerMode) -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(ViewerMode.allCases) { mode in
+                let isSelected = selectedMode == mode
+                Button {
+                    onSelect(mode)
+                } label: {
+                    Text(mode.localizedTitle)
+                        .appTypography(AppTypography.bodyMediumStrong)
+                        .foregroundStyle(AppColors.primaryText)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background {
+                            if isSelected {
+                                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                    .fill(AppColors.background)
+                                    .shadow(color: Color.black.opacity(0.08), radius: 4, y: 1)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .disabled(!isEnabled)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
+        .padding(4)
+        .background(Color.primary.opacity(0.06), in: Capsule())
+        .opacity(isEnabled ? 1 : 0.45)
+        .accessibilityIdentifier("viewer.mode.switcher")
     }
 }
 

@@ -17,6 +17,8 @@ struct HomeView: View {
     let notesService: any NotesService
     let shareService: any ShareService
     let sharedService: any SharedService
+    let invitationService: any InvitationService
+    @Binding var pendingInvitation: PendingInvitation?
     let onSignOut: () -> Void
 
     @State private var selectedTab: Tab = .projects
@@ -26,6 +28,12 @@ struct HomeView: View {
     @State private var pendingCreatedProject: ProjectSummary?
     @State private var selectedCreatedProject: ProjectSummary?
     @State private var isShowingProjectsDetail = false
+    @State private var activeInvitation: PendingInvitation?
+    @State private var acceptedProject: ProjectSummary?
+    @State private var acceptedViewerInput: ViewerInput?
+    @State private var acceptedInvitations = AcceptedInvitationCollection()
+    @State private var feedbackToastMessage: String?
+    @State private var feedbackToastDismissTask: Task<Void, Never>?
 
     init(
         session: AuthenticationSession,
@@ -33,6 +41,8 @@ struct HomeView: View {
         notesService: any NotesService,
         shareService: any ShareService,
         sharedService: any SharedService,
+        invitationService: any InvitationService,
+        pendingInvitation: Binding<PendingInvitation?> = .constant(nil),
         onSignOut: @escaping () -> Void
     ) {
         self.session = session
@@ -40,6 +50,8 @@ struct HomeView: View {
         self.notesService = notesService
         self.shareService = shareService
         self.sharedService = sharedService
+        self.invitationService = invitationService
+        _pendingInvitation = pendingInvitation
         self.onSignOut = onSignOut
         _projectsViewModel = State(
             initialValue: ProjectsViewModel(service: projectsService)
@@ -75,6 +87,35 @@ struct HomeView: View {
                 HomeBottomNav(selectedTab: $selectedTab)
             }
         }
+        .overlay(alignment: .bottom) {
+            if let feedbackToastMessage {
+                Text(feedbackToastMessage)
+                    .font(.subheadline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(Color.black.opacity(0.88))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding()
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .accessibilityIdentifier("invitation.toast")
+            }
+        }
+        .animation(.default, value: feedbackToastMessage)
+        .onChange(of: feedbackToastMessage) { _, message in
+            guard message != nil else { return }
+            feedbackToastDismissTask?.cancel()
+            feedbackToastDismissTask = Task {
+                do {
+                    try await Task.sleep(nanoseconds: 2_500_000_000)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                feedbackToastMessage = nil
+            }
+        }
         .fullScreenCover(
             isPresented: $showsNewProject,
             onDismiss: {
@@ -100,8 +141,66 @@ struct HomeView: View {
                 projectsService: projectsService,
                 notesService: notesService,
                 shareService: shareService,
-                currentUserID: session.user.id
+                currentUserID: session.user.id,
+                onScanUpdated: { updatedScan in
+                    projectsViewModel.applyUpdatedScan(projectID: project.id, scan: updatedScan)
+                },
+                onScanDeleted: { scanID in
+                    projectsViewModel.applyDeletedScan(projectID: project.id, scanID: scanID)
+                }
             )
+        }
+        .fullScreenCover(item: $activeInvitation) { invitation in
+            InvitationView(
+                viewModel: InvitationViewModel(
+                    pendingInvitation: invitation,
+                    service: invitationService,
+                    currentUserEmail: session.user.email
+                ),
+                onFinished: { outcome in
+                    handleInvitationFinished(outcome, for: invitation)
+                }
+            )
+            .onDisappear {
+                handleInvitationDismissed(invitation)
+            }
+        }
+        .fullScreenCover(item: $acceptedProject) { project in
+            ProjectDetailView(
+                project: project,
+                projectsService: projectsService,
+                notesService: notesService,
+                shareService: shareService,
+                currentUserID: session.user.id,
+                accessPolicy: .readOnly,
+                onScanUpdated: { updatedScan in
+                    applyAcceptedProjectScanUpdate(projectID: project.id, scan: updatedScan)
+                },
+                onScanDeleted: { scanID in
+                    applyAcceptedProjectScanDeletion(projectID: project.id, scanID: scanID)
+                }
+            )
+        }
+        .fullScreenCover(item: $acceptedViewerInput) { input in
+            ViewerView(
+                input: input,
+                notesService: notesService,
+                accessPolicy: .readOnly,
+                shareService: shareService,
+                onBack: { acceptedViewerInput = nil },
+                onScanRenamed: { newName in
+                    acceptedInvitations.applyRenamedScan(scanID: input.scanID, name: newName)
+                }
+            )
+        }
+        .onChange(of: pendingInvitation) { _, invitation in
+            guard let invitation else { return }
+            activeInvitation = invitation
+        }
+        .onAppear {
+            if let pendingInvitation {
+                activeInvitation = pendingInvitation
+            }
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
@@ -130,6 +229,62 @@ struct HomeView: View {
         case .account:
             AccountHomeView(session: session, onSignOut: onSignOut)
         }
+    }
+
+    private func handleInvitationFinished(
+        _ outcome: InvitationViewModel.NavigationOutcome,
+        for invitation: PendingInvitation
+    ) {
+        guard activeInvitation?.id == invitation.id else { return }
+
+        activeInvitation = nil
+        clearPendingInvitation(matching: invitation)
+
+        switch outcome {
+        case .dismissedToHome(let toastMessage):
+            if !toastMessage.isEmpty {
+                feedbackToastMessage = toastMessage
+            }
+        case .accepted(let destination, let toastMessage):
+            acceptedInvitations.store(destination)
+            feedbackToastMessage = toastMessage
+            Task {
+                await sharedViewModel.ingestAcceptedDestination(destination)
+                await sharedViewModel.refreshAllContent()
+                openAcceptedDestination(destination)
+            }
+        }
+    }
+
+    private func handleInvitationDismissed(_ invitation: PendingInvitation) {
+        // Ignore transient teardown while this invite is still the presented item.
+        // If a newer invite replaced it, pendingInvitation has a different id and is left alone.
+        guard activeInvitation?.id != invitation.id else { return }
+        clearPendingInvitation(matching: invitation)
+    }
+
+    private func clearPendingInvitation(matching invitation: PendingInvitation) {
+        guard pendingInvitation?.id == invitation.id else { return }
+        pendingInvitation = nil
+    }
+
+    private func openAcceptedDestination(_ destination: AcceptedInvitationDestination) {
+        switch destination {
+        case .project(let project):
+            acceptedProject = project
+        case .scan(let item):
+            acceptedViewerInput = item.viewerInput
+        }
+    }
+
+    private func applyAcceptedProjectScanUpdate(projectID: ProjectSummary.ID, scan: RoomScanSummary) {
+        acceptedInvitations.applyUpdatedScan(projectID: projectID, scan: scan)
+        projectsViewModel.applyUpdatedScan(projectID: projectID, scan: scan)
+    }
+
+    private func applyAcceptedProjectScanDeletion(projectID: ProjectSummary.ID, scanID: RoomScanSummary.ID) {
+        acceptedInvitations.applyDeletedScan(projectID: projectID, scanID: scanID)
+        projectsViewModel.applyDeletedScan(projectID: projectID, scanID: scanID)
     }
 
     private func makeCreatedProject(named name: String) -> ProjectSummary {
@@ -341,6 +496,7 @@ private struct AccountHomeView: View {
         notesService: MockNotesService(),
         shareService: MockShareService(simulatedDelayNanoseconds: 0),
         sharedService: MockSharedService(simulatedDelayNanoseconds: 0),
+        invitationService: LocalInvitationService(simulatedDelayNanoseconds: 0),
         onSignOut: {}
     )
 }

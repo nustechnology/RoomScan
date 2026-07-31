@@ -29,7 +29,16 @@ struct AppView: View {
                     projectsService: projectsService,
                     notesService: notesService,
                     shareService: shareService,
-                    sharedService: sharedService
+                    sharedService: sharedService,
+                    invitationService: LocalInvitationService.makeForCurrentProcess(),
+                    pendingInvitation: Binding(
+                        get: { appState.pendingInvitation },
+                        set: { newValue in
+                            if newValue == nil {
+                                appState.clearPendingInvitation()
+                            }
+                        }
+                    )
                 ) {
                     Task {
                         await appState.signOut()

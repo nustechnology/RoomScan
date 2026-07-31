@@ -256,6 +256,22 @@ private struct ProjectsPresentationModifier: ViewModifier {
             .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
+    private func projectDetailView(for project: ProjectSummary) -> some View {
+        ProjectDetailView(
+            project: project,
+            projectsService: projectsService,
+            notesService: notesService,
+            shareService: shareService,
+            currentUserID: currentUserID,
+            onScanUpdated: { updatedScan in
+                viewModel.applyUpdatedScan(projectID: project.id, scan: updatedScan)
+            },
+            onScanDeleted: { scanID in
+                viewModel.applyDeletedScan(projectID: project.id, scanID: scanID)
+            }
+        )
+    }
+
     private func scanDetailView(for destination: ScanDetailDestination) -> some View {
         ScanDetailView(
             viewModel: ScanDetailViewModel(
