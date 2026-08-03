@@ -132,6 +132,71 @@ struct ScanDetailViewModelTests {
         #expect(!didRetry)
     }
 
+    @Test func readOnlyRenameDoesNotMutateAndReturnsFalse() async {
+        let service = MockProjectsService(
+            projects: [makeProject()],
+            simulatedDelayNanoseconds: 0
+        )
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(name: "Living Room"),
+            currentUserID: Self.mockCurrentUserID,
+            service: service,
+            accessPolicy: .readOnly
+        )
+        viewModel.renameDraft = "Dining Room"
+
+        let didRename = await viewModel.renameScan()
+
+        #expect(!didRename)
+        #expect(!viewModel.allowsOwnerActions)
+        #expect(!viewModel.showsActionError)
+        #expect(viewModel.scan.name == "Living Room")
+        #expect(viewModel.title == "Living Room")
+    }
+
+    @Test func readOnlyDeleteDoesNotMutateAndReturnsFalse() async {
+        let service = MockProjectsService(
+            projects: [makeProject()],
+            simulatedDelayNanoseconds: 0
+        )
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(),
+            currentUserID: Self.mockCurrentUserID,
+            service: service,
+            accessPolicy: .readOnly
+        )
+
+        let didDelete = await viewModel.deleteScan()
+
+        #expect(!didDelete)
+        #expect(!viewModel.didDeleteScan)
+        #expect(!viewModel.showsActionError)
+    }
+
+    @Test func readOnlyRetryDoesNotMutateAndReturnsFalse() async {
+        let service = MockProjectsService(
+            projects: [makeProject(syncStatus: .failed)],
+            simulatedDelayNanoseconds: 0
+        )
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(syncStatus: .failed),
+            currentUserID: Self.mockCurrentUserID,
+            service: service,
+            accessPolicy: .readOnly
+        )
+
+        #expect(!viewModel.showsRetryUpload)
+
+        let didRetry = await viewModel.retryUpload()
+
+        #expect(!didRetry)
+        #expect(viewModel.scan.syncStatus == .failed)
+        #expect(!viewModel.showsActionError)
+    }
+
     private func makeViewModel(
         creatorUserID: String = Self.mockCurrentUserID,
         creatorDisplayName: String = Self.mockCurrentUserDisplayName,

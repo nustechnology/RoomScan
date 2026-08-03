@@ -1,0 +1,285 @@
+//
+//  SharedWithMeViewModelTests.swift
+//  roomscanTests
+//
+
+import Foundation
+import Testing
+@testable import roomscan
+
+@MainActor
+struct SharedWithMeViewModelTests {
+    @Test func loadsProjectsAndScansExcludingExpiredInactiveItems() async {
+        let now = Date()
+        let service = MockSharedService(
+            projects: MockSharedService.makeSeedProjects(now: now),
+            scans: MockSharedService.makeSeedScans(now: now),
+            simulatedDelayNanoseconds: 0,
+            now: now
+        )
+        let viewModel = SharedWithMeViewModel(service: service)
+
+        await viewModel.loadInitialContent()
+
+        #expect(viewModel.projectsViewState == .loaded)
+        #expect(viewModel.scansViewState == .loaded)
+        #expect(viewModel.projects.map(\.id).contains("shared-project-expired") == false)
+        #expect(viewModel.scans.map(\.id).contains("shared-scan-expired") == false)
+        #expect(viewModel.projects.contains(where: { $0.id == "shared-project-active" }))
+        #expect(viewModel.scans.contains(where: { $0.id == "shared-scan-active" }))
+    }
+
+    @Test func activeProjectTapReturnsDetail() async {
+        let service = MockSharedService(simulatedDelayNanoseconds: 0)
+        let viewModel = SharedWithMeViewModel(service: service)
+        await viewModel.loadInitialContent()
+
+        let result = viewModel.handleItemTap(scope: .project, id: "shared-project-active")
+
+        #expect(result != nil)
+        if case .openProject(let project)? = result {
+            #expect(project.id == "shared-project-active")
+        } else {
+            Issue.record("Expected openProject result")
+        }
+        #expect(viewModel.pendingAlert == nil)
+    }
+
+    @Test func activeProjectWithoutDetailDoesNotShowInactiveAlert() async {
+        let activeWithoutDetail = SharedProjectItem(
+            id: "shared-project-active-no-detail",
+            name: "Broken Active Project",
+            ownerName: "Owner",
+            scanCount: 1,
+            thumbnailName: nil,
+            status: .active,
+            statusChangedAt: Date(),
+            detailProject: nil
+        )
+        let service = MockSharedService(
+            projects: [activeWithoutDetail],
+            scans: [],
+            simulatedDelayNanoseconds: 0
+        )
+        let viewModel = SharedWithMeViewModel(service: service)
+        await viewModel.loadInitialContent()
+
+        let result = viewModel.handleItemTap(scope: .project, id: activeWithoutDetail.id)
+
+        #expect(result == nil)
+        #expect(viewModel.pendingAlert == nil)
+    }
+
+    @Test func inactiveProjectTapShowsAlert() async {
+        let service = MockSharedService(simulatedDelayNanoseconds: 0)
+        let viewModel = SharedWithMeViewModel(service: service)
+        await viewModel.loadInitialContent()
+
+        let result = viewModel.handleItemTap(scope: .project, id: "shared-project-revoked")
+
+        #expect(result == nil)
+        #expect(viewModel.pendingAlert == .inactiveTap(
+            scope: .project,
+            id: "shared-project-revoked",
+            status: .accessRevoked
+        ))
+    }
+
+    @Test func confirmingRemoveDeletesItemAndShowsToast() async {
+        let service = MockSharedService(simulatedDelayNanoseconds: 0)
+        let viewModel = SharedWithMeViewModel(service: service)
+        await viewModel.loadInitialContent()
+        viewModel.requestRemove(scope: .project, id: "shared-project-active")
+
+        await viewModel.confirmPendingAlertAction()
+
+        #expect(viewModel.projects.contains(where: { $0.id == "shared-project-active" }) == false)
+        #expect(viewModel.toastMessage == String(localized: "shared.remove.toast"))
+        #expect(viewModel.pendingAlert == nil)
+    }
+
+    @Test func removeFailurePreservesProjectAndShowsErrorToast() async {
+        let service = MockSharedService(simulatedDelayNanoseconds: 0)
+        let viewModel = SharedWithMeViewModel(service: service)
+        await viewModel.loadInitialContent()
+        let loadedIDs = viewModel.projects.map(\.id)
+
+        await service.setScenario(.failLoad)
+        viewModel.requestRemove(scope: .project, id: "shared-project-active")
+        await viewModel.confirmPendingAlertAction()
+
+        #expect(viewModel.projects.map(\.id) == loadedIDs)
+        #expect(viewModel.projectsViewState == .loaded)
+        #expect(viewModel.toastMessage == String(localized: "shared.action.error"))
+        #expect(viewModel.pendingAlert == nil)
+    }
+
+    @Test func removeFailurePreservesScanAndShowsErrorToast() async {
+        let service = MockSharedService(simulatedDelayNanoseconds: 0)
+        let viewModel = SharedWithMeViewModel(service: service)
+        await viewModel.loadInitialContent()
+        let loadedIDs = viewModel.scans.map(\.id)
+
+        await service.setScenario(.failLoad)
+        viewModel.requestRemove(scope: .scan, id: "shared-scan-active")
+        await viewModel.confirmPendingAlertAction()
+
+        #expect(viewModel.scans.map(\.id) == loadedIDs)
+        #expect(viewModel.scansViewState == .loaded)
+        #expect(viewModel.toastMessage == String(localized: "shared.action.error"))
+        #expect(viewModel.pendingAlert == nil)
+    }
+
+    @Test func concurrentInitialLoadDoesNotLeaveProjectsStuckLoading() async {
+        let service = MockSharedService(simulatedDelayNanoseconds: 50_000_000)
+        let viewModel = SharedWithMeViewModel(service: service)
+
+        await viewModel.loadInitialContent()
+
+        #expect(viewModel.projectsViewState == .loaded)
+        #expect(viewModel.scansViewState == .loaded)
+        #expect(viewModel.projects.isEmpty == false)
+        #expect(viewModel.scans.isEmpty == false)
+    }
+
+    @Test func emptyScenarioShowsEmptyStates() async {
+        let service = MockSharedService(scenario: .empty, simulatedDelayNanoseconds: 0)
+        let viewModel = SharedWithMeViewModel(service: service)
+
+        await viewModel.loadInitialContent()
+
+        #expect(viewModel.projectsViewState == .empty)
+        #expect(viewModel.scansViewState == .empty)
+    }
+
+    @Test func refreshFailurePreservesLoadedProjectsAndShowsErrorToast() async {
+        let service = MockSharedService(simulatedDelayNanoseconds: 0)
+        let viewModel = SharedWithMeViewModel(service: service)
+        await viewModel.loadInitialContent()
+        let loadedIDs = viewModel.projects.map(\.id)
+
+        await service.setScenario(.failLoad)
+        await viewModel.refreshSelectedTab()
+
+        #expect(viewModel.projects.map(\.id) == loadedIDs)
+        #expect(viewModel.projectsViewState == .loaded)
+        #expect(viewModel.toastMessage == String(localized: "shared.action.error"))
+    }
+
+    @Test func refreshFailurePreservesLoadedScansAndShowsErrorToast() async {
+        let service = MockSharedService(simulatedDelayNanoseconds: 0)
+        let viewModel = SharedWithMeViewModel(service: service)
+        await viewModel.loadInitialContent()
+        viewModel.selectSubTab(.scans)
+        let loadedIDs = viewModel.scans.map(\.id)
+
+        await service.setScenario(.failLoad)
+        await viewModel.refreshSelectedTab()
+
+        #expect(viewModel.scans.map(\.id) == loadedIDs)
+        #expect(viewModel.scansViewState == .loaded)
+        #expect(viewModel.toastMessage == String(localized: "shared.action.error"))
+    }
+
+    @Test func initialLoadFailureUsesFailedStateWithoutToast() async {
+        let service = MockSharedService(scenario: .failLoad, simulatedDelayNanoseconds: 0)
+        let viewModel = SharedWithMeViewModel(service: service)
+
+        await viewModel.loadInitialContent()
+
+        #expect(viewModel.projectsViewState == .failed)
+        #expect(viewModel.scansViewState == .failed)
+        #expect(viewModel.projects.isEmpty)
+        #expect(viewModel.scans.isEmpty)
+        #expect(viewModel.toastMessage == nil)
+    }
+}
+
+struct SharedInactiveRetentionTests {
+    @Test func retainsActiveItemsRegardlessOfAge() {
+        let now = Date()
+        let oldDate = now.addingTimeInterval(-30 * 86_400)
+
+        #expect(SharedInactiveRetention.shouldRetain(
+            status: .active,
+            statusChangedAt: oldDate,
+            now: now
+        ))
+    }
+
+    @Test func retainsInactiveItemsWithinSevenDays() {
+        let now = Date()
+        let sixDaysAgo = now.addingTimeInterval(-6 * 86_400)
+
+        #expect(SharedInactiveRetention.shouldRetain(
+            status: .accessRevoked,
+            statusChangedAt: sixDaysAgo,
+            now: now
+        ))
+    }
+
+    @Test func dropsInactiveItemsAfterSevenDays() {
+        let now = Date()
+        let eightDaysAgo = now.addingTimeInterval(-8 * 86_400)
+
+        #expect(SharedInactiveRetention.shouldRetain(
+            status: .itemDeleted,
+            statusChangedAt: eightDaysAgo,
+            now: now
+        ) == false)
+    }
+}
+
+struct SharedProjectThumbnailTests {
+    @Test func usesThumbnailFromMostRecentlyCreatedScan() {
+        let older = RoomScanSummary(
+            id: "older",
+            name: "Older",
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            localModelURL: nil,
+            thumbnailName: "older-thumb",
+            syncStatus: .synced,
+            creatorUserID: "u1",
+            creatorDisplayName: "Owner",
+            notes: []
+        )
+        let newer = RoomScanSummary(
+            id: "newer",
+            name: "Newer",
+            createdAt: Date(timeIntervalSince1970: 2_000),
+            localModelURL: nil,
+            thumbnailName: "newer-thumb",
+            syncStatus: .synced,
+            creatorUserID: "u1",
+            creatorDisplayName: "Owner",
+            notes: []
+        )
+
+        #expect(SharedProjectItem.thumbnailName(from: [older, newer]) == "newer-thumb")
+    }
+
+    @Test func returnsNilThumbnailWhenProjectHasNoScans() {
+        #expect(SharedProjectItem.thumbnailName(from: []) == nil)
+    }
+
+    @Test func seedIncludesZeroScanProjectWithPlaceholderThumbnail() {
+        let projects = MockSharedService.makeSeedProjects()
+        let emptyProject = projects.first { $0.id == "shared-project-empty-scans" }
+
+        #expect(emptyProject != nil)
+        #expect(emptyProject?.scanCount == 0)
+        #expect(emptyProject?.thumbnailName == nil)
+        #expect(emptyProject?.status == .active)
+    }
+
+    @Test func seedActiveProjectThumbnailMatchesMostRecentScan() {
+        let projects = MockSharedService.makeSeedProjects()
+        let active = projects.first { $0.id == "shared-project-active" }
+        let mostRecentThumb = active?.detailProject.flatMap {
+            SharedProjectItem.thumbnailName(from: $0.roomScans)
+        }
+
+        #expect(active?.thumbnailName == mostRecentThumb)
+        #expect(active?.thumbnailName == "ScanThumbnail")
+    }
+}
