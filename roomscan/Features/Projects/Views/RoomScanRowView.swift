@@ -7,6 +7,7 @@ import SwiftUI
 
 struct RoomScanRowView: View {
     let scan: RoomScanSummary
+    var searchQuery: String = ""
     let onTap: () -> Void
 
     var body: some View {
@@ -16,7 +17,7 @@ struct RoomScanRowView: View {
                     .frame(width: 104, height: 82)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(scan.name)
+                    highlightedText(scan.name, query: searchQuery)
                         .font(.headline.bold())
                         .foregroundStyle(.primary)
                         .lineLimit(1)

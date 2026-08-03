@@ -74,6 +74,7 @@ struct HomeView: View {
         .fullScreenCover(item: $selectedCreatedProject) { project in
             ProjectDetailView(project: project)
         }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
     @ViewBuilder
