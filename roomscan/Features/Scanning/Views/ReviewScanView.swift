@@ -54,18 +54,6 @@ struct ReviewScanView: View {
                     .font(.headline.weight(.semibold))
 
                 Spacer()
-
-                Button {
-                    // Options menu
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.title3.weight(.semibold))
-                        .foregroundColor(.primary)
-                        .padding(10)
-                        .background(Color(uiColor: UIColor.secondarySystemBackground))
-                        .clipShape(Circle())
-                }
-                .accessibilityIdentifier("review.moreButton")
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -97,7 +85,10 @@ struct ReviewScanView: View {
                                 .padding(.vertical, 14)
                                 .background(
                                     RoundedRectangle(cornerRadius: 14)
-                                        .stroke(viewModel.scanNameError != nil ? Color.red : Color(uiColor: UIColor.systemGray4), lineWidth: 1.5)
+                                        .stroke(
+                                            viewModel.scanNameError != nil ? Color.red : Color(uiColor: UIColor.systemGray4),
+                                            lineWidth: 1.5
+                                        )
                                 )
                                 .accessibilityIdentifier("review.scanNameField")
 

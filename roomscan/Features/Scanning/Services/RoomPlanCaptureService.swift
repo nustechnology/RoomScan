@@ -34,6 +34,7 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
     @Published private(set) var isScanning: Bool = false
     @Published private(set) var hasMinimalStructure: Bool = false
     @Published private(set) var isStorageFull: Bool = false
+    @Published private(set) var currentInstruction: String?
 
     private(set) var roomCaptureSession: RoomCaptureSession?
     private var currentCapturedRoom: CapturedRoom?
@@ -42,6 +43,7 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
     private let storageService: ScanStorageService
     private var isCaptureSessionRunning = false
     private var isPaused = false
+    private var pausedARConfiguration: ARConfiguration?
 
     var minimalStructurePublisher: AnyPublisher<Bool, Never> {
         $hasMinimalStructure.eraseToAnyPublisher()
@@ -49,6 +51,10 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
 
     var storageFullPublisher: AnyPublisher<Bool, Never> {
         $isStorageFull.eraseToAnyPublisher()
+    }
+
+    var instructionPublisher: AnyPublisher<String?, Never> {
+        $currentInstruction.eraseToAnyPublisher()
     }
 
     init(storageService: ScanStorageService? = nil) {
@@ -86,6 +92,7 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
         isStorageFull = false
         isSessionPendingStart = true
         isPaused = false
+        pausedARConfiguration = nil
         hasRecordedFirstFrame = false
         finalCapturedRoomData = nil
         captureEndError = nil
@@ -101,19 +108,27 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
     }
 
     func pauseSession() {
-        guard isCaptureSessionRunning, !isPaused else { return }
-        roomCaptureSession?.arSession.pause()
+        guard isCaptureSessionRunning, !isPaused, let arSession = roomCaptureSession?.arSession else { return }
+        pausedARConfiguration = arSession.configuration
+        arSession.pause()
         isPaused = true
         isScanning = false
-        print("[RoomScan Log] ARSession paused while cancel confirmation is shown.")
+        print("[RoomScan Log] ARSession paused while scanning is suspended.")
     }
 
     func resumeSession() {
-        guard isCaptureSessionRunning, isPaused, let session = roomCaptureSession else { return }
-        session.run(configuration: RoomCaptureSession.Configuration())
+        guard isCaptureSessionRunning, isPaused, let arSession = roomCaptureSession?.arSession else { return }
+        // Resuming must restart the ARSession that `pauseSession` paused. Re-running the
+        // RoomCaptureSession leaves the AR session paused and also discards the in-progress scan.
+        guard let configuration = pausedARConfiguration ?? arSession.configuration else {
+            print("[RoomScan Log-ERROR] Cannot resume: ARSession has no configuration.")
+            return
+        }
+        arSession.run(configuration)
+        pausedARConfiguration = nil
         isPaused = false
         isScanning = true
-        print("[RoomScan Log] RoomCaptureSession resumed.")
+        print("[RoomScan Log] ARSession resumed.")
     }
 
     func stopSession() {
@@ -126,6 +141,7 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
         isCaptureSessionRunning = false
         isSessionPendingStart = false
         isPaused = false
+        pausedARConfiguration = nil
     }
 
     func finishScan() async throws -> RoomScanDraft {
@@ -200,7 +216,31 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
     }
 
     nonisolated func captureSession(_ session: RoomCaptureSession, didProvide instruction: RoomCaptureSession.Instruction) {
-        // Guidance instructions from session
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.currentInstruction = Self.localizedInstruction(for: instruction)
+        }
+    }
+
+    nonisolated private static func localizedInstruction(
+        for instruction: RoomCaptureSession.Instruction
+    ) -> String? {
+        switch instruction {
+        case .moveCloseToWall:
+            String(localized: "scanning.instruction.move_closer_to_wall")
+        case .moveAwayFromWall:
+            String(localized: "scanning.instruction.move_away_from_wall")
+        case .slowDown:
+            String(localized: "scanning.instruction.slow_down")
+        case .turnOnLight:
+            String(localized: "scanning.instruction.turn_on_light")
+        case .lowTexture:
+            String(localized: "scanning.instruction.low_texture")
+        case .normal:
+            nil
+        default:
+            nil
+        }
     }
 
     nonisolated func captureSession(_ session: RoomCaptureSession, didEndWith data: CapturedRoomData, error: (any Error)?) {

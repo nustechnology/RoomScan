@@ -110,9 +110,9 @@ final class CameraScanViewModelTests: XCTestCase {
     }
 
     func testStorageFull_setsErrorState() async {
-        mockCaptureService.setStorageFullForTesting(true)
-        try? await Task.sleep(nanoseconds: 20_000_000)
         viewModel.startScanning()
+        mockCaptureService.setStorageFullForTesting(true)
+        try? await Task.sleep(nanoseconds: 50_000_000)
 
         XCTAssertTrue(viewModel.isStorageFull)
         XCTAssertNotNil(viewModel.errorMessage)

@@ -3,8 +3,8 @@
 //  roomscan
 //
 
-import Foundation
 import Combine
+import Foundation
 
 @MainActor
 final class ReviewScanViewModel: ObservableObject {
@@ -169,7 +169,6 @@ final class ReviewScanViewModel: ObservableObject {
             self.scanNameError = String(localized: "review.error.duplicate_name")
             return nil
         } catch {
-            storageService.deleteScanFiles(scanID: draft.id)
             saveErrorMessage = String(localized: "review.error.save_failed")
             return nil
         }

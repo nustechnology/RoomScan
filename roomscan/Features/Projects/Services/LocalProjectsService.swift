@@ -170,6 +170,115 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
         return scan
     }
 
+    func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw ProjectsServiceError.invalidName
+        }
+        guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else {
+            throw ProjectsServiceError.projectNotFound
+        }
+        guard let scanIndex = projects[projectIndex].roomScans.firstIndex(where: { $0.id == scanID }) else {
+            throw ProjectsServiceError.notFound
+        }
+
+        let project = projects[projectIndex]
+        let existing = project.roomScans[scanIndex]
+        var scans = project.roomScans
+        let updated = RoomScanSummary(
+            id: existing.id,
+            name: trimmedName,
+            createdAt: existing.createdAt,
+            localModelURL: existing.localModelURL,
+            thumbnailName: existing.thumbnailName,
+            syncStatus: existing.syncStatus,
+            creatorUserID: existing.creatorUserID,
+            creatorDisplayName: existing.creatorDisplayName,
+            notes: existing.notes,
+            meshPath: existing.meshPath,
+            thumbnailPath: existing.thumbnailPath
+        )
+        scans[scanIndex] = updated
+        projects[projectIndex] = ProjectSummary(
+            id: project.id,
+            name: project.name,
+            ownerName: project.ownerName,
+            createdAt: project.createdAt,
+            updatedAt: Date(),
+            description: project.description,
+            sharedUserCount: project.sharedUserCount,
+            roomScans: scans
+        )
+        projects.sort { $0.updatedAt > $1.updatedAt }
+        try persist()
+        return updated
+    }
+
+    func deleteScan(projectID: String, scanID: String) async throws {
+        guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else {
+            throw ProjectsServiceError.projectNotFound
+        }
+        guard let scanIndex = projects[projectIndex].roomScans.firstIndex(where: { $0.id == scanID }) else {
+            throw ProjectsServiceError.notFound
+        }
+
+        let project = projects[projectIndex]
+        var scans = project.roomScans
+        scans.remove(at: scanIndex)
+        projects[projectIndex] = ProjectSummary(
+            id: project.id,
+            name: project.name,
+            ownerName: project.ownerName,
+            createdAt: project.createdAt,
+            updatedAt: Date(),
+            description: project.description,
+            sharedUserCount: project.sharedUserCount,
+            roomScans: scans
+        )
+        projects.sort { $0.updatedAt > $1.updatedAt }
+        try persist()
+    }
+
+    func retryScanUpload(projectID: String, scanID: String) async throws -> RoomScanSummary {
+        guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else {
+            throw ProjectsServiceError.projectNotFound
+        }
+        guard let scanIndex = projects[projectIndex].roomScans.firstIndex(where: { $0.id == scanID }) else {
+            throw ProjectsServiceError.notFound
+        }
+
+        let project = projects[projectIndex]
+        let existing = project.roomScans[scanIndex]
+        var scans = project.roomScans
+        let updated = RoomScanSummary(
+            id: existing.id,
+            name: existing.name,
+            createdAt: existing.createdAt,
+            localModelURL: existing.localModelURL,
+            thumbnailName: existing.thumbnailName,
+            syncStatus: .pending,
+            creatorUserID: existing.creatorUserID,
+            creatorDisplayName: existing.creatorDisplayName,
+            notes: existing.notes,
+            meshPath: existing.meshPath,
+            thumbnailPath: existing.thumbnailPath
+        )
+        scans[scanIndex] = updated
+        projects[projectIndex] = ProjectSummary(
+            id: project.id,
+            name: project.name,
+            ownerName: project.ownerName,
+            createdAt: project.createdAt,
+            updatedAt: Date(),
+            description: project.description,
+            sharedUserCount: project.sharedUserCount,
+            roomScans: scans
+        )
+        projects.sort { $0.updatedAt > $1.updatedAt }
+        try persist()
+        return updated
+    }
+
     private func persist() throws {
         try Self.persist(projects: projects, to: storeURL)
     }

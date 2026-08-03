@@ -8,6 +8,7 @@ import SwiftUI
 struct CameraScanView: View {
     @StateObject var viewModel: CameraScanViewModel
     @State private var showingInfoSheet = false
+    @Environment(\.scenePhase) private var scenePhase
     let onFinish: (RoomScanDraft) -> Void
     let onCancel: () -> Void
 
@@ -59,20 +60,53 @@ struct CameraScanView: View {
                 .padding(.top, 12)
 
                 // Guidance Toast
-                HStack {
-                    Spacer()
-                    Text(String(localized: "scanning.toast.guidance"))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                        .background(Color.black.opacity(0.75))
-                        .cornerRadius(16)
-                    Spacer()
+                VStack(spacing: 8) {
+                    HStack {
+                        Spacer()
+                        Text(String(localized: "scanning.toast.guidance"))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .background(Color.black.opacity(0.75))
+                            .cornerRadius(16)
+                        Spacer()
+                    }
+
+                    // Realtime RoomPlan instruction
+                    if let instruction = viewModel.currentInstruction, !viewModel.isPaused {
+                        HStack {
+                            Spacer()
+                            Text(instruction)
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(Color.black.opacity(0.6))
+                                .cornerRadius(12)
+                            Spacer()
+                        }
+                    }
                 }
                 .padding(.top, 16)
 
                 Spacer()
+
+                // Paused Overlay
+                if viewModel.isPaused {
+                    VStack(spacing: 8) {
+                        Image(systemName: "pause.circle.fill")
+                            .font(.system(size: 40))
+                        Text(String(localized: "scanning.paused_message"))
+                            .font(.headline)
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 16)
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(16)
+                    .padding(.bottom, 20)
+                }
 
                 // Loading Overlay if processing finish
                 if viewModel.isProcessingFinish {
@@ -105,43 +139,58 @@ struct CameraScanView: View {
                     }
                     .accessibilityIdentifier("scanning.cancelButton")
 
-                    Spacer()
+                Spacer()
 
-                    // Center Shutter/Record Button Graphic (Decorative)
-                    ZStack {
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: 68, height: 68)
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color.blue)
-                            .frame(width: 32, height: 32)
-                    }
-                    .accessibilityHidden(true)
+                // Pause/Resume Button
+                Button {
+                    viewModel.togglePause()
+                } label: {
+                    Image(systemName: viewModel.isPaused ? "play.circle.fill" : "pause.circle.fill")
+                        .font(.system(size: 44))
+                        .foregroundColor(.white)
+                        .background(Color.black.opacity(0.5))
+                        .clipShape(Circle())
+                }
+                .disabled(viewModel.isProcessingFinish)
+                .accessibilityIdentifier("scanning.pauseResumeButton")
+                .accessibilityLabel(
+                    viewModel.isPaused
+                        ? String(localized: "scanning.pause.resume")
+                        : String(localized: "scanning.pause.pause")
+                )
 
-                    Spacer()
+                Spacer()
 
-                    // Finish Button
-                    Button {
-                        print("[RoomScan STEP 1] Finish button tapped in CameraScanView")
-                        Task {
-                            if let draft = await viewModel.finishScan() {
-                                print("[RoomScan STEP 5] finishScan completed, calling onFinish(draft)...")
-                                onFinish(draft)
-                            } else {
-                                print("[RoomScan STEP 5-ERROR] finishScan returned nil!")
-                            }
+                // Finish Button
+                Button {
+                    print("[RoomScan STEP 1] Finish button tapped in CameraScanView")
+                    Task {
+                        if let draft = await viewModel.finishScan() {
+                            print("[RoomScan STEP 5] finishScan completed, calling onFinish(draft)...")
+                            onFinish(draft)
+                        } else {
+                            print("[RoomScan STEP 5-ERROR] finishScan returned nil!")
                         }
-                    } label: {
-                        Text(String(localized: "scanning.action.finish"))
-                            .font(.body.weight(.semibold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 14)
-                            .background(viewModel.hasMinimalStructure ? Color.blue : Color.blue.opacity(0.4))
-                            .cornerRadius(30)
                     }
-                    .disabled(!viewModel.hasMinimalStructure || viewModel.isProcessingFinish)
-                    .accessibilityIdentifier("scanning.finishButton")
+                } label: {
+                    Text(String(localized: "scanning.action.finish"))
+                        .font(.body.weight(.semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 14)
+                        .background(
+                            viewModel.hasMinimalStructure && !viewModel.isPaused
+                                ? Color.blue
+                                : Color.blue.opacity(0.4)
+                        )
+                        .cornerRadius(30)
+                }
+                .disabled(
+                    !viewModel.hasMinimalStructure
+                        || viewModel.isPaused
+                        || viewModel.isProcessingFinish
+                )
+                .accessibilityIdentifier("scanning.finishButton")
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 34)
@@ -153,6 +202,13 @@ struct CameraScanView: View {
         }
         .onDisappear {
             viewModel.stopScanning()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background {
+                if viewModel.isScanning && !viewModel.isPaused {
+                    viewModel.togglePause()
+                }
+            }
         }
         .confirmationDialog(
             String(localized: "scanning.cancel.title"),
@@ -174,8 +230,11 @@ struct CameraScanView: View {
                 set: { _ in }
             )
         ) {
-            Button(String(localized: "common.action.ok"), role: .cancel) {
+            Button(String(localized: "scanning.storage_full.exit"), role: .cancel) {
                 onCancel()
+            }
+            Button(String(localized: "scanning.storage_full.retry")) {
+                viewModel.retryAfterStorageFull()
             }
         } message: {
             Text(viewModel.errorMessage ?? String(localized: "scanning.error.storage_full"))
@@ -229,14 +288,14 @@ struct ScanningGridOverlayView: View {
                 let cellW = geo.size.width / CGFloat(cols)
                 let cellH = geo.size.height / CGFloat(rows)
 
-                for i in 0...cols {
-                    let x = CGFloat(i) * cellW
+                for column in 0...cols {
+                    let x = CGFloat(column) * cellW
                     path.move(to: CGPoint(x: x, y: 0))
                     path.addLine(to: CGPoint(x: x, y: geo.size.height))
                 }
 
-                for j in 0...rows {
-                    let y = CGFloat(j) * cellH
+                for row in 0...rows {
+                    let y = CGFloat(row) * cellH
                     path.move(to: CGPoint(x: 0, y: y))
                     path.addLine(to: CGPoint(x: geo.size.width, y: y))
                 }

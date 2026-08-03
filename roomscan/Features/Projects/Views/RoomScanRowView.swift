@@ -13,7 +13,7 @@ struct RoomScanRowView: View {
     var body: some View {
         Button(action: onTap) {
             HStack(alignment: .top, spacing: 14) {
-                ThumbnailView()
+                ThumbnailView(thumbnailPath: scan.thumbnailPath)
                     .frame(width: 104, height: 82)
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -72,12 +72,35 @@ private enum RoomScanRowPresentation {
 }
 
 private struct ThumbnailView: View {
+    let thumbnailPath: String
+
+    @State private var loadedImage: UIImage?
+
     var body: some View {
-        Image("ScanThumbnail")
-            .resizable()
-            .scaledToFill()
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .accessibilityHidden(true)
+        Group {
+            if let loadedImage {
+                Image(uiImage: loadedImage)
+                    .resizable()
+                    .scaledToFill()
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                Image("ScanThumbnail")
+                    .resizable()
+                    .scaledToFill()
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+        }
+        .accessibilityHidden(true)
+        .task(id: thumbnailPath) {
+            loadedImage = Self.loadThumbnail(from: thumbnailPath)
+        }
+    }
+
+    private static func loadThumbnail(from relativePath: String) -> UIImage? {
+        guard !relativePath.isEmpty else { return nil }
+        let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let url = documentsDir.appendingPathComponent(relativePath)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return UIImage(contentsOfFile: url.path)
     }
 }
-

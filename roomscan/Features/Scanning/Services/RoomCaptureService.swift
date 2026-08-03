@@ -3,8 +3,8 @@
 //  roomscan
 //
 
-import Foundation
 import Combine
+import Foundation
 import UIKit
 
 @MainActor
@@ -12,9 +12,11 @@ protocol RoomCaptureService: AnyObject {
     var isScanning: Bool { get }
     var hasMinimalStructure: Bool { get }
     var isStorageFull: Bool { get }
+    var currentInstruction: String? { get }
 
     var minimalStructurePublisher: AnyPublisher<Bool, Never> { get }
     var storageFullPublisher: AnyPublisher<Bool, Never> { get }
+    var instructionPublisher: AnyPublisher<String?, Never> { get }
 
     func startSession()
     func pauseSession()
@@ -28,6 +30,7 @@ final class MockRoomCaptureService: RoomCaptureService {
     @Published private(set) var isScanning: Bool = false
     @Published private(set) var hasMinimalStructure: Bool = false
     @Published private(set) var isStorageFull: Bool = false
+    @Published private(set) var currentInstruction: String?
 
     private let simulateStructureDelay: TimeInterval
     private var timer: Timer?
@@ -38,6 +41,10 @@ final class MockRoomCaptureService: RoomCaptureService {
 
     var storageFullPublisher: AnyPublisher<Bool, Never> {
         $isStorageFull.eraseToAnyPublisher()
+    }
+
+    var instructionPublisher: AnyPublisher<String?, Never> {
+        $currentInstruction.eraseToAnyPublisher()
     }
 
     private let storageService: ScanStorageService?
@@ -109,7 +116,7 @@ final class MockRoomCaptureService: RoomCaptureService {
         let thumbnailURL = draftDirectory.appendingPathComponent("thumbnail.jpg")
 
         // Create empty mock files
-        let dummyMeshContent = "Mock USDZ Data".data(using: .utf8) ?? Data()
+        let dummyMeshContent = Data("Mock USDZ Data".utf8)
         let dummyThumbContent = UIGraphicsImageRenderer(size: CGSize(width: 640, height: 480))
             .jpegData(withCompressionQuality: 0.82) { context in
                 UIColor.systemGray5.setFill()

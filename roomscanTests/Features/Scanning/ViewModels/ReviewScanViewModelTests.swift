@@ -171,6 +171,9 @@ private actor FailingProjectsService: ProjectsService {
     func deleteProject(id: String) async throws { throw ProjectsServiceError.network }
     func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool { false }
     func saveScan(draft: RoomScanDraft, name: String, projectID: String) async throws -> RoomScanSummary { throw ProjectsServiceError.network }
+    func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary { throw ProjectsServiceError.network }
+    func deleteScan(projectID: String, scanID: String) async throws { throw ProjectsServiceError.network }
+    func retryScanUpload(projectID: String, scanID: String) async throws -> RoomScanSummary { throw ProjectsServiceError.network }
 }
 
 private final class FailingScanStorageService: ScanStorageService, @unchecked Sendable {
