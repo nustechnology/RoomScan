@@ -176,6 +176,199 @@ struct ProjectsViewModelTests {
         #expect(viewModel.showsExpandControl(for: makeProject(index: 2, scanCount: 4)))
     }
 
+    @Test func searchTrimsWhitespaceBeforeFiltering() async {
+        let viewModel = ProjectsViewModel(
+            service: TestProjectsService(projects: makeSearchProjects(), preservesProjectOrder: true)
+        )
+
+        await viewModel.loadInitialProjects()
+        viewModel.updateSearchQuery("  alpha  ")
+        await viewModel.waitForSearchLoading()
+
+        #expect(viewModel.trimmedSearchQuery == "alpha")
+        #expect(viewModel.visibleProjects.map(\.project.id) == ["project-1"])
+    }
+
+    @Test func searchMatchesProjectNames() async {
+        let viewModel = ProjectsViewModel(
+            service: TestProjectsService(projects: makeSearchProjects(), preservesProjectOrder: true)
+        )
+
+        await viewModel.loadInitialProjects()
+        viewModel.updateSearchQuery("beta")
+        await viewModel.waitForSearchLoading()
+
+        #expect(viewModel.visibleProjects.map(\.project.id) == ["project-2"])
+    }
+
+    @Test func searchMatchesRoomNames() async {
+        let viewModel = ProjectsViewModel(
+            service: TestProjectsService(projects: makeSearchProjects(), preservesProjectOrder: true)
+        )
+
+        await viewModel.loadInitialProjects()
+        viewModel.updateSearchQuery("kitchen")
+        await viewModel.waitForSearchLoading()
+
+        #expect(viewModel.visibleProjects.map(\.project.id) == ["project-1"])
+        #expect(viewModel.visibleProjects.first?.roomScans.map(\.name) == ["Kitchen"])
+    }
+
+    @Test func applyUpdatedScanRefreshesActiveSearchResultsFromAllProjects() async {
+        let searchProjects = makeSearchProjects() + [makeProject(index: 4, scanCount: 1)]
+        let viewModel = ProjectsViewModel(
+            service: TestProjectsService(projects: searchProjects, preservesProjectOrder: true)
+        )
+
+        await viewModel.loadInitialProjects()
+        viewModel.updateSearchQuery("bedroom")
+        await viewModel.waitForSearchLoading()
+
+        let updatedScan = makeScan(projectIndex: 3, scanIndex: 1, name: "Bedroom Deluxe")
+        viewModel.applyUpdatedScan(projectID: "project-3", scan: updatedScan)
+
+        #expect(viewModel.visibleProjects.map(\.project.id) == ["project-3"])
+        #expect(viewModel.visibleProjects.first?.roomScans.map(\.name) == ["Bedroom Deluxe"])
+    }
+
+    @Test func applyDeletedScanRemovesActiveSearchResultBackedOnlyByAllProjects() async {
+        let searchProjects = makeSearchProjects() + [
+            ProjectSummary(
+                id: "project-4",
+                name: "Delta",
+                ownerName: "You",
+                createdAt: Date(timeIntervalSince1970: 50),
+                updatedAt: Date(timeIntervalSince1970: 50),
+                description: "",
+                sharedUserCount: 2,
+                roomScans: [makeScan(projectIndex: 4, scanIndex: 1, name: "Attic")]
+            ),
+            makeProject(index: 5, scanCount: 1),
+            makeProject(index: 6, scanCount: 1)
+        ]
+        let viewModel = ProjectsViewModel(
+            service: TestProjectsService(projects: searchProjects, preservesProjectOrder: true)
+        )
+
+        await viewModel.loadInitialProjects()
+        viewModel.updateSearchQuery("attic")
+        await viewModel.waitForSearchLoading()
+
+        viewModel.applyDeletedScan(projectID: "project-4", scanID: "project-4-scan-1")
+
+        #expect(viewModel.visibleProjects.isEmpty)
+    }
+
+    @Test func clearingSearchRestoresDefaultVisibleProjects() async {
+        let viewModel = ProjectsViewModel(
+            service: TestProjectsService(projects: makeSearchProjects(), preservesProjectOrder: true)
+        )
+
+        await viewModel.loadInitialProjects()
+        viewModel.updateSearchQuery("beta")
+        await viewModel.waitForSearchLoading()
+        viewModel.updateSearchQuery("")
+
+        #expect(!viewModel.hasActiveSearch)
+        #expect(viewModel.visibleProjects.map(\.project.id) == ["project-1", "project-2", "project-3"])
+    }
+
+    @Test func refreshWhileSearchIsActiveReloadsCompleteDatasetForSearchResults() async {
+        let projects = makeSearchProjects() + [
+            ProjectSummary(
+                id: "project-4",
+                name: "Delta",
+                ownerName: "You",
+                createdAt: Date(timeIntervalSince1970: 50),
+                updatedAt: Date(timeIntervalSince1970: 50),
+                description: "",
+                sharedUserCount: 2,
+                roomScans: [makeScan(projectIndex: 4, scanIndex: 1, name: "Attic")]
+            ),
+            makeProject(index: 5, scanCount: 1),
+            makeProject(index: 6, scanCount: 1)
+        ]
+        let viewModel = ProjectsViewModel(
+            service: TestProjectsService(projects: projects, preservesProjectOrder: true)
+        )
+
+        await viewModel.loadInitialProjects()
+        viewModel.updateSearchQuery("attic")
+        await viewModel.waitForSearchLoading()
+
+        #expect(viewModel.visibleProjects.map(\.project.id) == ["project-4"])
+
+        await viewModel.refreshProjects()
+
+        #expect(viewModel.hasActiveSearch)
+        #expect(viewModel.visibleProjects.map(\.project.id) == ["project-4"])
+        #expect(viewModel.visibleProjects.first?.roomScans.map(\.name) == ["Attic"])
+    }
+
+    @Test func refreshDuringInFlightSearchLoadRestartsCompleteDatasetFetch() async {
+        let projects = [
+            makeProject(index: 1, scanCount: 1),
+            makeProject(index: 2, scanCount: 1),
+            makeProject(index: 3, scanCount: 1),
+            makeProject(index: 4, scanCount: 1),
+            makeProject(index: 5, scanCount: 1),
+            ProjectSummary(
+                id: "project-6",
+                name: "Zeta",
+                ownerName: "You",
+                createdAt: Date(timeIntervalSince1970: 10),
+                updatedAt: Date(timeIntervalSince1970: 10),
+                description: "",
+                sharedUserCount: 2,
+                roomScans: [makeScan(projectIndex: 6, scanIndex: 1, name: "Attic")]
+            )
+        ]
+        let service = TestProjectsService(
+            projects: projects,
+            delayedPages: [2: 100_000_000],
+            preservesProjectOrder: true
+        )
+        let viewModel = ProjectsViewModel(service: service)
+
+        await viewModel.loadInitialProjects()
+        viewModel.updateSearchQuery("attic")
+
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        await viewModel.refreshProjects()
+        await viewModel.waitForSearchLoading()
+
+        #expect(viewModel.hasActiveSearch)
+        #expect(viewModel.visibleProjects.map(\.project.id) == ["project-6"])
+        #expect(viewModel.visibleProjects.first?.roomScans.map(\.name) == ["Attic"])
+        #expect(await service.requests == [
+            PageRequest(page: 1, pageSize: 5),
+            PageRequest(page: 2, pageSize: 5),
+            PageRequest(page: 1, pageSize: 5),
+            PageRequest(page: 2, pageSize: 5)
+        ])
+    }
+
+    @Test func rapidSearchQueryUpdatesTriggerSingleCompleteDatasetLoad() async {
+        let service = TestProjectsService(
+            projects: makeProjects(count: 12),
+            delayedPages: [2: 100_000_000]
+        )
+        let viewModel = ProjectsViewModel(service: service)
+
+        await viewModel.loadInitialProjects()
+
+        viewModel.updateSearchQuery("project")
+        viewModel.updateSearchQuery("project 1")
+        viewModel.updateSearchQuery("project 12")
+        await viewModel.waitForSearchLoading()
+
+        #expect(await service.requests == [
+            PageRequest(page: 1, pageSize: 5),
+            PageRequest(page: 2, pageSize: 5),
+            PageRequest(page: 3, pageSize: 5)
+        ])
+    }
+
     @Test func updateProjectReplacesItemAndSortsByUpdatedAt() async {
         let service = TestProjectsService(projects: makeProjects(count: 5))
         let viewModel = ProjectsViewModel(service: service)
@@ -276,8 +469,47 @@ struct ProjectsViewModelTests {
         (1...count).map { makeProject(index: $0, scanCount: 5) }
     }
 
+    private func makeSearchProjects() -> [ProjectSummary] {
+        [
+            ProjectSummary(
+                id: "project-1",
+                name: "Alpha",
+                ownerName: "You",
+                createdAt: Date(timeIntervalSince1970: 300),
+                updatedAt: Date(timeIntervalSince1970: 300),
+                description: "",
+                sharedUserCount: 2,
+                roomScans: [makeScan(projectIndex: 1, scanIndex: 1, name: "Kitchen")]
+            ),
+            ProjectSummary(
+                id: "project-2",
+                name: "Beta",
+                ownerName: "You",
+                createdAt: Date(timeIntervalSince1970: 200),
+                updatedAt: Date(timeIntervalSince1970: 200),
+                description: "",
+                sharedUserCount: 2,
+                roomScans: [makeScan(projectIndex: 2, scanIndex: 1, name: "Office")]
+            ),
+            ProjectSummary(
+                id: "project-3",
+                name: "Gamma",
+                ownerName: "You",
+                createdAt: Date(timeIntervalSince1970: 100),
+                updatedAt: Date(timeIntervalSince1970: 100),
+                description: "",
+                sharedUserCount: 2,
+                roomScans: [makeScan(projectIndex: 3, scanIndex: 1, name: "Bedroom")]
+            )
+        ]
+    }
+
     private func makeProject(index: Int, scanCount: Int) -> ProjectSummary {
-        ProjectSummary(
+        let roomScans = scanCount > 0
+            ? (1...scanCount).map { makeScan(projectIndex: index, scanIndex: $0, name: "Room \($0)") }
+            : []
+
+        return ProjectSummary(
             id: "project-\(index)",
             name: "Project \(index)",
             ownerName: "You",
@@ -285,7 +517,7 @@ struct ProjectsViewModelTests {
             updatedAt: Date(timeIntervalSince1970: TimeInterval(10_000 - index)),
             description: "Description \(index)",
             sharedUserCount: 2,
-            roomScans: makeScans(projectIndex: index, count: scanCount)
+            roomScans: roomScans
         )
     }
 
@@ -293,18 +525,22 @@ struct ProjectsViewModelTests {
         guard count > 0 else { return [] }
 
         return (1...count).map {
-            RoomScanSummary(
-                id: "project-\(projectIndex)-scan-\($0)",
-                name: "Room \($0)",
-                createdAt: Date(timeIntervalSince1970: TimeInterval(1_000 - $0)),
-                localModelURL: nil,
-                thumbnailName: "thumbnail-\($0)",
-                syncStatus: .synced,
-                creatorUserID: AuthenticationSession.mockAppleUser.user.id,
-                creatorDisplayName: "Mock Apple User",
-                notes: []
-            )
+            makeScan(projectIndex: projectIndex, scanIndex: $0, name: "Room \($0)")
         }
+    }
+
+    private func makeScan(projectIndex: Int, scanIndex: Int, name: String) -> RoomScanSummary {
+        RoomScanSummary(
+            id: "project-\(projectIndex)-scan-\(scanIndex)",
+            name: name,
+            createdAt: Date(timeIntervalSince1970: TimeInterval(1_000 - scanIndex)),
+            localModelURL: nil,
+            thumbnailName: "thumbnail-\(scanIndex)",
+            syncStatus: .synced,
+            creatorUserID: AuthenticationSession.mockAppleUser.user.id,
+            creatorDisplayName: "Mock Apple User",
+            notes: []
+        )
     }
 }
 

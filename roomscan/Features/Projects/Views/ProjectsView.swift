@@ -17,6 +17,7 @@ struct ProjectsView: View {
     @State private var projectToEdit: ProjectSummary?
     @State private var projectPendingDelete: ProjectSummary?
     @State private var navigationPath = NavigationPath()
+    @FocusState private var isSearchFocused: Bool
 
     init(
         viewModel: ProjectsViewModel,
@@ -112,42 +113,41 @@ struct ProjectsView: View {
                         RefreshingBannerView()
                     }
 
-                    ProjectsControlsView(onNewScan: { showsScanCheck = true })
+                    SearchBarView(
+                        searchQuery: Binding(
+                            get: { viewModel.searchQuery },
+                            set: { query in
+                                viewModel.updateSearchQuery(query)
+                            }
+                        ),
+                        isSearchFocused: $isSearchFocused
+                    )
 
-                    ForEach(viewModel.projects) { project in
-                        ProjectCardView(
-                            project: project,
-                            visibleRoomScans: viewModel.visibleRoomScans(for: project),
-                            isExpanded: viewModel.isExpanded(project.id),
-                            showsExpandControl: viewModel.showsExpandControl(for: project),
-                            onProjectTap: {
-                                selectedProject = project
-                            },
-                            onToggleExpansion: {
-                                viewModel.toggleExpansion(for: project.id)
-                            },
-                            onRoomTap: { scan in
+                    ProjectsContentSection(
+                        viewModel: viewModel,
+                        onNewScan: { showsScanCheck = true },
+                        onProjectTap: { project in
+                            selectedProject = project
+                        },
+                        onRoomTap: { scan in
+                            if let project = viewModel.visibleProjects.first(where: {
+                                $0.roomScans.contains(where: { $0.id == scan.id })
+                            })?.project {
                                 navigationPath.append(
                                     ScanDetailDestination(projectID: project.id, scan: scan)
                                 )
-                            },
-                            onEdit: {
-                                projectToEdit = project
-                            },
-                            onDelete: {
-                                projectPendingDelete = project
                             }
-                        )
-                        .onAppear {
-                            Task {
-                                await viewModel.loadNextPageIfNeeded(currentProjectID: project.id)
-                            }
+                        },
+                        onToggleExpansion: { projectID in
+                            viewModel.toggleExpansion(for: projectID)
+                        },
+                        onEdit: { project in
+                            projectToEdit = project
+                        },
+                        onDelete: { project in
+                            projectPendingDelete = project
                         }
-                    }
-
-                    if viewModel.isLoadingNextPage {
-                        LoadingMoreFooterView()
-                    }
+                    )
                 }
                 .padding(.vertical, 16)
                 .padding(.horizontal, 24)
@@ -235,6 +235,7 @@ private struct ProjectsPresentationModifier: ViewModifier {
                     viewModel.dismissActionErrorToast()
                 }
             }
+            .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
     private func scanDetailView(for destination: ScanDetailDestination) -> some View {
@@ -337,13 +338,17 @@ private struct LoadingMoreFooterView: View {
     }
 }
 
-private struct ProjectsControlsView: View {
+private struct ProjectsContentSection: View {
+    let viewModel: ProjectsViewModel
     let onNewScan: () -> Void
+    let onProjectTap: (ProjectSummary) -> Void
+    let onRoomTap: (RoomScanSummary) -> Void
+    let onToggleExpansion: (ProjectSummary.ID) -> Void
+    let onEdit: (ProjectSummary) -> Void
+    let onDelete: (ProjectSummary) -> Void
 
     var body: some View {
         VStack(spacing: 16) {
-            SearchPlaceholderView()
-
             PrimaryActionButton(
                 title: String(localized: "home.newScan"),
                 systemImageName: "plus",
@@ -352,11 +357,51 @@ private struct ProjectsControlsView: View {
                 accessibilityIdentifier: "home.newScan"
             )
             .padding(.bottom, 6)
+
+            if viewModel.showsSearchEmptyState {
+                SearchEmptyStateView(query: viewModel.trimmedSearchQuery)
+            }
+
+            ForEach(viewModel.visibleProjects) { visibleProject in
+                ProjectCardView(
+                    project: visibleProject.project,
+                    visibleRoomScans: visibleProject.roomScans,
+                    isExpanded: viewModel.isExpanded(visibleProject.project.id),
+                    showsExpandControl: !viewModel.hasActiveSearch
+                        && viewModel.showsExpandControl(for: visibleProject.project),
+                    searchQuery: viewModel.trimmedSearchQuery,
+                    onProjectTap: {
+                        onProjectTap(visibleProject.project)
+                    },
+                    onToggleExpansion: {
+                        onToggleExpansion(visibleProject.project.id)
+                    },
+                    onRoomTap: onRoomTap,
+                    onEdit: {
+                        onEdit(visibleProject.project)
+                    },
+                    onDelete: {
+                        onDelete(visibleProject.project)
+                    }
+                )
+                .onAppear {
+                    Task {
+                        await viewModel.loadNextPageIfNeeded(currentProjectID: visibleProject.project.id)
+                    }
+                }
+            }
+
+            if viewModel.isLoadingNextPage && !viewModel.hasActiveSearch {
+                LoadingMoreFooterView()
+            }
         }
     }
 }
 
-private struct SearchPlaceholderView: View {
+private struct SearchBarView: View {
+    @Binding var searchQuery: String
+    let isSearchFocused: FocusState<Bool>.Binding
+
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
@@ -364,9 +409,26 @@ private struct SearchPlaceholderView: View {
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
 
-            Text("home.search.placeholder")
+            TextField("Search projects", text: $searchQuery)
                 .font(.body)
-                .foregroundStyle(.secondary)
+                .focused(isSearchFocused)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("projects.search.input")
+
+            if !searchQuery.isEmpty {
+                Button {
+                    searchQuery = ""
+                    isSearchFocused.wrappedValue = true
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+                .accessibilityIdentifier("projects.search.clear")
+            }
 
             Spacer()
         }
@@ -374,8 +436,23 @@ private struct SearchPlaceholderView: View {
         .frame(height: 48)
         .background(.quaternary.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: 8))
-        .accessibilityLabel(String(localized: "home.search.placeholder"))
-        .accessibilityIdentifier("home.search")
+        .contentShape(RoundedRectangle(cornerRadius: 8))
+        .onTapGesture {
+            isSearchFocused.wrappedValue = true
+        }
+        .accessibilityIdentifier("projects.search")
+    }
+}
+
+private struct SearchEmptyStateView: View {
+    let query: String
+
+    var body: some View {
+        ContentUnavailableView(
+            "No results found for \"\(query)\"",
+            systemImage: "magnifyingglass"
+        )
+        .accessibilityIdentifier("projects.search.emptyState")
     }
 }
 

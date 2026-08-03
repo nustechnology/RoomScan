@@ -10,6 +10,7 @@ struct ProjectCardView: View {
     let visibleRoomScans: [RoomScanSummary]
     let isExpanded: Bool
     let showsExpandControl: Bool
+    var searchQuery: String = ""
     let onProjectTap: () -> Void
     let onToggleExpansion: () -> Void
     let onRoomTap: (RoomScanSummary) -> Void
@@ -48,7 +49,7 @@ struct ProjectCardView: View {
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(project.name)
+                highlightedText(project.name, query: searchQuery)
                     .font(.title2.bold())
                     .lineLimit(1)
                     .accessibilityIdentifier("projects.card.title.\(project.id)")
@@ -78,7 +79,11 @@ struct ProjectCardView: View {
     private var roomScanList: some View {
         VStack(spacing: 10) {
             ForEach(visibleRoomScans) { scan in
-                RoomScanRowView(scan: scan, onTap: { onRoomTap(scan) })
+                RoomScanRowView(
+                    scan: scan,
+                    searchQuery: searchQuery,
+                    onTap: { onRoomTap(scan) }
+                )
             }
         }
     }
@@ -125,4 +130,28 @@ private struct EmptyRoomScansView: View {
             .padding(.vertical, 12)
             .accessibilityIdentifier("projects.card.emptyScans")
     }
+}
+
+func highlightedText(_ text: String, query: String) -> Text {
+    let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedQuery.isEmpty else { return Text(text) }
+
+    let lowercasedText = text.localizedLowercase
+    let lowercasedQuery = trimmedQuery.localizedLowercase
+    guard let range = lowercasedText.range(of: lowercasedQuery) else {
+        return Text(text)
+    }
+
+    let startOffset = lowercasedText.distance(from: lowercasedText.startIndex, to: range.lowerBound)
+    let endOffset = lowercasedText.distance(from: lowercasedText.startIndex, to: range.upperBound)
+    let start = text.index(text.startIndex, offsetBy: startOffset)
+    let end = text.index(text.startIndex, offsetBy: endOffset)
+
+    let prefix = String(text[..<start])
+    let match = String(text[start..<end])
+    let suffix = String(text[end...])
+
+    return Text(prefix)
+        + Text(match).foregroundStyle(.blue)
+        + Text(suffix)
 }
