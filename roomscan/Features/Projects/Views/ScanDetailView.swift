@@ -53,7 +53,7 @@ struct ScanDetailView: View {
                     .foregroundStyle(AppColors.primaryText)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: AppSpacing.small) {
+                if viewModel.allowsOwnerActions {
                     Menu {
                         Button(String(localized: "scanDetail.menu.rename")) {
                             viewModel.beginRename()

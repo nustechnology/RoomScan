@@ -7,8 +7,14 @@ import SwiftUI
 
 struct ProjectDetailView: View {
     let project: ProjectSummary
+    var accessPolicy: DetailAccessPolicy = .editable
+
     @Environment(\.dismiss) private var dismiss
     @State private var viewerInput: ViewerInput?
+
+    private var showsOwnerActions: Bool {
+        ProjectDetailPresentation.showsOwnerActions(for: accessPolicy)
+    }
 
     var body: some View {
         NavigationStack {
@@ -60,30 +66,32 @@ struct ProjectDetailView: View {
                             .stroke(.secondary.opacity(0.35), lineWidth: 1)
                     }
 
-                    VStack(spacing: 12) {
-                        PrimaryActionButton(
-                            title: String(localized: "projects.detail.addScan"),
-                            systemImageName: "plus",
-                            color: .white,
-                            action: {},
-                            foregroundColor: .primary,
-                            borderColor: .secondary.opacity(0.35),
-                            cornerRadius: 16,
-                            accessibilityIdentifier: "projects.detail.addScan"
-                        )
+                    if showsOwnerActions {
+                        VStack(spacing: 12) {
+                            PrimaryActionButton(
+                                title: String(localized: "projects.detail.addScan"),
+                                systemImageName: "plus",
+                                color: .white,
+                                action: {},
+                                foregroundColor: .primary,
+                                borderColor: .secondary.opacity(0.35),
+                                cornerRadius: 16,
+                                accessibilityIdentifier: "projects.detail.addScan"
+                            )
 
-                        PrimaryActionButton(
-                            title: String(localized: "projects.detail.shareProject"),
-                            systemImageName: "square.and.arrow.up",
-                            color: .white,
-                            action: {},
-                            foregroundColor: .primary,
-                            borderColor: .secondary.opacity(0.35),
-                            cornerRadius: 16,
-                            accessibilityIdentifier: "projects.detail.shareProject"
-                        )
+                            PrimaryActionButton(
+                                title: String(localized: "projects.detail.shareProject"),
+                                systemImageName: "square.and.arrow.up",
+                                color: .white,
+                                action: {},
+                                foregroundColor: .primary,
+                                borderColor: .secondary.opacity(0.35),
+                                cornerRadius: 16,
+                                accessibilityIdentifier: "projects.detail.shareProject"
+                            )
+                        }
+                        .padding(.top, 20)
                     }
-                    .padding(.top, 20)
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 18)
@@ -142,9 +150,10 @@ struct ProjectDetailView: View {
             DetailMetadataRow(
                 title: String(localized: "projects.detail.metadata.shared"),
                 value: sharedUserCountText,
-                showsDisclosure: true,
-                accessibilityIdentifier: "projects.detail.metadata.shared"
-            ) {}
+                showsDisclosure: showsOwnerActions,
+                accessibilityIdentifier: "projects.detail.metadata.shared",
+                action: showsOwnerActions ? {} : nil
+            )
             metadataDivider
         }
     }
@@ -169,6 +178,10 @@ struct ProjectDetailView: View {
 }
 
 enum ProjectDetailPresentation {
+    static func showsOwnerActions(for accessPolicy: DetailAccessPolicy) -> Bool {
+        accessPolicy.allowsOwnerActions
+    }
+
     static func createdDateText(for date: Date, locale: Locale = .current) -> String {
         date.formatted(.dateTime.month(.abbreviated).day().year().locale(locale))
     }

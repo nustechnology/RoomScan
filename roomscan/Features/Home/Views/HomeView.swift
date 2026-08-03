@@ -14,10 +14,12 @@ struct HomeView: View {
 
     let session: AuthenticationSession
     let projectsService: any ProjectsService
+    let sharedService: any SharedService
     let onSignOut: () -> Void
 
     @State private var selectedTab: Tab = .projects
     @State private var projectsViewModel: ProjectsViewModel
+    @State private var sharedViewModel: SharedWithMeViewModel
     @State private var showsNewProject = false
     @State private var pendingCreatedProject: ProjectSummary?
     @State private var selectedCreatedProject: ProjectSummary?
@@ -26,13 +28,18 @@ struct HomeView: View {
     init(
         session: AuthenticationSession,
         projectsService: any ProjectsService,
+        sharedService: any SharedService,
         onSignOut: @escaping () -> Void
     ) {
         self.session = session
         self.projectsService = projectsService
+        self.sharedService = sharedService
         self.onSignOut = onSignOut
         _projectsViewModel = State(
             initialValue: ProjectsViewModel(service: projectsService)
+        )
+        _sharedViewModel = State(
+            initialValue: SharedWithMeViewModel(service: sharedService)
         )
     }
 
@@ -42,8 +49,14 @@ struct HomeView: View {
                 HomeHeader(
                     title: selectedTab.headerTitle,
                     showsCreateProjectButton: selectedTab == .projects,
+                    trailingStyle: selectedTab == .share ? .refresh : .settings,
                     onCreateProject: {
                         showsNewProject = true
+                    },
+                    onRefresh: {
+                        Task {
+                            await sharedViewModel.refreshSelectedTab()
+                        }
                     }
                 )
             }
@@ -89,7 +102,11 @@ struct HomeView: View {
                 isShowingDetail: $isShowingProjectsDetail
             )
         case .share:
-            ShareHomeView()
+            SharedWithMeView(
+                viewModel: sharedViewModel,
+                projectsService: projectsService,
+                currentUserID: session.user.id
+            )
         case .account:
             AccountHomeView(session: session, onSignOut: onSignOut)
         }
@@ -158,7 +175,7 @@ extension HomeView.Tab: CaseIterable {
         case .projects:
             return String(localized: "projects.title")
         case .share:
-            return String(localized: "home.share.title")
+            return String(localized: "home.share.headerTitle")
         case .account:
             return String(localized: "account.title")
         }
@@ -169,7 +186,7 @@ extension HomeView.Tab: CaseIterable {
         case .projects:
             return String(localized: "projects.nav.project")
         case .share:
-            return String(localized: "home.share.title")
+            return String(localized: "home.share.nav")
         case .account:
             return String(localized: "account.title")
         }
@@ -199,9 +216,16 @@ extension HomeView.Tab: CaseIterable {
 }
 
 private struct HomeHeader: View {
+    enum TrailingStyle {
+        case settings
+        case refresh
+    }
+
     let title: String
     let showsCreateProjectButton: Bool
+    var trailingStyle: TrailingStyle = .settings
     let onCreateProject: () -> Void
+    var onRefresh: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -223,32 +247,37 @@ private struct HomeHeader: View {
 
             Spacer()
 
-            Button(
-                action: {},
-                label: {
-                    Image(systemName: "gearshape")
-                        .frame(width: 44, height: 44)
-                }
-            )
-            .buttonStyle(.plain)
-            .accessibilityLabel(String(localized: "home.settings.accessibility"))
-            .accessibilityIdentifier("home.settings")
+            switch trailingStyle {
+            case .settings:
+                Button(
+                    action: {},
+                    label: {
+                        Image(systemName: "gearshape")
+                            .frame(width: 44, height: 44)
+                    }
+                )
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "home.settings.accessibility"))
+                .accessibilityIdentifier("home.settings")
+
+            case .refresh:
+                Button(
+                    action: { onRefresh?() },
+                    label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.body.weight(.semibold))
+                            .frame(width: 44, height: 44)
+                    }
+                )
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "shared.refresh.accessibility"))
+                .accessibilityIdentifier("shared.refresh")
+            }
         }
         .padding(.horizontal, 24)
         .padding(.top, 2)
         .padding(.bottom, 4)
         .background(.background)
-    }
-}
-
-private struct ShareHomeView: View {
-    var body: some View {
-        ContentUnavailableView(
-            String(localized: "home.share.title"),
-            systemImage: "square.and.arrow.up",
-            description: Text("home.share.placeholder")
-        )
-        .accessibilityIdentifier("home.share")
     }
 }
 
@@ -289,6 +318,7 @@ private struct AccountHomeView: View {
     HomeView(
         session: .mockAppleUser,
         projectsService: MockProjectsService(simulatedDelayNanoseconds: 0),
+        sharedService: MockSharedService(simulatedDelayNanoseconds: 0),
         onSignOut: {}
     )
 }

@@ -12,6 +12,7 @@ final class ScanDetailViewModel {
     private let service: any ProjectsService
     private let currentUserID: String
     private let projectID: String
+    private let accessPolicy: DetailAccessPolicy
 
     private(set) var scan: RoomScanSummary
     private(set) var showsActionError = false
@@ -24,13 +25,19 @@ final class ScanDetailViewModel {
         projectID: String,
         scan: RoomScanSummary,
         currentUserID: String,
-        service: any ProjectsService
+        service: any ProjectsService,
+        accessPolicy: DetailAccessPolicy = .editable
     ) {
         self.projectID = projectID
         self.scan = scan
         self.currentUserID = currentUserID
         self.service = service
+        self.accessPolicy = accessPolicy
         self.renameDraft = scan.name
+    }
+
+    var allowsOwnerActions: Bool {
+        accessPolicy.allowsOwnerActions
     }
 
     var title: String {
@@ -67,15 +74,18 @@ final class ScanDetailViewModel {
     }
 
     var showsRetryUpload: Bool {
-        scan.syncStatus == .failed
+        allowsOwnerActions && scan.syncStatus == .failed
     }
 
     func beginRename() {
+        guard allowsOwnerActions else { return }
         renameDraft = scan.name
     }
 
     @discardableResult
     func renameScan() async -> Bool {
+        guard allowsOwnerActions else { return false }
+
         let trimmedName = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
             showsActionError = true
@@ -102,6 +112,8 @@ final class ScanDetailViewModel {
 
     @discardableResult
     func deleteScan() async -> Bool {
+        guard allowsOwnerActions else { return false }
+
         isPerformingAction = true
         defer { isPerformingAction = false }
 
@@ -118,7 +130,8 @@ final class ScanDetailViewModel {
 
     @discardableResult
     func retryUpload() async -> Bool {
-        guard showsRetryUpload else { return false }
+        guard allowsOwnerActions else { return false }
+        guard scan.syncStatus == .failed else { return false }
 
         isPerformingAction = true
         defer { isPerformingAction = false }

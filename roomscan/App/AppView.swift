@@ -22,7 +22,8 @@ struct AppView: View {
             case .authenticated(let session):
                 HomeView(
                     session: session,
-                    projectsService: MockProjectsService.makeForCurrentProcess()
+                    projectsService: MockProjectsService.makeForCurrentProcess(),
+                    sharedService: MockSharedService.makeForCurrentProcess()
                 ) {
                     Task {
                         await appState.signOut()

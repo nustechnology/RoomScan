@@ -29,4 +29,11 @@ struct ProjectDetailViewTests {
         #expect(ProjectDetailPresentation.scansTitle(for: 0) == "Scans (0)")
         #expect(ProjectDetailPresentation.scansTitle(for: 4) == "Scans (4)")
     }
+
+    @Test func showsOwnerActionsOnlyForEditableAccessPolicy() {
+        #expect(ProjectDetailPresentation.showsOwnerActions(for: .editable))
+        #expect(ProjectDetailPresentation.showsOwnerActions(for: .readOnly) == false)
+        #expect(DetailAccessPolicy.editable.allowsOwnerActions)
+        #expect(DetailAccessPolicy.readOnly.allowsOwnerActions == false)
+    }
 }
