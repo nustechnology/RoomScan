@@ -3,8 +3,9 @@
 //  roomscanTests
 //
 
-import XCTest
 @testable import roomscan
+import UIKit
+import XCTest
 
 @MainActor
 final class CameraScanViewModelTests: XCTestCase {
@@ -18,6 +19,9 @@ final class CameraScanViewModelTests: XCTestCase {
     }
 
     override func tearDown() async throws {
+        // deinit restores the idle timer in an unawaited Task, so stop explicitly
+        // to keep UIApplication.shared.isIdleTimerDisabled deterministic between tests.
+        viewModel?.stopScanning()
         viewModel = nil
         mockCaptureService = nil
         try await super.tearDown()
@@ -50,10 +54,7 @@ final class CameraScanViewModelTests: XCTestCase {
 
     func testMinimalStructure_enablesFinishButton() async {
         viewModel.startScanning()
-        // Wait for mock service to publish minimal structure
-        try? await Task.sleep(nanoseconds: 50_000_000)
-
-        XCTAssertTrue(viewModel.hasMinimalStructure)
+        await waitUntil { viewModel.hasMinimalStructure }
     }
 
     func testCancelTapped_showsConfirmationModal() {
@@ -81,7 +82,7 @@ final class CameraScanViewModelTests: XCTestCase {
 
     func testFinishScan_returnsDraftAndStopsSession() async {
         viewModel.startScanning()
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        await waitUntil { viewModel.hasMinimalStructure }
 
         let draft = await viewModel.finishScan()
 
@@ -99,7 +100,7 @@ final class CameraScanViewModelTests: XCTestCase {
             storageService: storageService
         )
         contextualViewModel.startScanning()
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        await waitUntil { contextualViewModel.hasMinimalStructure }
 
         let draft = await contextualViewModel.finishScan()
         let recoveredDraft = storageService.loadDraftManifest()
@@ -110,9 +111,9 @@ final class CameraScanViewModelTests: XCTestCase {
     }
 
     func testStorageFull_setsErrorState() async {
-        mockCaptureService.setStorageFullForTesting(true)
-        try? await Task.sleep(nanoseconds: 20_000_000)
         viewModel.startScanning()
+        mockCaptureService.setStorageFullForTesting(true)
+        await waitUntil { viewModel.isStorageFull }
 
         XCTAssertTrue(viewModel.isStorageFull)
         XCTAssertNotNil(viewModel.errorMessage)
@@ -132,7 +133,24 @@ final class CameraScanViewModelTests: XCTestCase {
         delayedViewModel.resumeScanning()
         XCTAssertTrue(delayedService.isScanning)
 
-        try? await Task.sleep(nanoseconds: 150_000_000)
-        XCTAssertTrue(delayedViewModel.hasMinimalStructure)
+        await waitUntil { delayedViewModel.hasMinimalStructure }
+
+        delayedViewModel.stopScanning()
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 2,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ condition: () -> Bool
+    ) async {
+        let start = Date()
+        while !condition() {
+            if Date().timeIntervalSince(start) > timeout {
+                XCTFail("Timed out waiting for condition", file: file, line: line)
+                return
+            }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
     }
 }

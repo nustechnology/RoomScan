@@ -9,6 +9,7 @@ import Foundation
 final class LocalProjectsService: ProjectsService, @unchecked Sendable {
     private var projects: [ProjectSummary]
     private let storeURL: URL
+    private let scanStorageService: ScanStorageService
 
     enum LoadResult {
         case fileNotFound
@@ -16,11 +17,16 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
         case decodeFailed(Error)
     }
 
-    init(fileManager: FileManager = .default, directory: URL? = nil) {
-        let baseDirectory = directory ?? fileManager.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        )[0].appendingPathComponent("RoomScan", isDirectory: true)
+    init(
+        fileManager: FileManager = .default,
+        directory: URL? = nil,
+        scanStorageService: ScanStorageService = LocalScanStorageService()
+    ) {
+        self.scanStorageService = scanStorageService
+        let supportDirectory = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        let baseDirectory = directory
+            ?? supportDirectory.appendingPathComponent("RoomScan", isDirectory: true)
 
         try? fileManager.createDirectory(
             at: baseDirectory,
@@ -31,7 +37,7 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
 
         switch Self.loadProjects(from: url, fileManager: fileManager) {
         case .fileNotFound:
-            let seeds = MockProjectsService.makeSeedProjects()
+            let seeds = Self.initialProjects()
             self.projects = seeds
             try? Self.persist(projects: seeds, to: url)
 
@@ -41,8 +47,16 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
         case .decodeFailed(let error):
             print("[LocalProjectsService ERROR] Corrupted or unreadable projects store at \(url.path): \(error)")
             Self.backupCorruptedFile(at: url, fileManager: fileManager)
-            self.projects = MockProjectsService.makeSeedProjects()
+            self.projects = Self.initialProjects()
         }
+    }
+
+    private static func initialProjects() -> [ProjectSummary] {
+        #if DEBUG
+        return MockProjectsService.makeSeedProjects()
+        #else
+        return []
+        #endif
     }
 
     func fetchProjects(page: Int, pageSize: Int) async throws -> ProjectPage {
@@ -69,7 +83,7 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
 
     func updateProject(id: String, name: String, description: String) async throws -> ProjectSummary {
         guard let index = projects.firstIndex(where: { $0.id == id }) else {
-            throw ProjectsServiceError.notFound
+            throw ProjectsServiceError.projectNotFound
         }
         let existing = projects[index]
         let updated = ProjectSummary(
@@ -89,11 +103,14 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
     }
 
     func deleteProject(id: String) async throws {
-        guard projects.contains(where: { $0.id == id }) else {
-            throw ProjectsServiceError.notFound
+        guard let project = projects.first(where: { $0.id == id }) else {
+            throw ProjectsServiceError.projectNotFound
         }
         projects.removeAll { $0.id == id }
         try persist()
+        for scan in project.roomScans {
+            scanStorageService.deleteScanFiles(scanID: scan.id)
+        }
     }
 
     func createProject(name: String) async throws -> ProjectSummary {
@@ -129,7 +146,8 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
     func saveScan(
         draft: RoomScanDraft,
         name: String,
-        projectID: String
+        projectID: String,
+        meshURL: URL
     ) async throws -> RoomScanSummary {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty, trimmedName.count <= 50 else {
@@ -148,26 +166,98 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
             id: draft.id,
             name: trimmedName,
             createdAt: draft.createdAt,
+            localModelURL: meshURL,
             thumbnailName: "thumbnail.jpg",
             syncStatus: .pending,
             notes: []
         )
         var scans = projects[projectIndex].roomScans
         scans.insert(scan, at: 0)
-        let existing = projects[projectIndex]
-        projects[projectIndex] = ProjectSummary(
-            id: existing.id,
-            name: existing.name,
-            ownerName: existing.ownerName,
-            createdAt: existing.createdAt,
-            updatedAt: Date(),
-            description: existing.description,
-            sharedUserCount: existing.sharedUserCount,
-            roomScans: scans
-        )
+        projects[projectIndex] = projects[projectIndex].withRoomScans(scans)
         projects.sort { $0.updatedAt > $1.updatedAt }
         try persist()
         return scan
+    }
+
+    func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw ProjectsServiceError.invalidScanName
+        }
+        guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else {
+            throw ProjectsServiceError.projectNotFound
+        }
+        let project = projects[projectIndex]
+        guard let existing = project.roomScans.first(where: { $0.id == scanID }) else {
+            throw ProjectsServiceError.notFound
+        }
+
+        let updated = RoomScanSummary(
+            id: existing.id,
+            name: trimmedName,
+            createdAt: existing.createdAt,
+            localModelURL: existing.localModelURL,
+            thumbnailName: existing.thumbnailName,
+            syncStatus: existing.syncStatus,
+            creatorUserID: existing.creatorUserID,
+            creatorDisplayName: existing.creatorDisplayName,
+            notes: existing.notes,
+            meshPath: existing.meshPath,
+            thumbnailPath: existing.thumbnailPath
+        )
+        guard let updatedProject = project.replacingScan(updated) else {
+            throw ProjectsServiceError.notFound
+        }
+        projects[projectIndex] = updatedProject
+        projects.sort { $0.updatedAt > $1.updatedAt }
+        try persist()
+        return updated
+    }
+
+    func deleteScan(projectID: String, scanID: String) async throws {
+        guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else {
+            throw ProjectsServiceError.projectNotFound
+        }
+        let project = projects[projectIndex]
+        guard project.roomScans.contains(where: { $0.id == scanID }) else {
+            throw ProjectsServiceError.notFound
+        }
+
+        projects[projectIndex] = project.removingScan(id: scanID)
+        projects.sort { $0.updatedAt > $1.updatedAt }
+        try persist()
+        scanStorageService.deleteScanFiles(scanID: scanID)
+    }
+
+    func retryScanUpload(projectID: String, scanID: String) async throws -> RoomScanSummary {
+        guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else {
+            throw ProjectsServiceError.projectNotFound
+        }
+        let project = projects[projectIndex]
+        guard let existing = project.roomScans.first(where: { $0.id == scanID }) else {
+            throw ProjectsServiceError.notFound
+        }
+
+        let updated = RoomScanSummary(
+            id: existing.id,
+            name: existing.name,
+            createdAt: existing.createdAt,
+            localModelURL: existing.localModelURL,
+            thumbnailName: existing.thumbnailName,
+            syncStatus: .pending,
+            creatorUserID: existing.creatorUserID,
+            creatorDisplayName: existing.creatorDisplayName,
+            notes: existing.notes,
+            meshPath: existing.meshPath,
+            thumbnailPath: existing.thumbnailPath
+        )
+        guard let updatedProject = project.replacingScan(updated) else {
+            throw ProjectsServiceError.notFound
+        }
+        projects[projectIndex] = updatedProject
+        projects.sort { $0.updatedAt > $1.updatedAt }
+        try persist()
+        return updated
     }
 
     private func persist() throws {

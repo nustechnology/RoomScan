@@ -3,11 +3,12 @@
 //  roomscanTests
 //
 
-import XCTest
 @testable import roomscan
+import XCTest
 
 final class LocalScanStorageServiceTests: XCTestCase {
     private var service: LocalScanStorageService!
+    private var tempDirectoryURL: URL?
     private var tempMeshURL: URL!
     private var tempThumbURL: URL!
 
@@ -17,17 +18,23 @@ final class LocalScanStorageServiceTests: XCTestCase {
 
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        tempDirectoryURL = tempDir
 
         tempMeshURL = tempDir.appendingPathComponent("temp_mesh.usdz")
         tempThumbURL = tempDir.appendingPathComponent("temp_thumb.jpg")
 
-        try "mesh data".data(using: .utf8)?.write(to: tempMeshURL)
-        try "thumb data".data(using: .utf8)?.write(to: tempThumbURL)
+        try Data("mesh data".utf8).write(to: tempMeshURL)
+        try Data("thumb data".utf8).write(to: tempThumbURL)
     }
 
-    override func tearDown() {
+    override func tearDownWithError() throws {
+        service?.clearDraftManifest()
+        if let tempDirectoryURL {
+            try FileManager.default.removeItem(at: tempDirectoryURL)
+        }
+        tempDirectoryURL = nil
         service = nil
-        super.tearDown()
+        try super.tearDownWithError()
     }
 
     func testDraftManifest_saveAndLoad_returnsSavedDraft() throws {
@@ -70,15 +77,14 @@ final class LocalScanStorageServiceTests: XCTestCase {
             thumbnailFileURL: tempThumbURL
         )
         try service.saveDraftManifest(draft)
+        defer {
+            service.deleteScanFiles(scanID: "scan-789")
+        }
 
         let result = try service.persistSavedScan(draft: draft, scanID: "scan-789")
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: result.meshURL.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: result.thumbnailURL.path))
         XCTAssertNotNil(service.loadDraftManifest())
-
-        // Cleanup
-        service.clearDraftManifest()
-        service.deleteScanFiles(scanID: "scan-789")
     }
 }

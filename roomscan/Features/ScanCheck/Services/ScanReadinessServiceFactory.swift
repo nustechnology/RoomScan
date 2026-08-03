@@ -3,8 +3,8 @@
 //  roomscan
 //
 
-import Foundation
 import AVFoundation
+import Foundation
 
 enum ScanReadinessServiceFactory {
     static func makeService() -> any ScanReadinessService {

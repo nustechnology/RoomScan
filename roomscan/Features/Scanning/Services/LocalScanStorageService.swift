@@ -30,6 +30,10 @@ final class LocalScanStorageService: ScanStorageService, @unchecked Sendable {
         fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
 
+    private var applicationSupportDirectory: URL {
+        fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    }
+
     private var cachesDirectory: URL {
         fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
     }
@@ -38,32 +42,50 @@ final class LocalScanStorageService: ScanStorageService, @unchecked Sendable {
         documentsDirectory.appendingPathComponent("Scans", isDirectory: true)
     }
 
+    /// Durable root for recoverable draft data (manifest, mesh, thumbnail).
+    private var draftsRootDirectory: URL {
+        applicationSupportDirectory.appendingPathComponent("RoomScan", isDirectory: true)
+    }
+
+    private var draftManifestDirectory: URL {
+        draftsRootDirectory.appendingPathComponent("Drafts", isDirectory: true)
+    }
+
     private var draftManifestURL: URL {
-        cachesDirectory.appendingPathComponent("Drafts", isDirectory: true).appendingPathComponent("draft_manifest.json")
+        draftManifestDirectory.appendingPathComponent("draft_manifest.json")
+    }
+
+    private var captureDraftsDirectory: URL {
+        draftsRootDirectory.appendingPathComponent("CaptureDrafts", isDirectory: true)
     }
 
     static func makeCaptureDraftDirectory(id: String = UUID().uuidString) throws -> URL {
-        let cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        let directory = cachesDirectory
-            .appendingPathComponent("RoomScan", isDirectory: true)
+        let fileManager = FileManager.default
+        let supportDirectory = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let draftsRoot = supportDirectory.appendingPathComponent("RoomScan", isDirectory: true)
+        try Self.ensureDirectoryExistsAndExcludeFromBackup(draftsRoot, fileManager: fileManager)
+
+        let directory = draftsRoot
             .appendingPathComponent("CaptureDrafts", isDirectory: true)
             .appendingPathComponent(id, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
     }
 
     init() {
         try? fileManager.createDirectory(at: scansDirectory, withIntermediateDirectories: true)
-        let draftDir = cachesDirectory.appendingPathComponent("Drafts", isDirectory: true)
-        try? fileManager.createDirectory(at: draftDir, withIntermediateDirectories: true)
+        try? Self.ensureDirectoryExistsAndExcludeFromBackup(draftsRootDirectory, fileManager: fileManager)
+        try? fileManager.createDirectory(at: draftManifestDirectory, withIntermediateDirectories: true)
+        try? fileManager.createDirectory(at: captureDraftsDirectory, withIntermediateDirectories: true)
+        migrateDraftDataFromCachesIfNeeded()
     }
 
     func saveDraftManifest(_ draft: RoomScanDraft) throws {
         let manifest = DraftManifest(
             id: draft.id,
             createdAt: draft.createdAt,
-            meshPath: draft.meshFileURL.path,
-            thumbnailPath: draft.thumbnailFileURL.path,
+            meshPath: relativePath(for: draft.meshFileURL, relativeTo: applicationSupportDirectory),
+            thumbnailPath: relativePath(for: draft.thumbnailFileURL, relativeTo: applicationSupportDirectory),
             name: draft.name,
             projectID: draft.projectID
         )
@@ -81,8 +103,8 @@ final class LocalScanStorageService: ScanStorageService, @unchecked Sendable {
             decoder.dateDecodingStrategy = .iso8601
             let manifest = try decoder.decode(DraftManifest.self, from: data)
 
-            let meshURL = URL(fileURLWithPath: manifest.meshPath)
-            let thumbURL = URL(fileURLWithPath: manifest.thumbnailPath)
+            let meshURL = resolvedURL(forStoredPath: manifest.meshPath, relativeTo: applicationSupportDirectory)
+            let thumbURL = resolvedURL(forStoredPath: manifest.thumbnailPath, relativeTo: applicationSupportDirectory)
 
             guard fileManager.fileExists(atPath: meshURL.path) else { return nil }
 
@@ -97,6 +119,60 @@ final class LocalScanStorageService: ScanStorageService, @unchecked Sendable {
         } catch {
             return nil
         }
+    }
+
+    private func relativePath(for fileURL: URL, relativeTo baseURL: URL) -> String {
+        let basePath = baseURL.standardizedFileURL.path
+        let filePath = fileURL.standardizedFileURL.path
+        guard filePath == basePath || filePath.hasPrefix(basePath + "/") else {
+            return filePath
+        }
+        var relative = String(filePath.dropFirst(basePath.count))
+        if relative.hasPrefix("/") {
+            relative.removeFirst()
+        }
+        return relative
+    }
+
+    private func resolvedURL(forStoredPath storedPath: String, relativeTo baseURL: URL) -> URL {
+        if !storedPath.hasPrefix("/") {
+            let candidate = baseURL.appendingPathComponent(storedPath)
+            if fileManager.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+
+            // Legacy relative path written against the caches directory.
+            let legacyCachesCandidate = cachesDirectory.appendingPathComponent(storedPath)
+            if fileManager.fileExists(atPath: legacyCachesCandidate.path) {
+                return legacyCachesCandidate
+            }
+
+            return candidate
+        }
+
+        // Absolute path: reuse if still valid, otherwise rebase under Application Support
+        // (and fall back to the caches root for pre-migration drafts).
+        if fileManager.fileExists(atPath: storedPath) {
+            return URL(fileURLWithPath: storedPath)
+        }
+
+        let supportMarker = "/Library/Application Support/"
+        if let range = storedPath.range(of: supportMarker) {
+            let relative = String(storedPath[range.upperBound...])
+            return baseURL.appendingPathComponent(relative)
+        }
+
+        let cachesMarker = "/Library/Caches/"
+        if let range = storedPath.range(of: cachesMarker) {
+            let relative = String(storedPath[range.upperBound...])
+            let supportCandidate = applicationSupportDirectory.appendingPathComponent(relative)
+            if fileManager.fileExists(atPath: supportCandidate.path) {
+                return supportCandidate
+            }
+            return cachesDirectory.appendingPathComponent(relative)
+        }
+
+        return URL(fileURLWithPath: storedPath)
     }
 
     func clearDraftManifest() {
@@ -135,5 +211,52 @@ final class LocalScanStorageService: ScanStorageService, @unchecked Sendable {
     func deleteScanFiles(scanID: String) {
         let targetDir = scansDirectory.appendingPathComponent(scanID, isDirectory: true)
         try? fileManager.removeItem(at: targetDir)
+    }
+
+    // MARK: - Private helpers
+
+    private static func ensureDirectoryExistsAndExcludeFromBackup(
+        _ directory: URL,
+        fileManager: FileManager
+    ) throws {
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var mutableDirectory = directory
+        try mutableDirectory.setResourceValues(values)
+    }
+
+    /// Moves recoverable draft data that previously lived under Caches into Application Support.
+    private func migrateDraftDataFromCachesIfNeeded() {
+        let legacyManifestURL = cachesDirectory
+            .appendingPathComponent("Drafts", isDirectory: true)
+            .appendingPathComponent("draft_manifest.json")
+        if fileManager.fileExists(atPath: legacyManifestURL.path),
+           !fileManager.fileExists(atPath: draftManifestURL.path) {
+            try? fileManager.createDirectory(at: draftManifestDirectory, withIntermediateDirectories: true)
+            try? fileManager.moveItem(at: legacyManifestURL, to: draftManifestURL)
+        }
+
+        let legacyCaptureDrafts = cachesDirectory
+            .appendingPathComponent("RoomScan", isDirectory: true)
+            .appendingPathComponent("CaptureDrafts", isDirectory: true)
+        guard fileManager.fileExists(atPath: legacyCaptureDrafts.path) else { return }
+
+        let children = (try? fileManager.contentsOfDirectory(
+            at: legacyCaptureDrafts,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )) ?? []
+
+        for child in children {
+            let destination = captureDraftsDirectory.appendingPathComponent(child.lastPathComponent, isDirectory: true)
+            if fileManager.fileExists(atPath: destination.path) {
+                try? fileManager.removeItem(at: child)
+            } else {
+                try? fileManager.moveItem(at: child, to: destination)
+            }
+        }
+
+        try? fileManager.removeItem(at: legacyCaptureDrafts)
     }
 }

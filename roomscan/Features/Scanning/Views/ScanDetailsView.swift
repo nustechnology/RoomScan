@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-struct ScanDetailsView: View {
+struct ScanCompletionView: View {
     let scan: RoomScanSummary
     let onDone: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -76,7 +76,7 @@ struct ScanDetailsView: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .onAppear {
-            print("[RoomScan DETAILS] ScanDetailsView appeared for scan: \(scan.id)")
+            print("[RoomScan DETAILS] ScanCompletionView appeared for scan: \(scan.id)")
         }
     }
 

@@ -71,7 +71,7 @@ final class ScanningUITests: XCTestCase {
     }
 
     @MainActor
-    func testCancelScanning_showsDiscardModal() throws {
+    func testCancelScanning_returnsToProjectsList() throws {
         let app = launchApp(arguments: ["-UITesting", "-UITestSignedIn"])
 
         XCTAssertTrue(app.scrollViews["projects.list"].waitForExistence(timeout: 5))
@@ -83,6 +83,8 @@ final class ScanningUITests: XCTestCase {
         let cancelButton = app.buttons["scancheck.cancelButton"]
         XCTAssertTrue(cancelButton.waitForExistence(timeout: 5))
         cancelButton.tap()
+
+        XCTAssertTrue(app.scrollViews["projects.list"].waitForExistence(timeout: 5))
     }
 
     @MainActor

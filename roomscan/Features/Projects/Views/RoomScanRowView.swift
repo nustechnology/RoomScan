@@ -3,6 +3,7 @@
 //  roomscan
 //
 
+import ImageIO
 import SwiftUI
 
 struct RoomScanRowView: View {
@@ -13,7 +14,7 @@ struct RoomScanRowView: View {
     var body: some View {
         Button(action: onTap) {
             HStack(alignment: .top, spacing: 14) {
-                ThumbnailView()
+                ThumbnailView(thumbnailPath: scan.thumbnailPath)
                     .frame(width: 104, height: 82)
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -72,12 +73,61 @@ private enum RoomScanRowPresentation {
 }
 
 private struct ThumbnailView: View {
+    let thumbnailPath: String
+
+    @State private var loadedImage: UIImage?
+
+    private static let thumbnailWidth: CGFloat = 104
+    private static let thumbnailHeight: CGFloat = 82
+
     var body: some View {
-        Image("ScanThumbnail")
-            .resizable()
-            .scaledToFill()
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .accessibilityHidden(true)
+        Group {
+            if let loadedImage {
+                Image(uiImage: loadedImage)
+                    .resizable()
+                    .scaledToFill()
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                Image("ScanThumbnail")
+                    .resizable()
+                    .scaledToFill()
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+        }
+        .accessibilityHidden(true)
+        .task(id: thumbnailPath) {
+            let path = thumbnailPath
+            let maxPixelSize = Self.thumbnailMaxPixelSize
+            let image = await Task.detached(priority: .userInitiated) {
+                Self.loadThumbnail(from: path, maxPixelSize: maxPixelSize)
+            }.value
+            guard !Task.isCancelled else { return }
+            loadedImage = image
+        }
+    }
+
+    private static var thumbnailMaxPixelSize: Int {
+        Int(max(thumbnailWidth, thumbnailHeight) * UIScreen.main.scale)
+    }
+
+    nonisolated private static func loadThumbnail(
+        from relativePath: String,
+        maxPixelSize: Int
+    ) -> UIImage? {
+        guard !relativePath.isEmpty else { return nil }
+        let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let url = documentsDir.appendingPathComponent(relativePath)
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+        ]
+
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        else { return nil }
+        return UIImage(cgImage: cgImage)
     }
 }
-

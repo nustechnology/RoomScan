@@ -3,8 +3,8 @@
 //  roomscan
 //
 
-import Foundation
 import Combine
+import Foundation
 
 @MainActor
 final class ReviewScanViewModel: ObservableObject {
@@ -154,12 +154,13 @@ final class ReviewScanViewModel: ObservableObject {
         defer { isSaving = false }
 
         do {
-            _ = try storageService.persistSavedScan(draft: draft, scanID: draft.id)
+            let storedFiles = try storageService.persistSavedScan(draft: draft, scanID: draft.id)
 
             let saved = try await projectsService.saveScan(
                 draft: draft,
                 name: trimmedName,
-                projectID: projectID
+                projectID: projectID,
+                meshURL: storedFiles.meshURL
             )
             self.savedScan = saved
             cleanupDraftCache()

@@ -3,18 +3,20 @@
 //  roomscan
 //
 
-import Foundation
 import Combine
+import Foundation
 import UIKit
 
 @MainActor
 final class CameraScanViewModel: ObservableObject {
     @Published private(set) var isScanning: Bool = false
     @Published private(set) var hasMinimalStructure: Bool = false
+    @Published private(set) var isPaused: Bool = false
     @Published var showCancelConfirmation: Bool = false
     @Published private(set) var isStorageFull: Bool = false
     @Published private(set) var isProcessingFinish: Bool = false
     @Published private(set) var capturedDraft: RoomScanDraft?
+    @Published private(set) var currentInstruction: String?
     @Published var errorMessage: String?
 
     let sourceProjectID: String?
@@ -46,7 +48,15 @@ final class CameraScanViewModel: ObservableObject {
                 self.isStorageFull = full
                 if full {
                     self.errorMessage = String(localized: "scanning.error.storage_full")
+                    self.stopScanning()
                 }
+            }
+            .store(in: &cancellables)
+
+        captureService.instructionPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] instruction in
+                self?.currentInstruction = instruction
             }
             .store(in: &cancellables)
     }
@@ -57,6 +67,7 @@ final class CameraScanViewModel: ObservableObject {
         guard !isStorageFull else { return }
 
         isScanning = true
+        isPaused = false
         if previousIdleTimerDisabled == nil {
             previousIdleTimerDisabled = UIApplication.shared.isIdleTimerDisabled
         }
@@ -66,6 +77,7 @@ final class CameraScanViewModel: ObservableObject {
 
     func stopScanning() {
         isScanning = false
+        isPaused = false
         if let previousIdleTimerDisabled {
             UIApplication.shared.isIdleTimerDisabled = previousIdleTimerDisabled
             self.previousIdleTimerDisabled = nil
@@ -76,6 +88,7 @@ final class CameraScanViewModel: ObservableObject {
     func handleCancelTapped() {
         guard isScanning else { return }
         captureService.pauseSession()
+        isPaused = true
         showCancelConfirmation = true
     }
 
@@ -83,17 +96,31 @@ final class CameraScanViewModel: ObservableObject {
         showCancelConfirmation = false
         guard isScanning else { return }
         captureService.resumeSession()
+        isPaused = false
+    }
+
+    func togglePause() {
+        guard isScanning else { return }
+        if isPaused {
+            captureService.resumeSession()
+            isPaused = false
+        } else {
+            captureService.pauseSession()
+            isPaused = true
+        }
     }
 
     func discardAndExit() {
         showCancelConfirmation = false
+        storageService.clearDraftManifest()
         stopScanning()
     }
 
     func finishScan() async -> RoomScanDraft? {
         print("[RoomScan STEP 2] CameraScanViewModel.finishScan() entered")
         guard hasMinimalStructure, !isProcessingFinish else {
-            print("[RoomScan STEP 2-CANCEL] guard failed: hasMinimalStructure=\(hasMinimalStructure), isProcessingFinish=\(isProcessingFinish)")
+            print("[RoomScan STEP 2-CANCEL] guard failed: hasMinimalStructure=\(hasMinimalStructure), "
+                + "isProcessingFinish=\(isProcessingFinish)")
             return nil
         }
         isProcessingFinish = true
@@ -133,6 +160,15 @@ final class CameraScanViewModel: ObservableObject {
             self.errorMessage = error.localizedDescription
             return nil
         }
+    }
+
+    func retryAfterStorageFull() {
+        showCancelConfirmation = false
+        isStorageFull = false
+        errorMessage = nil
+        checkStorageSpace()
+        guard !isStorageFull else { return }
+        startScanning()
     }
 
     private func checkStorageSpace() {

@@ -605,7 +605,7 @@ private actor TestProjectsService: ProjectsService {
         }
 
         guard let index = projects.firstIndex(where: { $0.id == id }) else {
-            throw ProjectsServiceError.notFound
+            throw ProjectsServiceError.projectNotFound
         }
 
         let existing = projects[index]
@@ -631,7 +631,7 @@ private actor TestProjectsService: ProjectsService {
         }
 
         guard projects.contains(where: { $0.id == id }) else {
-            throw ProjectsServiceError.notFound
+            throw ProjectsServiceError.projectNotFound
         }
 
         projects.removeAll { $0.id == id }
@@ -641,7 +641,7 @@ private actor TestProjectsService: ProjectsService {
     func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
-            throw ProjectsServiceError.invalidName
+            throw ProjectsServiceError.invalidScanName
         }
 
         let (projectIndex, scanIndex) = try indices(projectID: projectID, scanID: scanID)
@@ -656,7 +656,9 @@ private actor TestProjectsService: ProjectsService {
             syncStatus: existing.syncStatus,
             creatorUserID: existing.creatorUserID,
             creatorDisplayName: existing.creatorDisplayName,
-            notes: existing.notes
+            notes: existing.notes,
+            meshPath: existing.meshPath,
+            thumbnailPath: existing.thumbnailPath
         )
         guard let updatedProject = project.replacingScan(
             updatedScan,
@@ -690,7 +692,9 @@ private actor TestProjectsService: ProjectsService {
             syncStatus: .synced,
             creatorUserID: existing.creatorUserID,
             creatorDisplayName: existing.creatorDisplayName,
-            notes: existing.notes
+            notes: existing.notes,
+            meshPath: existing.meshPath,
+            thumbnailPath: existing.thumbnailPath
         )
         guard let updatedProject = project.replacingScan(
             updatedScan,
@@ -704,7 +708,7 @@ private actor TestProjectsService: ProjectsService {
 
     private func indices(projectID: String, scanID: String) throws -> (Int, Int) {
         guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else {
-            throw ProjectsServiceError.notFound
+            throw ProjectsServiceError.projectNotFound
         }
         guard let scanIndex = projects[projectIndex].roomScans.firstIndex(where: { $0.id == scanID }) else {
             throw ProjectsServiceError.notFound
@@ -744,11 +748,12 @@ private actor TestProjectsService: ProjectsService {
         false
     }
 
-    func saveScan(draft: RoomScanDraft, name: String, projectID: String) async throws -> RoomScanSummary {
+    func saveScan(draft: RoomScanDraft, name: String, projectID: String, meshURL: URL) async throws -> RoomScanSummary {
         RoomScanSummary(
             id: draft.id,
             name: name,
             createdAt: draft.createdAt,
+            localModelURL: meshURL,
             thumbnailName: "thumbnail-0",
             syncStatus: .pending,
             notes: []

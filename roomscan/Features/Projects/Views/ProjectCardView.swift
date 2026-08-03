@@ -17,7 +17,7 @@ struct ProjectCardView: View {
     let onEdit: () -> Void
     let onDelete: () -> Void
     var onRoomTap: (RoomScanSummary) -> Void = { _ in }
-    var onAddScan: (() -> Void)? = nil
+    var onAddScan: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -125,7 +125,7 @@ struct ProjectCardView: View {
 }
 
 private struct EmptyRoomScansView: View {
-    var onTap: (() -> Void)? = nil
+    var onTap: (() -> Void)?
 
     var body: some View {
         if let onTap {

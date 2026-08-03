@@ -34,6 +34,7 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
     @Published private(set) var isScanning: Bool = false
     @Published private(set) var hasMinimalStructure: Bool = false
     @Published private(set) var isStorageFull: Bool = false
+    @Published private(set) var currentInstruction: String?
 
     private(set) var roomCaptureSession: RoomCaptureSession?
     private var currentCapturedRoom: CapturedRoom?
@@ -42,6 +43,7 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
     private let storageService: ScanStorageService
     private var isCaptureSessionRunning = false
     private var isPaused = false
+    private var pausedARConfiguration: ARConfiguration?
 
     var minimalStructurePublisher: AnyPublisher<Bool, Never> {
         $hasMinimalStructure.eraseToAnyPublisher()
@@ -49,6 +51,10 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
 
     var storageFullPublisher: AnyPublisher<Bool, Never> {
         $isStorageFull.eraseToAnyPublisher()
+    }
+
+    var instructionPublisher: AnyPublisher<String?, Never> {
+        $currentInstruction.eraseToAnyPublisher()
     }
 
     init(storageService: ScanStorageService? = nil) {
@@ -86,7 +92,10 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
         isStorageFull = false
         isSessionPendingStart = true
         isPaused = false
+        pausedARConfiguration = nil
         hasRecordedFirstFrame = false
+        lastStorageCheckDate = nil
+        isCheckingStorage = false
         finalCapturedRoomData = nil
         captureEndError = nil
 
@@ -101,19 +110,27 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
     }
 
     func pauseSession() {
-        guard isCaptureSessionRunning, !isPaused else { return }
-        roomCaptureSession?.arSession.pause()
+        guard isCaptureSessionRunning, !isPaused, let arSession = roomCaptureSession?.arSession else { return }
+        pausedARConfiguration = arSession.configuration
+        arSession.pause()
         isPaused = true
         isScanning = false
-        print("[RoomScan Log] ARSession paused while cancel confirmation is shown.")
+        print("[RoomScan Log] ARSession paused while scanning is suspended.")
     }
 
     func resumeSession() {
-        guard isCaptureSessionRunning, isPaused, let session = roomCaptureSession else { return }
-        session.run(configuration: RoomCaptureSession.Configuration())
+        guard isCaptureSessionRunning, isPaused, let arSession = roomCaptureSession?.arSession else { return }
+        // Resuming must restart the ARSession that `pauseSession` paused. Re-running the
+        // RoomCaptureSession leaves the AR session paused and also discards the in-progress scan.
+        guard let configuration = pausedARConfiguration ?? arSession.configuration else {
+            print("[RoomScan Log-ERROR] Cannot resume: ARSession has no configuration.")
+            return
+        }
+        arSession.run(configuration)
+        pausedARConfiguration = nil
         isPaused = false
         isScanning = true
-        print("[RoomScan Log] RoomCaptureSession resumed.")
+        print("[RoomScan Log] ARSession resumed.")
     }
 
     func stopSession() {
@@ -126,6 +143,7 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
         isCaptureSessionRunning = false
         isSessionPendingStart = false
         isPaused = false
+        pausedARConfiguration = nil
     }
 
     func finishScan() async throws -> RoomScanDraft {
@@ -182,6 +200,10 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
     }
 
     private var hasRecordedFirstFrame = false
+    private var lastStorageCheckDate: Date?
+    private var isCheckingStorage = false
+    nonisolated private static let midScanStorageCheckInterval: TimeInterval = 5
+    nonisolated private static let midScanMinimumAvailableBytes: Int64 = 50_000_000
 
     // MARK: - RoomCaptureSessionDelegate
     nonisolated func captureSession(_ session: RoomCaptureSession, didUpdate room: CapturedRoom) {
@@ -195,12 +217,15 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
             if hasStructure && !self.hasMinimalStructure {
                 self.hasMinimalStructure = true
             }
-            self.checkMidScanStorageCapacity()
+            self.scheduleMidScanStorageCheckIfNeeded()
         }
     }
 
     nonisolated func captureSession(_ session: RoomCaptureSession, didProvide instruction: RoomCaptureSession.Instruction) {
-        // Guidance instructions from session
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.currentInstruction = Self.localizedInstruction(for: instruction)
+        }
     }
 
     nonisolated func captureSession(_ session: RoomCaptureSession, didEndWith data: CapturedRoomData, error: (any Error)?) {
@@ -210,26 +235,75 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
             self.captureEndError = error
         }
     }
+}
 
-    private func checkMidScanStorageCapacity() {
-        do {
-            let values = try FileManager.default.url(
-                for: .documentDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: false
-            ).resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
-
-            if let availableBytes = values.volumeAvailableCapacityForImportantUsage, availableBytes < 50_000_000 {
-                self.isStorageFull = true
-                self.stopSession()
-            }
-        } catch {
-            // Ignore error
+@available(iOS 16.0, *)
+private extension RoomPlanCaptureService {
+    nonisolated static func localizedInstruction(
+        for instruction: RoomCaptureSession.Instruction
+    ) -> String? {
+        switch instruction {
+        case .moveCloseToWall:
+            String(localized: "scanning.instruction.move_closer_to_wall")
+        case .moveAwayFromWall:
+            String(localized: "scanning.instruction.move_away_from_wall")
+        case .slowDown:
+            String(localized: "scanning.instruction.slow_down")
+        case .turnOnLight:
+            String(localized: "scanning.instruction.turn_on_light")
+        case .lowTexture:
+            String(localized: "scanning.instruction.low_texture")
+        case .normal:
+            nil
+        default:
+            nil
         }
     }
 
-    private func logCapturedRoom(_ room: CapturedRoom) {
+    func scheduleMidScanStorageCheckIfNeeded() {
+        guard !isCheckingStorage else { return }
+
+        let now = Date()
+        if let lastStorageCheckDate,
+           now.timeIntervalSince(lastStorageCheckDate) < Self.midScanStorageCheckInterval {
+            return
+        }
+
+        lastStorageCheckDate = now
+        isCheckingStorage = true
+
+        Task { [weak self] in
+            let isFull = await Self.isStorageBelowMinimumCapacity()
+            guard let self else { return }
+            self.isCheckingStorage = false
+            guard isFull, self.isCaptureSessionRunning || self.isSessionPendingStart else { return }
+            self.isStorageFull = true
+            self.stopSession()
+        }
+    }
+
+    nonisolated static func isStorageBelowMinimumCapacity() async -> Bool {
+        let minimumBytes = midScanMinimumAvailableBytes
+        return await Task.detached(priority: .utility) {
+            do {
+                let values = try FileManager.default.url(
+                    for: .documentDirectory,
+                    in: .userDomainMask,
+                    appropriateFor: nil,
+                    create: false
+                ).resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+
+                guard let availableBytes = values.volumeAvailableCapacityForImportantUsage else {
+                    return false
+                }
+                return availableBytes < minimumBytes
+            } catch {
+                return false
+            }
+        }.value
+    }
+
+    func logCapturedRoom(_ room: CapturedRoom) {
         print("-------------------- [CAPTURED ROOM DATA] --------------------")
         print("  - Walls count: \(room.walls.count)")
         print("  - Floors count: \(room.floors.count)")
@@ -240,12 +314,7 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
         print("--------------------------------------------------------------")
     }
 
-    private func roomForExport() async throws -> CapturedRoom {
-        if let currentCapturedRoom, hasRenderableContent(currentCapturedRoom) {
-            print("[RoomScan STEP 3.2] Using realtime CapturedRoom with detected structure.")
-            return currentCapturedRoom
-        }
-
+    func roomForExport() async throws -> CapturedRoom {
         if let finalCapturedRoomData {
             let processedRoom = try await RoomBuilder(options: [.beautifyObjects])
                 .capturedRoom(from: finalCapturedRoomData)
@@ -256,10 +325,15 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
             print("[RoomScan STEP 3.2-ERROR] Processed final room contains no renderable structure.")
         }
 
+        if let currentCapturedRoom, hasRenderableContent(currentCapturedRoom) {
+            print("[RoomScan STEP 3.2] Using realtime CapturedRoom with detected structure.")
+            return currentCapturedRoom
+        }
+
         throw RoomPlanCaptureError.missingCapturedRoom
     }
 
-    private func hasRenderableContent(_ room: CapturedRoom) -> Bool {
+    func hasRenderableContent(_ room: CapturedRoom) -> Bool {
         !room.walls.isEmpty ||
             !room.floors.isEmpty ||
             !room.doors.isEmpty ||
@@ -268,7 +342,7 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
             !room.objects.isEmpty
     }
 
-    private func generateFallbackThumbnail(destination: URL) throws {
+    func generateFallbackThumbnail(destination: URL) throws {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 640, height: 480))
         let data = renderer.jpegData(withCompressionQuality: 0.82) { context in
             UIColor(
@@ -282,7 +356,7 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
         try data.write(to: destination, options: .atomic)
     }
 
-    nonisolated private static func generateThumbnail(from meshURL: URL, destination: URL) throws {
+    nonisolated static func generateThumbnail(from meshURL: URL, destination: URL) throws {
         guard let device = MTLCreateSystemDefaultDevice() else {
             throw CocoaError(.featureUnsupported)
         }

@@ -48,6 +48,8 @@ struct ScanSyncStatusBadge: View {
 extension RoomScanSyncStatus {
     var badgeForegroundColor: Color {
         switch self {
+        case .pending:
+            return .orange
         case .synced:
             return .green
         case .uploading:
@@ -60,6 +62,9 @@ extension RoomScanSyncStatus {
     var badgeBackgroundColor: Color {
         if self == .uploading {
             return .yellow.opacity(0.26)
+        }
+        if self == .pending {
+            return Color.orange.opacity(0.16)
         }
 
         return badgeForegroundColor.opacity(0.16)

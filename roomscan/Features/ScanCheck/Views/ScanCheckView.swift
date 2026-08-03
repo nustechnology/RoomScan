@@ -8,7 +8,7 @@ import SwiftUI
 struct ScanCheckView: View {
     @State var viewModel: ScanCheckViewModel
     let onStartScan: () -> Void
-    var onCancel: (() -> Void)? = nil
+    var onCancel: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase

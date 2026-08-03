@@ -3,22 +3,27 @@
 //  roomscanTests
 //
 
-import XCTest
 @testable import roomscan
+import XCTest
 
 @MainActor
 final class ReviewScanViewModelTests: XCTestCase {
     private var mockProjectsService: MockProjectsService!
     private var dummyDraft: RoomScanDraft!
+    private var tempDirectoryURL: URL?
 
     override func setUp() async throws {
         try await super.setUp()
         mockProjectsService = MockProjectsService(simulatedDelayNanoseconds: 0)
 
-        let tempMesh = FileManager.default.temporaryDirectory.appendingPathComponent("test_mesh.usdz")
-        let tempThumb = FileManager.default.temporaryDirectory.appendingPathComponent("test_thumb.jpg")
-        try? "mesh".data(using: .utf8)?.write(to: tempMesh)
-        try? "thumb".data(using: .utf8)?.write(to: tempThumb)
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        tempDirectoryURL = tempDir
+
+        let tempMesh = tempDir.appendingPathComponent("test_mesh.usdz")
+        let tempThumb = tempDir.appendingPathComponent("test_thumb.jpg")
+        try Data("mesh".utf8).write(to: tempMesh)
+        try Data("thumb".utf8).write(to: tempThumb)
 
         dummyDraft = RoomScanDraft(
             meshFileURL: tempMesh,
@@ -28,6 +33,10 @@ final class ReviewScanViewModelTests: XCTestCase {
     }
 
     override func tearDown() async throws {
+        if let tempDirectoryURL {
+            try? FileManager.default.removeItem(at: tempDirectoryURL)
+        }
+        tempDirectoryURL = nil
         mockProjectsService = nil
         dummyDraft = nil
         try await super.tearDown()
@@ -170,7 +179,11 @@ private actor FailingProjectsService: ProjectsService {
     func updateProject(id: String, name: String, description: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }
     func deleteProject(id: String) async throws { throw ProjectsServiceError.network }
     func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool { false }
-    func saveScan(draft: RoomScanDraft, name: String, projectID: String) async throws -> RoomScanSummary { throw ProjectsServiceError.network }
+    func saveScan(draft: RoomScanDraft, name: String, projectID: String, meshURL: URL) async throws
+        -> RoomScanSummary { throw ProjectsServiceError.network }
+    func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary { throw ProjectsServiceError.network }
+    func deleteScan(projectID: String, scanID: String) async throws { throw ProjectsServiceError.network }
+    func retryScanUpload(projectID: String, scanID: String) async throws -> RoomScanSummary { throw ProjectsServiceError.network }
 }
 
 private final class FailingScanStorageService: ScanStorageService, @unchecked Sendable {

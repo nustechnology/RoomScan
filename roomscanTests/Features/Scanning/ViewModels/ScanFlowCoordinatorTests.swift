@@ -3,9 +3,9 @@
 //  roomscanTests
 //
 
-import Testing
 import Foundation
 @testable import roomscan
+import Testing
 
 @MainActor
 struct ScanFlowCoordinatorTests {

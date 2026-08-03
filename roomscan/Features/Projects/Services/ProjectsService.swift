@@ -22,19 +22,28 @@ protocol ProjectsService: Sendable {
     func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary]
     func createProject(name: String) async throws -> ProjectSummary
     func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool
-    func saveScan(draft: RoomScanDraft, name: String, projectID: String) async throws -> RoomScanSummary
+    func saveScan(draft: RoomScanDraft, name: String, projectID: String, meshURL: URL) async throws -> RoomScanSummary
     func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary
     func deleteScan(projectID: String, scanID: String) async throws
     func retryScanUpload(projectID: String, scanID: String) async throws -> RoomScanSummary
 }
 
+/// Failures thrown by `ProjectsService` implementations.
+///
+/// Mapping (all implementations must agree):
+/// - `network`: transient or simulated network failure
+/// - `invalidPagination`: `page < 1` or `pageSize <= 0`
+/// - `projectNotFound`: the project id does not exist
+/// - `notFound`: the scan (or other nested resource) id does not exist within a known project
+/// - `invalidProjectName`: project name empty or longer than 50 characters after trimming
+/// - `invalidScanName`: scan name empty or over the allowed length after trimming
+/// - `duplicateScanName`: a scan with the same name already exists in the project
 enum ProjectsServiceError: Error, Equatable {
     case network
     case invalidPagination
-    case notFound
-    case invalidName
     case projectNotFound
-    case duplicateScanName
+    case notFound
     case invalidProjectName
     case invalidScanName
+    case duplicateScanName
 }

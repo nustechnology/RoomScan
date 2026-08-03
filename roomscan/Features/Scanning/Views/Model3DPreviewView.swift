@@ -3,13 +3,13 @@
 //  roomscan
 //
 
-import SwiftUI
 import SceneKit
+import SwiftUI
 
 enum Model3DLoadState {
     case loading
     case loaded(SCNScene)
-    case failed(SCNScene)
+    case failed(SCNScene, message: String)
 }
 
 /// Explicit `@unchecked Sendable` wrapper for passing `SCNScene` across isolation boundaries.
@@ -52,18 +52,7 @@ struct Model3DPreviewView: View {
     let meshURL: URL
 
     @State private var loadState: Model3DLoadState = .loading
-    @State private var cameraAngleY: Float = 0
-    @State private var cameraZoom: Float = 5.0
-    @State private var cameraNode: SCNNode?
-
-    private var currentScene: SCNScene? {
-        switch loadState {
-        case .loaded(let scene), .failed(let scene):
-            return scene
-        case .loading:
-            return nil
-        }
-    }
+    @State private var cameraController = Model3DPreviewCameraController()
 
     private let previewBackground = Color(
         red: 239 / 255,
@@ -94,8 +83,23 @@ struct Model3DPreviewView: View {
                 case .loaded(let scene):
                     sceneView(for: scene)
 
-                case .failed(let fallbackScene):
+                case .failed(let fallbackScene, message: let message):
                     sceneView(for: fallbackScene)
+                        .overlay {
+                            VStack(spacing: 10) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 30))
+                                    .foregroundColor(.orange)
+                                Text(message)
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .padding(20)
+                            .background(Color.white.opacity(0.9))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .padding(24)
+                        }
                 }
             }
             .aspectRatio(1.65, contentMode: .fit)
@@ -106,86 +110,65 @@ struct Model3DPreviewView: View {
 
             // Toolbar Controls (Rotate, Zoom in, Zoom out)
             HStack(spacing: 12) {
-                Button {
-                    cameraAngleY += 45
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                        Text(String(localized: "review.action.rotate"))
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.primary)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.white)
-                    .clipShape(Capsule())
-                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                controlButton(
+                    systemImage: "arrow.triangle.2.circlepath",
+                    title: String(localized: "review.action.rotate"),
+                    identifier: "review.rotateButton"
+                ) {
+                    cameraController.rotate()
                 }
-                .accessibilityIdentifier("review.rotateButton")
 
-                Button {
-                    cameraZoom = max(1.5, cameraZoom - 0.8)
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus")
-                        Text(String(localized: "review.action.zoom_in"))
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.primary)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.white)
-                    .clipShape(Capsule())
-                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                controlButton(
+                    systemImage: "plus",
+                    title: String(localized: "review.action.zoom_in"),
+                    identifier: "review.zoomInButton"
+                ) {
+                    cameraController.zoomIn()
                 }
-                .accessibilityIdentifier("review.zoomInButton")
 
-                Button {
-                    cameraZoom = min(10.0, cameraZoom + 0.8)
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "minus")
-                        Text(String(localized: "review.action.zoom_out"))
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.primary)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.white)
-                    .clipShape(Capsule())
-                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                controlButton(
+                    systemImage: "minus",
+                    title: String(localized: "review.action.zoom_out"),
+                    identifier: "review.zoomOutButton"
+                ) {
+                    cameraController.zoomOut()
                 }
-                .accessibilityIdentifier("review.zoomOutButton")
             }
         }
         .task(id: meshURL) {
             await loadSceneStructured()
         }
-        .onChange(of: cameraAngleY) { _, _ in
-            if let cameraNode, let currentScene {
-                updateCameraPosition(node: cameraNode, for: currentScene)
-            }
-        }
-        .onChange(of: cameraZoom) { _, _ in
-            if let cameraNode, let currentScene {
-                updateCameraPosition(node: cameraNode, for: currentScene)
-            }
-        }
         .onDisappear {
             // Release 3D scene memory immediately
             loadState = .loading
-            cameraNode = nil
         }
     }
 
     private func sceneView(for scene: SCNScene) -> some View {
-        let node = cameraNode ?? createCameraNode(for: scene)
-        return SceneView(
-            scene: scene,
-            pointOfView: node,
-            options: [.allowsCameraControl, .autoenablesDefaultLighting]
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        Model3DSceneView(scene: scene, cameraController: cameraController)
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+    }
+
+    private func controlButton(
+        systemImage: String,
+        title: String,
+        identifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: systemImage)
+                Text(title)
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundColor(.primary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color.white)
+            .clipShape(Capsule())
+            .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+        }
+        .accessibilityIdentifier(identifier)
     }
 
     private func loadSceneStructured() async {
@@ -200,12 +183,13 @@ struct Model3DPreviewView: View {
         guard !Task.isCancelled else { return }
 
         if let wrapped {
-            self.cameraNode = self.createCameraNode(for: wrapped.scene)
             self.loadState = .loaded(wrapped.scene)
         } else {
             let fallback = Self.makeFallbackScene()
-            self.cameraNode = self.createCameraNode(for: fallback)
-            self.loadState = .failed(fallback)
+            self.loadState = .failed(
+                fallback,
+                message: String(localized: "review.model3d.load_failed")
+            )
         }
     }
 
@@ -246,36 +230,8 @@ struct Model3DPreviewView: View {
 
         return scene
     }
+}
 
-    private func createCameraNode(for scene: SCNScene) -> SCNNode {
-        let cameraNode = SCNNode()
-        cameraNode.camera = SCNCamera()
-        updateCameraPosition(node: cameraNode, for: scene)
-        return cameraNode
-    }
-
-    private func updateCameraPosition(node: SCNNode, for scene: SCNScene) {
-        let rad = Float(cameraAngleY) * Float.pi / 180.0
-        let bounds = scene.rootNode.boundingBox
-        let center = SCNVector3(
-            x: (bounds.min.x + bounds.max.x) / 2,
-            y: (bounds.min.y + bounds.max.y) / 2,
-            z: (bounds.min.z + bounds.max.z) / 2
-        )
-        let extentX = bounds.max.x - bounds.min.x
-        let extentY = bounds.max.y - bounds.min.y
-        let extentZ = bounds.max.z - bounds.min.z
-        let modelExtent = max(extentX, max(extentY, extentZ))
-        let baseDistance = max(modelExtent * 1.8, 2.5)
-        let distance = baseDistance * (cameraZoom / 5.0)
-
-        let x = center.x + distance * sin(rad)
-        let z = center.z + distance * cos(rad)
-        let y = center.y + distance * 0.45
-
-        node.position = SCNVector3(x: x, y: y, z: z)
-        node.look(at: center)
-        node.camera?.zNear = 0.01
-        node.camera?.zFar = Double(max(distance * 20, 100))
-    }
+#Preview {
+    Model3DPreviewView(meshURL: URL(fileURLWithPath: "/path/to/model.usdz"))
 }
