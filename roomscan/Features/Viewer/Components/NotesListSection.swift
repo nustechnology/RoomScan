@@ -9,6 +9,7 @@ struct NotesListSection: View {
     let notes: [SpatialNote]
     let selectedNoteID: String?
     let isAddEnabled: Bool
+    let showsOwnerActions: Bool
     let onAddNote: () -> Void
     let onSelectNote: (SpatialNote) -> Void
     let onEditNote: (SpatialNote) -> Void
@@ -24,22 +25,24 @@ struct NotesListSection: View {
 
                 Spacer()
 
-                Button(action: onAddNote) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus")
-                            .font(.caption.weight(.bold))
-                        Text("viewer.notes.add")
-                            .appTypography(AppTypography.bodySmallStrong)
+                if showsOwnerActions {
+                    Button(action: onAddNote) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus")
+                                .font(.caption.weight(.bold))
+                            Text("viewer.notes.add")
+                                .appTypography(AppTypography.bodySmallStrong)
+                        }
+                        .foregroundStyle(AppColors.brandBlueBottom)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(AppColors.brandBlueBottom.opacity(0.12), in: Capsule())
                     }
-                    .foregroundStyle(AppColors.brandBlueBottom)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(AppColors.brandBlueBottom.opacity(0.12), in: Capsule())
+                    .buttonStyle(.plain)
+                    .disabled(!isAddEnabled)
+                    .opacity(isAddEnabled ? 1 : 0.45)
+                    .accessibilityIdentifier("viewer.notes.add")
                 }
-                .buttonStyle(.plain)
-                .disabled(!isAddEnabled)
-                .opacity(isAddEnabled ? 1 : 0.45)
-                .accessibilityIdentifier("viewer.notes.add")
             }
             .padding(.horizontal, AppSpacing.large)
             .padding(.top, AppSpacing.large)
@@ -60,6 +63,7 @@ struct NotesListSection: View {
                             NoteRowView(
                                 note: note,
                                 isSelected: note.id == selectedNoteID,
+                                showsOwnerActions: showsOwnerActions,
                                 onTap: { onSelectNote(note) },
                                 onEdit: { onEditNote(note) },
                                 onMove: { onMoveNote(note) },

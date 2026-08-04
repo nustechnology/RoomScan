@@ -7,6 +7,7 @@ import SwiftUI
 
 struct ViewerView: View {
     @State private var viewModel: ViewerViewModel
+    let shareService: any ShareService
     @State private var renameTitle = ""
     @State private var isRenamePresented = false
     @State private var isSharePresented = false
@@ -16,33 +17,46 @@ struct ViewerView: View {
         input: ViewerInput,
         notesService: any NotesService,
         modelLoadingService: any ModelLoadingService,
+        accessPolicy: DetailAccessPolicy = .editable,
+        shareService: any ShareService,
         onBack: (() -> Void)? = nil
     ) {
         _viewModel = State(
             initialValue: ViewerViewModel(
                 input: input,
                 notesService: notesService,
-                modelLoadingService: modelLoadingService
+                modelLoadingService: modelLoadingService,
+                accessPolicy: accessPolicy
             )
         )
+        self.shareService = shareService
         self.onBack = onBack
     }
 
     init(
         input: ViewerInput,
         notesService: any NotesService,
+        accessPolicy: DetailAccessPolicy = .editable,
+        shareService: any ShareService,
         onBack: (() -> Void)? = nil
     ) {
         self.init(
             input: input,
             notesService: notesService,
             modelLoadingService: DefaultModelLoadingService(),
+            accessPolicy: accessPolicy,
+            shareService: shareService,
             onBack: onBack
         )
     }
 
-    init(viewModel: ViewerViewModel, onBack: (() -> Void)? = nil) {
+    init(
+        viewModel: ViewerViewModel,
+        shareService: any ShareService,
+        onBack: (() -> Void)? = nil
+    ) {
         _viewModel = State(initialValue: viewModel)
+        self.shareService = shareService
         self.onBack = onBack
     }
 
@@ -66,7 +80,8 @@ struct ViewerView: View {
                     NotesListSection(
                         notes: viewModel.notes,
                         selectedNoteID: viewModel.selectedNoteID,
-                        isAddEnabled: viewModel.isModelReady,
+                        isAddEnabled: viewModel.isModelReady && viewModel.allowsOwnerActions,
+                        showsOwnerActions: viewModel.allowsOwnerActions,
                         onAddNote: { viewModel.beginAddNote() },
                         onSelectNote: { viewModel.selectNote(id: $0.id) },
                         onEditNote: { viewModel.openEditor(for: $0) },
@@ -130,8 +145,16 @@ struct ViewerView: View {
                 viewModel.renameScan(to: renameTitle)
             }
         }
-        .sheet(isPresented: $isSharePresented) {
-            ShareScanSheet(shareLink: viewModel.shareLink)
+        .fullScreenCover(isPresented: $isSharePresented) {
+            ShareView(
+                input: .scan(
+                    projectID: viewModel.input.projectID,
+                    projectName: viewModel.input.projectName,
+                    scanID: viewModel.input.scanID,
+                    scanName: viewModel.scanTitle
+                ),
+                service: shareService
+            )
         }
         .accessibilityIdentifier("viewer.screen")
     }
@@ -186,11 +209,16 @@ struct ViewerView: View {
             areNotesVisible: viewModel.areNotesVisible,
             onBack: { onBack?() },
             onRename: {
+                guard viewModel.allowsOwnerActions else { return }
                 renameTitle = viewModel.scanTitle
                 isRenamePresented = true
             },
             onToggleNotes: { viewModel.toggleNotesVisibility() },
-            onShare: { isSharePresented = true }
+            onShare: {
+                guard viewModel.allowsOwnerActions else { return }
+                isSharePresented = true
+            },
+            showsOwnerActions: viewModel.allowsOwnerActions
         )
     }
 
@@ -299,6 +327,7 @@ private struct ViewerHeader: View {
     let onRename: () -> Void
     let onToggleNotes: () -> Void
     let onShare: () -> Void
+    let showsOwnerActions: Bool
 
     var body: some View {
         HStack(spacing: AppSpacing.medium) {
@@ -317,8 +346,10 @@ private struct ViewerHeader: View {
                 .frame(maxWidth: .infinity)
 
             Menu {
-                Button(action: onRename) {
-                    Label(String(localized: "viewer.menu.rename"), systemImage: "pencil")
+                if showsOwnerActions {
+                    Button(action: onRename) {
+                        Label(String(localized: "viewer.menu.rename"), systemImage: "pencil")
+                    }
                 }
 
                 Button(action: onToggleNotes) {
@@ -329,8 +360,10 @@ private struct ViewerHeader: View {
                     }
                 }
 
-                Button(action: onShare) {
-                    Label(String(localized: "viewer.menu.shareScan"), systemImage: "square.and.arrow.up")
+                if showsOwnerActions {
+                    Button(action: onShare) {
+                        Label(String(localized: "viewer.menu.shareScan"), systemImage: "square.and.arrow.up")
+                    }
                 }
             } label: {
                 Image(systemName: "ellipsis")
@@ -428,41 +461,6 @@ private struct ViewerCanvasErrorState: View {
     }
 }
 
-private struct ShareScanSheet: View {
-    let shareLink: URL
-    @Environment(\.dismiss) private var dismiss
-    @State private var email = ""
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section(String(localized: "viewer.share.invite.header")) {
-                    TextField(String(localized: "viewer.share.email.placeholder"), text: $email)
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.emailAddress)
-
-                    Button(String(localized: "viewer.share.invite")) {}
-                        .disabled(true)
-                }
-
-                Section(String(localized: "viewer.share.link.header")) {
-                    ShareLink(item: shareLink) {
-                        Label(String(localized: "viewer.share.copyLink"), systemImage: "link")
-                    }
-                }
-            }
-            .navigationTitle(String(localized: "viewer.menu.shareScan"))
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(String(localized: "viewer.share.done")) {
-                        dismiss()
-                    }
-                }
-            }
-        }
-    }
-}
-
 private struct PinPlacementBanner: View {
     enum Mode {
         case add
@@ -527,6 +525,7 @@ private struct PinPlacementBanner: View {
     ViewerView(
         input: ViewerInput(scanID: "preview-scan", scanName: "Living Room"),
         notesService: MockNotesService(),
+        shareService: MockShareService(simulatedDelayNanoseconds: 0),
         onBack: {}
     )
 }

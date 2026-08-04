@@ -8,6 +8,8 @@ import SwiftUI
 struct SharedWithMeView: View {
     @State var viewModel: SharedWithMeViewModel
     let projectsService: any ProjectsService
+    let notesService: any NotesService
+    let shareService: any ShareService
     let currentUserID: String
 
     @State private var selectedProject: ProjectSummary?
@@ -17,10 +19,14 @@ struct SharedWithMeView: View {
     init(
         viewModel: SharedWithMeViewModel,
         projectsService: any ProjectsService,
+        notesService: any NotesService,
+        shareService: any ShareService,
         currentUserID: String
     ) {
         _viewModel = State(initialValue: viewModel)
         self.projectsService = projectsService
+        self.notesService = notesService
+        self.shareService = shareService
         self.currentUserID = currentUserID
     }
 
@@ -35,7 +41,14 @@ struct SharedWithMeView: View {
         }
         .background(AppColors.background)
         .fullScreenCover(item: $selectedProject) { project in
-            ProjectDetailView(project: project, accessPolicy: .readOnly)
+            ProjectDetailView(
+                project: project,
+                projectsService: projectsService,
+                notesService: notesService,
+                shareService: shareService,
+                currentUserID: currentUserID,
+                accessPolicy: .readOnly
+            )
         }
         .fullScreenCover(item: $selectedScan) { destination in
             sharedScanDetailCover(for: destination)
@@ -146,22 +159,15 @@ struct SharedWithMeView: View {
                     service: projectsService,
                     accessPolicy: .readOnly
                 ),
+                projectID: destination.projectID,
+                projectName: nil,
+                notesService: notesService,
+                shareService: shareService,
+                accessPolicy: .readOnly,
                 onScanUpdated: { _ in },
                 onScanDeleted: { selectedScan = nil },
                 onShare: {}
             )
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        selectedScan = nil
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.body.weight(.semibold))
-                    }
-                    .accessibilityLabel(String(localized: "shared.scanDetail.back"))
-                    .accessibilityIdentifier("shared.scanDetail.back")
-                }
-            }
         }
     }
 
@@ -379,6 +385,8 @@ private struct SharedToastView: View {
     return SharedWithMeView(
         viewModel: SharedWithMeViewModel(service: sharedService),
         projectsService: projectsService,
+        notesService: MockNotesService(),
+        shareService: MockShareService(simulatedDelayNanoseconds: 0),
         currentUserID: AuthenticationSession.mockAppleUser.user.id
     )
 }

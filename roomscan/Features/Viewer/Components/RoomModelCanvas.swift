@@ -28,8 +28,8 @@ struct RoomModelCanvas: UIViewRepresentable {
         DispatchQueue.main.async(execute: action)
     }
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(
+    func makeCoordinator() -> RoomModelCanvasCoordinator {
+        RoomModelCanvasCoordinator(
             onPinTapped: onPinTapped,
             onSurfaceTapped: onSurfaceTapped,
             onMoveDraftChanged: onMoveDraftChanged,
@@ -37,7 +37,9 @@ struct RoomModelCanvas: UIViewRepresentable {
             onModelLoadFailed: onModelLoadFailed
         )
     }
+}
 
+extension RoomModelCanvas {
     func makeUIView(context: Context) -> ARView {
         let arView = ARView(frame: .zero, cameraMode: .nonAR, automaticallyConfigureSession: false)
         arView.environment.background = .color(UIColor(red: 0.90, green: 0.94, blue: 0.98, alpha: 1))

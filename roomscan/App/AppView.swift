@@ -7,6 +7,10 @@ import SwiftUI
 
 struct AppView: View {
     @Bindable var appState: AppState
+    let projectsService: any ProjectsService
+    let notesService: any NotesService
+    let shareService: any ShareService
+    let sharedService: any SharedService
 
     var body: some View {
         // SplashScreenView()
@@ -22,8 +26,10 @@ struct AppView: View {
             case .authenticated(let session):
                 HomeView(
                     session: session,
-                    projectsService: MockProjectsService.makeForCurrentProcess(),
-                    sharedService: MockSharedService.makeForCurrentProcess()
+                    projectsService: projectsService,
+                    notesService: notesService,
+                    shareService: shareService,
+                    sharedService: sharedService
                 ) {
                     Task {
                         await appState.signOut()

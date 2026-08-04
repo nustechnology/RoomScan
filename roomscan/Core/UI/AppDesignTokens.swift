@@ -15,6 +15,7 @@ enum AppColors {
     static let brandBlueBottom = Color(red: 0.02, green: 0.36, blue: 0.88)
     static let brandMark = Color.white
     static let error = Color(uiColor: .systemRed)
+    static let toastSuccess = Color(red: 0.11, green: 0.49, blue: 0.23)
 
     static let noteRed = Color(red: 0.90, green: 0.22, blue: 0.21)
     static let noteOrange = Color(red: 0.96, green: 0.53, blue: 0.12)

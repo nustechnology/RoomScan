@@ -10,12 +10,22 @@ import SwiftUI
 struct ViewerInput: Hashable, Identifiable, Sendable {
     var id: String { scanID }
 
+    let projectID: String?
+    let projectName: String?
     let scanID: String
     let scanName: String
     /// When nil, model loading fails and the viewer shows its error state.
     let modelURL: URL?
 
-    init(scanID: String, scanName: String, modelURL: URL? = nil) {
+    init(
+        projectID: String? = nil,
+        projectName: String? = nil,
+        scanID: String,
+        scanName: String,
+        modelURL: URL? = nil
+    ) {
+        self.projectID = projectID
+        self.projectName = projectName
         self.scanID = scanID
         self.scanName = scanName
         self.modelURL = modelURL

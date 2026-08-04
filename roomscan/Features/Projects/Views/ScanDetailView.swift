@@ -7,16 +7,22 @@ import SwiftUI
 
 struct ScanDetailView: View {
     @State var viewModel: ScanDetailViewModel
+    let projectID: String?
+    let projectName: String?
+    let notesService: any NotesService
+    let shareService: any ShareService
+    var accessPolicy: DetailAccessPolicy = .editable
     let onScanUpdated: (RoomScanSummary) -> Void
     let onScanDeleted: () -> Void
-    var onOpen3DModel: (() -> Void)?
     let onShare: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var showsRenameAlert = false
     @State private var showsDeleteConfirmation = false
+    @State private var viewerInput: ViewerInput?
+    @State private var shareInput: ShareScreenInput?
 
-    private var canOpen3DModel: Bool { onOpen3DModel != nil }
+    private var canOpen3DModel: Bool { viewModel.scan.localModelURL != nil }
 
     private var open3DModelButtonTitle: String {
         if canOpen3DModel {
@@ -46,7 +52,22 @@ struct ScanDetailView: View {
         .background(AppColors.background)
         .navigationTitle(viewModel.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(AppColors.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.headline.weight(.semibold))
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .foregroundStyle(AppColors.primaryText)
+                .accessibilityLabel(String(localized: "common.back"))
+                .accessibilityIdentifier("scanDetail.back")
+            }
             ToolbarItem(placement: .principal) {
                 Text(viewModel.title)
                     .appTypography(AppTypography.headingSmall)
@@ -59,7 +80,7 @@ struct ScanDetailView: View {
                             viewModel.beginRename()
                             showsRenameAlert = true
                         }
-                        Button(String(localized: "scanDetail.menu.share"), action: onShare)
+                        Button(String(localized: "scanDetail.menu.share"), action: openShare)
                         Button(String(localized: "scanDetail.menu.delete"), role: .destructive) {
                             showsDeleteConfirmation = true
                         }
@@ -117,6 +138,18 @@ struct ScanDetailView: View {
                 viewModel.dismissActionError()
             }
         }
+        .fullScreenCover(item: $viewerInput) { input in
+            ViewerView(
+                input: input,
+                notesService: notesService,
+                accessPolicy: accessPolicy,
+                shareService: shareService,
+                onBack: { viewerInput = nil }
+            )
+        }
+        .fullScreenCover(item: $shareInput) { input in
+            ShareView(input: input, service: shareService)
+        }
         .disabled(viewModel.isPerformingAction)
     }
 
@@ -125,7 +158,7 @@ struct ScanDetailView: View {
             title: open3DModelButtonTitle,
             systemImageName: "cube",
             color: AppColors.brandBlueBottom,
-            action: { onOpen3DModel?() },
+            action: open3DModel,
             accessibilityIdentifier: "scanDetail.open3DModel"
         )
         .disabled(!canOpen3DModel)
@@ -134,8 +167,8 @@ struct ScanDetailView: View {
 
     @ViewBuilder
     private var thumbnailCard: some View {
-        if let onOpen3DModel {
-            Button(action: onOpen3DModel) {
+        if canOpen3DModel {
+            Button(action: open3DModel) {
                 thumbnailContent
             }
             .buttonStyle(.plain)
@@ -178,19 +211,19 @@ struct ScanDetailView: View {
     private var metadataSection: some View {
         VStack(spacing: 0) {
             metadataRow(
-                label: String(localized: "scanDetail.createdBy"),
+                label: "scanDetail.createdBy",
                 value: viewModel.createdByText,
                 accessibilityIdentifier: "scanDetail.createdBy"
             )
             Divider()
             metadataRow(
-                label: String(localized: "scanDetail.date"),
+                label: "scanDetail.date",
                 value: viewModel.formattedDate,
                 accessibilityIdentifier: "scanDetail.date"
             )
             Divider()
             metadataRow(
-                label: String(localized: "scanDetail.notes"),
+                label: "scanDetail.notes",
                 value: viewModel.notesCountText,
                 accessibilityIdentifier: "scanDetail.notes"
             )
@@ -199,8 +232,28 @@ struct ScanDetailView: View {
         }
     }
 
+    private func open3DModel() {
+        guard let modelURL = viewModel.scan.localModelURL else { return }
+        viewerInput = ViewerInput(
+            projectID: projectID,
+            projectName: projectName,
+            scanID: viewModel.scan.id,
+            scanName: viewModel.scan.name,
+            modelURL: modelURL
+        )
+    }
+
+    private func openShare() {
+        shareInput = .scan(
+            projectID: projectID,
+            projectName: projectName,
+            scanID: viewModel.scan.id,
+            scanName: viewModel.scan.name
+        )
+    }
+
     private func metadataRow(
-        label: String,
+        label: LocalizedStringKey,
         value: String,
         accessibilityIdentifier: String
     ) -> some View {
@@ -281,6 +334,11 @@ struct ScanDetailView: View {
                 currentUserID: AuthenticationSession.mockAppleUser.user.id,
                 service: MockProjectsService(simulatedDelayNanoseconds: 0)
             ),
+            projectID: "project-1",
+            projectName: "Lakeside Remodel",
+            notesService: MockNotesService(),
+            shareService: MockShareService(simulatedDelayNanoseconds: 0),
+            accessPolicy: .editable,
             onScanUpdated: { _ in },
             onScanDeleted: {},
             onShare: {}
