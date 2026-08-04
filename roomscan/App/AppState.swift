@@ -18,6 +18,7 @@ final class AppState {
 
     private(set) var phase: Phase = .restoring
     private(set) var pendingInvitation: PendingInvitation?
+    var pendingToastMessage: String?
 
     let authenticationService: any AuthenticationService
     private let activityTracker: SessionActivityTracker
@@ -81,14 +82,23 @@ final class AppState {
         }
     }
 
-    func signOut() async {
+    func signOut(showSuccessToast: Bool = false) async {
         do {
             try await authenticationService.signOut()
             activityTracker.clearActivity()
+            if showSuccessToast {
+                pendingToastMessage = String(localized: "account.signOut.successToast")
+            }
             phase = .signedOut
         } catch {
             // Keep the existing session if sign-out fails so local data ownership stays clear.
         }
+    }
+
+    func consumePendingToastMessage() -> String? {
+        let message = pendingToastMessage
+        pendingToastMessage = nil
+        return message
     }
 
     func retryRestore() async {

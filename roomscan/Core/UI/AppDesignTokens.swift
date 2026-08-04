@@ -26,6 +26,22 @@ enum AppColors {
     static let borderStrong = Color(red: 215 / 255, green: 224 / 255, blue: 236 / 255)
     /// Figma `--rs-color-bg-neutral-subtle` (#EEF2F7).
     static let badgeNeutralBackground = Color(red: 238 / 255, green: 242 / 255, blue: 247 / 255)
+    static let warningBannerBackground = Color(uiColor: .dynamic(
+        light: UIColor(red: 1.0, green: 0.97, blue: 0.90, alpha: 1),
+        dark: UIColor(red: 0.16, green: 0.14, blue: 0.06, alpha: 1)
+    ))
+    static let warningBannerBorder = Color(uiColor: .dynamic(
+        light: UIColor(red: 0.93, green: 0.82, blue: 0.55, alpha: 1),
+        dark: UIColor(red: 0.42, green: 0.34, blue: 0.15, alpha: 1)
+    ))
+    static let warningAction = Color(uiColor: .dynamic(
+        light: UIColor(red: 0.72, green: 0.52, blue: 0.12, alpha: 1),
+        dark: UIColor(red: 0.95, green: 0.79, blue: 0.36, alpha: 1)
+    ))
+    static let destructiveSoftBackground = Color(red: 1.0, green: 0.93, blue: 0.93)
+    static let destructiveLabel = Color(red: 0.86, green: 0.18, blue: 0.18)
+    static let avatarPlaceholderBackground = Color(red: 0.86, green: 0.92, blue: 1.0)
+    static let avatarPlaceholderForeground = Color(red: 0.20, green: 0.47, blue: 0.96)
 
     static let noteRed = Color(red: 0.90, green: 0.22, blue: 0.21)
     static let noteOrange = Color(red: 0.96, green: 0.53, blue: 0.12)
@@ -55,4 +71,12 @@ enum AppCornerRadius {
 enum AppShadows {
     static let logoColor = Color.black.opacity(0.18)
     static let actionColor = Color.black.opacity(0.14)
+}
+
+private extension UIColor {
+    static func dynamic(light: UIColor, dark: UIColor) -> UIColor {
+        UIColor { traitCollection in
+            traitCollection.userInterfaceStyle == .dark ? dark : light
+        }
+    }
 }

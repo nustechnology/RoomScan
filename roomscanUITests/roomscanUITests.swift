@@ -35,8 +35,11 @@ final class roomscanUITests: XCTestCase {
         app.buttons["tab.account"].tap()
         XCTAssertTrue(app.buttons["account.signOut"].waitForExistence(timeout: 5))
         app.buttons["account.signOut"].tap()
+        XCTAssertTrue(app.alerts["Sign Out?"].waitForExistence(timeout: 5))
+        app.alerts["Sign Out?"].buttons["Sign Out"].tap()
 
         XCTAssertTrue(app.staticTexts["auth.title"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.otherElements["app.toast"].waitForExistence(timeout: 5))
     }
 
     @MainActor
