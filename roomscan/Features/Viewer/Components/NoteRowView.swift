@@ -8,6 +8,7 @@ import SwiftUI
 struct NoteRowView: View {
     let note: SpatialNote
     let isSelected: Bool
+    let showsOwnerActions: Bool
     let onTap: () -> Void
     let onEdit: () -> Void
     let onMove: () -> Void
@@ -43,9 +44,11 @@ struct NoteRowView: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            Button(String(localized: "viewer.note.menu.edit"), action: onEdit)
-            Button(String(localized: "viewer.note.menu.move"), action: onMove)
-            Button(String(localized: "viewer.note.menu.delete"), role: .destructive, action: onDelete)
+            if showsOwnerActions {
+                Button(String(localized: "viewer.note.menu.edit"), action: onEdit)
+                Button(String(localized: "viewer.note.menu.move"), action: onMove)
+                Button(String(localized: "viewer.note.menu.delete"), role: .destructive, action: onDelete)
+            }
         }
         .accessibilityIdentifier("viewer.note.row.\(note.id)")
     }

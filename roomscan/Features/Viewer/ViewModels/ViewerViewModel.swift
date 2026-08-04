@@ -20,6 +20,7 @@ final class ViewerViewModel {
     let input: ViewerInput
 
     private(set) var scanTitle: String
+    private let accessPolicy: DetailAccessPolicy
     private(set) var loadState: LoadState = .idle
     private(set) var notes: [SpatialNote] = []
     private(set) var selectedNoteID: String?
@@ -46,6 +47,10 @@ final class ViewerViewModel {
 
     var isPlacementActive: Bool {
         placementMode != .idle
+    }
+
+    var allowsOwnerActions: Bool {
+        accessPolicy.allowsOwnerActions
     }
 
     var movingNote: SpatialNote? {
@@ -114,22 +119,26 @@ final class ViewerViewModel {
     init(
         input: ViewerInput,
         notesService: any NotesService,
-        modelLoadingService: any ModelLoadingService
+        modelLoadingService: any ModelLoadingService,
+        accessPolicy: DetailAccessPolicy = .editable
     ) {
         self.input = input
         self.scanTitle = input.scanName
+        self.accessPolicy = accessPolicy
         self.notesService = notesService
         self.modelLoadingService = modelLoadingService
     }
 
     convenience init(
         input: ViewerInput,
-        notesService: any NotesService
+        notesService: any NotesService,
+        accessPolicy: DetailAccessPolicy = .editable
     ) {
         self.init(
             input: input,
             notesService: notesService,
-            modelLoadingService: DefaultModelLoadingService()
+            modelLoadingService: DefaultModelLoadingService(),
+            accessPolicy: accessPolicy
         )
     }
 
@@ -168,6 +177,7 @@ final class ViewerViewModel {
     }
 
     func renameScan(to title: String) {
+        guard allowsOwnerActions else { return }
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return }
         scanTitle = trimmedTitle
@@ -197,14 +207,14 @@ final class ViewerViewModel {
     }
 
     func beginAddNote() {
-        guard !isBusy else { return }
+        guard allowsOwnerActions, !isBusy else { return }
         placementMode = .placingNew
         placementDraftPosition = nil
         selectedNoteID = nil
     }
 
     func beginMoveNote(_ note: SpatialNote) {
-        guard !isBusy else { return }
+        guard allowsOwnerActions, !isBusy else { return }
         placementMode = .moving(noteID: note.id)
         selectedNoteID = note.id
         placementDraftPosition = note.position
@@ -239,6 +249,7 @@ final class ViewerViewModel {
     }
 
     func confirmPlacement() {
+        guard allowsOwnerActions else { return }
         switch placementMode {
         case .idle:
             return
@@ -270,10 +281,12 @@ final class ViewerViewModel {
     }
 
     func openEditor(for note: SpatialNote) {
+        guard allowsOwnerActions else { return }
         editorMode = .edit(note)
     }
 
     func requestDelete(_ note: SpatialNote) {
+        guard allowsOwnerActions else { return }
         notePendingDeletion = note
     }
 
@@ -284,6 +297,7 @@ final class ViewerViewModel {
 
 extension ViewerViewModel {
     func saveEditor(title: String, description: String, color: NoteColor) async -> Bool {
+        guard allowsOwnerActions else { return false }
         guard let editorMode, !isBusy else { return false }
         isBusy = true
         defer { isBusy = false }
@@ -323,6 +337,7 @@ extension ViewerViewModel {
     }
 
     func confirmDelete(_ note: SpatialNote) async {
+        guard allowsOwnerActions else { return }
         guard !isBusy else {
             return
         }

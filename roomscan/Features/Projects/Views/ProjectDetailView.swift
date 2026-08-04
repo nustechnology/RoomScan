@@ -7,10 +7,17 @@ import SwiftUI
 
 struct ProjectDetailView: View {
     let project: ProjectSummary
+    let projectsService: any ProjectsService
+    let notesService: any NotesService
+    let shareService: any ShareService
+    let currentUserID: String
     var accessPolicy: DetailAccessPolicy = .editable
-
+    var onScanUpdated: (RoomScanSummary) -> Void = { _ in }
+    var onScanDeleted: (RoomScanSummary.ID) -> Void = { _ in }
     @Environment(\.dismiss) private var dismiss
-    @State private var viewerInput: ViewerInput?
+    @State private var selectedScanDetail: ProjectDetailScanDestination?
+    @State private var shareInput: ShareScreenInput?
+    @State private var roomScans: [RoomScanSummary] = []
 
     private var showsOwnerActions: Bool {
         ProjectDetailPresentation.showsOwnerActions(for: accessPolicy)
@@ -29,7 +36,7 @@ struct ProjectDetailView: View {
                         .accessibilityIdentifier("projects.detail.scanCount.\(project.id)")
 
                     VStack(spacing: 0) {
-                        if project.roomScans.isEmpty {
+                        if roomScans.isEmpty {
                             Text("projects.detail.emptyScans.message")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
@@ -39,27 +46,26 @@ struct ProjectDetailView: View {
                                 .padding(.vertical, 28)
                                 .accessibilityIdentifier("projects.detail.emptyScans")
                         } else {
-                            ForEach(Array(project.roomScans.enumerated()), id: \.element.id) { index, scan in
+                            ForEach(Array(roomScans.enumerated()), id: \.element.id) { index, scan in
                                 RoomScanRowView(
                                     scan: scan,
                                     onTap: {
-                                        viewerInput = ViewerInput(
-                                            scanID: scan.id,
-                                            scanName: scan.name,
-                                            modelURL: scan.localModelURL
+                                        selectedScanDetail = ProjectDetailScanDestination(
+                                            projectID: project.id,
+                                            scan: scan
                                         )
                                     }
                                 )
                                     .padding(12)
 
-                                if index < project.roomScans.count - 1 {
+                                if index < roomScans.count - 1 {
                                     Divider()
                                         .padding(.leading, 12)
                                 }
                             }
                         }
                     }
-                    .background(.white)
+                    .background(AppColors.background)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                     .overlay {
                         RoundedRectangle(cornerRadius: 14)
@@ -71,7 +77,7 @@ struct ProjectDetailView: View {
                             PrimaryActionButton(
                                 title: String(localized: "projects.detail.addScan"),
                                 systemImageName: "plus",
-                                color: .white,
+                                color: AppColors.background,
                                 action: {},
                                 foregroundColor: .primary,
                                 borderColor: .secondary.opacity(0.35),
@@ -82,8 +88,8 @@ struct ProjectDetailView: View {
                             PrimaryActionButton(
                                 title: String(localized: "projects.detail.shareProject"),
                                 systemImageName: "square.and.arrow.up",
-                                color: .white,
-                                action: {},
+                                color: AppColors.background,
+                                action: openShareProject,
                                 foregroundColor: .primary,
                                 borderColor: .secondary.opacity(0.35),
                                 cornerRadius: 16,
@@ -96,9 +102,12 @@ struct ProjectDetailView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 18)
             }
-            .background(.white)
+            .background(AppColors.background)
+            .task {
+                roomScans = project.roomScans
+            }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.white, for: .navigationBar)
+            .toolbarBackground(AppColors.background, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -122,37 +131,56 @@ struct ProjectDetailView: View {
                 }
             }
             .accessibilityIdentifier("projects.detail")
-            .fullScreenCover(item: $viewerInput) { input in
-                ViewerView(
-                    input: input,
-                    notesService: MockNotesService.shared,
-                    onBack: { viewerInput = nil }
-                )
+            .fullScreenCover(item: $selectedScanDetail) { destination in
+                NavigationStack {
+                    ScanDetailView(
+                        viewModel: ScanDetailViewModel(
+                            projectID: destination.projectID,
+                            scan: destination.scan,
+                            currentUserID: currentUserID,
+                            service: projectsService,
+                            accessPolicy: accessPolicy
+                        ),
+                        projectID: destination.projectID,
+                        projectName: project.name,
+                        notesService: notesService,
+                        shareService: shareService,
+                        accessPolicy: accessPolicy,
+                        onScanUpdated: handleScanUpdated,
+                        onScanDeleted: {
+                            handleScanDeleted(scanID: destination.scan.id)
+                        },
+                        onShare: {}
+                    )
+                }
+            }
+            .fullScreenCover(item: $shareInput) { input in
+                ShareView(input: input, service: shareService)
             }
         }
-        .background(.white)
+        .background(AppColors.background)
     }
 
     private var projectMetadata: some View {
         VStack(spacing: 0) {
             DetailMetadataRow(
-                title: String(localized: "projects.detail.metadata.owner"),
+                title: "projects.detail.metadata.owner.label",
                 value: project.ownerName,
                 accessibilityIdentifier: "projects.detail.metadata.owner"
             )
             metadataDivider
             DetailMetadataRow(
-                title: String(localized: "projects.detail.metadata.created"),
+                title: "projects.detail.metadata.created.label",
                 value: createdDateText,
                 accessibilityIdentifier: "projects.detail.metadata.created"
             )
             metadataDivider
             DetailMetadataRow(
-                title: String(localized: "projects.detail.metadata.shared"),
+                title: "projects.detail.metadata.shared.label",
                 value: sharedUserCountText,
                 showsDisclosure: showsOwnerActions,
                 accessibilityIdentifier: "projects.detail.metadata.shared",
-                action: showsOwnerActions ? {} : nil
+                action: shareMetadataAction
             )
             metadataDivider
         }
@@ -167,13 +195,41 @@ struct ProjectDetailView: View {
     }
 
     private var scansTitle: String {
-        ProjectDetailPresentation.scansTitle(for: project.roomScans.count)
+        ProjectDetailPresentation.scansTitle(for: roomScans.count)
+    }
+
+    private var shareMetadataAction: (() -> Void)? {
+        showsOwnerActions ? { openShareProject() } : nil
     }
 
     private var metadataDivider: some View {
         Rectangle()
             .fill(.secondary.opacity(0.45))
             .frame(height: 1)
+    }
+
+    private func openShareProject() {
+        shareInput = .project(id: project.id, name: project.name)
+    }
+
+    private func handleScanUpdated(_ updatedScan: RoomScanSummary) {
+        guard let index = roomScans.firstIndex(where: { $0.id == updatedScan.id }) else { return }
+        roomScans[index] = updatedScan
+        onScanUpdated(updatedScan)
+    }
+
+    private func handleScanDeleted(scanID: RoomScanSummary.ID) {
+        roomScans.removeAll { $0.id == scanID }
+        onScanDeleted(scanID)
+    }
+}
+
+private struct ProjectDetailScanDestination: Identifiable {
+    let projectID: String
+    let scan: RoomScanSummary
+
+    var id: String {
+        "\(projectID)-\(scan.id)"
     }
 }
 
@@ -202,7 +258,7 @@ enum ProjectDetailPresentation {
 }
 
 private struct DetailMetadataRow: View {
-    let title: String
+    let title: LocalizedStringKey
     let value: String
     var showsDisclosure = false
     var accessibilityIdentifier: String?

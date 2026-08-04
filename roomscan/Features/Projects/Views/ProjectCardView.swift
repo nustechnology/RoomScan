@@ -12,6 +12,7 @@ struct ProjectCardView: View {
     let showsExpandControl: Bool
     var searchQuery: String = ""
     let onProjectTap: () -> Void
+    let onShare: () -> Void
     let onToggleExpansion: () -> Void
     let onRoomTap: (RoomScanSummary) -> Void
     let onEdit: () -> Void
@@ -63,6 +64,7 @@ struct ProjectCardView: View {
             Spacer()
 
             Menu {
+                Button(String(localized: "projects.card.menu.share"), action: onShare)
                 Button(String(localized: "projects.card.menu.edit"), action: onEdit)
                 Button(String(localized: "projects.card.menu.delete"), role: .destructive, action: onDelete)
             } label: {

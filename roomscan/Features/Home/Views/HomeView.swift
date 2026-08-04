@@ -14,6 +14,8 @@ struct HomeView: View {
 
     let session: AuthenticationSession
     let projectsService: any ProjectsService
+    let notesService: any NotesService
+    let shareService: any ShareService
     let sharedService: any SharedService
     let onSignOut: () -> Void
 
@@ -28,11 +30,15 @@ struct HomeView: View {
     init(
         session: AuthenticationSession,
         projectsService: any ProjectsService,
+        notesService: any NotesService,
+        shareService: any ShareService,
         sharedService: any SharedService,
         onSignOut: @escaping () -> Void
     ) {
         self.session = session
         self.projectsService = projectsService
+        self.notesService = notesService
+        self.shareService = shareService
         self.sharedService = sharedService
         self.onSignOut = onSignOut
         _projectsViewModel = State(
@@ -69,23 +75,33 @@ struct HomeView: View {
                 HomeBottomNav(selectedTab: $selectedTab)
             }
         }
-        .fullScreenCover(isPresented: $showsNewProject, onDismiss: {
-            selectedCreatedProject = pendingCreatedProject
-            pendingCreatedProject = nil
-        }, content: {
-            NewProjectView(
-                onSave: { name, _ in
-                    let createdProject = makeCreatedProject(named: name)
-                    pendingCreatedProject = createdProject
-                    showsNewProject = false
-                },
-                onCancel: {
-                    showsNewProject = false
-                }
-            )
-        })
+        .fullScreenCover(
+            isPresented: $showsNewProject,
+            onDismiss: {
+                selectedCreatedProject = pendingCreatedProject
+                pendingCreatedProject = nil
+            },
+            content: {
+                NewProjectView(
+                    onSave: { name, _ in
+                        let createdProject = makeCreatedProject(named: name)
+                        pendingCreatedProject = createdProject
+                        showsNewProject = false
+                    },
+                    onCancel: {
+                        showsNewProject = false
+                    }
+                )
+            }
+        )
         .fullScreenCover(item: $selectedCreatedProject) { project in
-            ProjectDetailView(project: project)
+            ProjectDetailView(
+                project: project,
+                projectsService: projectsService,
+                notesService: notesService,
+                shareService: shareService,
+                currentUserID: session.user.id
+            )
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
@@ -97,6 +113,8 @@ struct HomeView: View {
             ProjectsView(
                 viewModel: projectsViewModel,
                 projectsService: projectsService,
+                notesService: notesService,
+                shareService: shareService,
                 currentUserID: session.user.id,
                 showsNavigationTitle: false,
                 isShowingDetail: $isShowingProjectsDetail
@@ -105,6 +123,8 @@ struct HomeView: View {
             SharedWithMeView(
                 viewModel: sharedViewModel,
                 projectsService: projectsService,
+                notesService: notesService,
+                shareService: shareService,
                 currentUserID: session.user.id
             )
         case .account:
@@ -145,7 +165,7 @@ private struct HomeBottomNav: View {
                                 .font(.caption2.weight(.semibold))
                                 .lineLimit(1)
                         }
-                        .foregroundStyle(selectedTab == tab ? AppColors.brandBlueBottom : .secondary)
+                        .foregroundStyle(selectedTab == tab ? .blue : .secondary)
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
                         .contentShape(Rectangle())
@@ -318,6 +338,8 @@ private struct AccountHomeView: View {
     HomeView(
         session: .mockAppleUser,
         projectsService: MockProjectsService(simulatedDelayNanoseconds: 0),
+        notesService: MockNotesService(),
+        shareService: MockShareService(simulatedDelayNanoseconds: 0),
         sharedService: MockSharedService(simulatedDelayNanoseconds: 0),
         onSignOut: {}
     )

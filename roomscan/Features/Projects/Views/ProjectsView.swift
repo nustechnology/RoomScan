@@ -8,7 +8,11 @@ import SwiftUI
 struct ProjectsView: View {
     @State var viewModel: ProjectsViewModel
     @State private var selectedProject: ProjectSummary?
+    @State private var selectedScanDetail: ScanDetailDestination?
+    @State private var shareInput: ShareScreenInput?
     let projectsService: any ProjectsService
+    let notesService: any NotesService
+    let shareService: any ShareService
     var currentUserID: String
     var showsNavigationTitle = true
     @Binding var isShowingDetail: Bool
@@ -16,25 +20,28 @@ struct ProjectsView: View {
     @State private var showsScanCheck = false
     @State private var projectToEdit: ProjectSummary?
     @State private var projectPendingDelete: ProjectSummary?
-    @State private var navigationPath = NavigationPath()
     @FocusState private var isSearchFocused: Bool
 
     init(
         viewModel: ProjectsViewModel,
         projectsService: any ProjectsService,
+        notesService: any NotesService,
+        shareService: any ShareService,
         currentUserID: String,
         showsNavigationTitle: Bool = true,
         isShowingDetail: Binding<Bool> = .constant(false)
     ) {
         _viewModel = State(initialValue: viewModel)
         self.projectsService = projectsService
+        self.notesService = notesService
+        self.shareService = shareService
         self.currentUserID = currentUserID
         self.showsNavigationTitle = showsNavigationTitle
         _isShowingDetail = isShowingDetail
     }
 
     var body: some View {
-        NavigationStack(path: $navigationPath) {
+        NavigationStack {
             rootContent
         }
     }
@@ -45,13 +52,16 @@ struct ProjectsView: View {
             .toolbar(showsNavigationTitle ? .visible : .hidden, for: .navigationBar)
             .modifier(ProjectsPresentationModifier(
                 selectedProject: $selectedProject,
+                selectedScanDetail: $selectedScanDetail,
+                shareInput: $shareInput,
                 showsScanCheck: $showsScanCheck,
                 projectToEdit: $projectToEdit,
                 projectPendingDelete: $projectPendingDelete,
-                navigationPath: $navigationPath,
                 isShowingDetail: $isShowingDetail,
                 viewModel: viewModel,
                 projectsService: projectsService,
+                notesService: notesService,
+                shareService: shareService,
                 currentUserID: currentUserID
             ))
     }
@@ -122,21 +132,21 @@ struct ProjectsView: View {
                         ),
                         isSearchFocused: $isSearchFocused
                     )
-
                     ProjectsContentSection(
                         viewModel: viewModel,
                         onNewScan: { showsScanCheck = true },
                         onProjectTap: { project in
                             selectedProject = project
                         },
-                        onRoomTap: { scan in
-                            if let project = viewModel.visibleProjects.first(where: {
-                                $0.roomScans.contains(where: { $0.id == scan.id })
-                            })?.project {
-                                navigationPath.append(
-                                    ScanDetailDestination(projectID: project.id, scan: scan)
-                                )
-                            }
+                        onShare: { project in
+                            shareInput = .project(id: project.id, name: project.name)
+                        },
+                        onRoomTap: { project, scan in
+                            selectedScanDetail = ScanDetailDestination(
+                                projectID: project.id,
+                                projectName: project.name,
+                                scan: scan
+                            )
                         },
                         onToggleExpansion: { projectID in
                             viewModel.toggleExpansion(for: projectID)
@@ -162,19 +172,25 @@ struct ProjectsView: View {
 
 private struct ProjectsPresentationModifier: ViewModifier {
     @Binding var selectedProject: ProjectSummary?
+    @Binding var selectedScanDetail: ScanDetailDestination?
+    @Binding var shareInput: ShareScreenInput?
     @Binding var showsScanCheck: Bool
     @Binding var projectToEdit: ProjectSummary?
     @Binding var projectPendingDelete: ProjectSummary?
-    @Binding var navigationPath: NavigationPath
     @Binding var isShowingDetail: Bool
     var viewModel: ProjectsViewModel
     let projectsService: any ProjectsService
+    let notesService: any NotesService
+    let shareService: any ShareService
     var currentUserID: String
 
     func body(content: Content) -> some View {
         content
             .fullScreenCover(item: $selectedProject) { project in
-                ProjectDetailView(project: project)
+                projectDetailCover(for: project)
+            }
+            .fullScreenCover(item: $shareInput) { input in
+                ShareView(input: input, service: shareService)
             }
             .navigationDestination(isPresented: $showsScanCheck) {
                 ScanCheckView(
@@ -183,11 +199,13 @@ private struct ProjectsPresentationModifier: ViewModifier {
                     onStartScan: { showsScanCheck = false }
                 )
             }
-            .navigationDestination(for: ScanDetailDestination.self) { destination in
-                scanDetailView(for: destination)
+            .fullScreenCover(item: $selectedScanDetail) { destination in
+                NavigationStack {
+                    scanDetailView(for: destination)
+                }
             }
-            .onChange(of: navigationPath.count) { _, count in
-                isShowingDetail = count > 0
+            .onChange(of: selectedScanDetail) { _, destination in
+                isShowingDetail = destination != nil
             }
             .task {
                 await viewModel.loadInitialProjects()
@@ -246,6 +264,10 @@ private struct ProjectsPresentationModifier: ViewModifier {
                 currentUserID: currentUserID,
                 service: projectsService
             ),
+            projectID: destination.projectID,
+            projectName: destination.projectName,
+            notesService: notesService,
+            shareService: shareService,
             onScanUpdated: { updatedScan in
                 viewModel.applyUpdatedScan(
                     projectID: destination.projectID,
@@ -260,6 +282,28 @@ private struct ProjectsPresentationModifier: ViewModifier {
             },
             // TODO: Implement scan sharing.
             onShare: {}
+        )
+    }
+
+    private func projectDetailCover(for project: ProjectSummary) -> some View {
+        ProjectDetailView(
+            project: project,
+            projectsService: projectsService,
+            notesService: notesService,
+            shareService: shareService,
+            currentUserID: currentUserID,
+            onScanUpdated: { updatedScan in
+                viewModel.applyUpdatedScan(
+                    projectID: project.id,
+                    scan: updatedScan
+                )
+            },
+            onScanDeleted: { scanID in
+                viewModel.applyDeletedScan(
+                    projectID: project.id,
+                    scanID: scanID
+                )
+            }
         )
     }
 
@@ -342,7 +386,8 @@ private struct ProjectsContentSection: View {
     let viewModel: ProjectsViewModel
     let onNewScan: () -> Void
     let onProjectTap: (ProjectSummary) -> Void
-    let onRoomTap: (RoomScanSummary) -> Void
+    let onShare: (ProjectSummary) -> Void
+    let onRoomTap: (ProjectSummary, RoomScanSummary) -> Void
     let onToggleExpansion: (ProjectSummary.ID) -> Void
     let onEdit: (ProjectSummary) -> Void
     let onDelete: (ProjectSummary) -> Void
@@ -373,10 +418,15 @@ private struct ProjectsContentSection: View {
                     onProjectTap: {
                         onProjectTap(visibleProject.project)
                     },
+                    onShare: {
+                        onShare(visibleProject.project)
+                    },
                     onToggleExpansion: {
                         onToggleExpansion(visibleProject.project.id)
                     },
-                    onRoomTap: onRoomTap,
+                    onRoomTap: { scan in
+                        onRoomTap(visibleProject.project, scan)
+                    },
                     onEdit: {
                         onEdit(visibleProject.project)
                     },
@@ -409,7 +459,7 @@ private struct SearchBarView: View {
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
 
-            TextField("Search projects", text: $searchQuery)
+            TextField(String(localized: "projects.search.placeholder"), text: $searchQuery)
                 .font(.body)
                 .focused(isSearchFocused)
                 .textInputAutocapitalization(.never)
@@ -426,7 +476,7 @@ private struct SearchBarView: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Clear search")
+                .accessibilityLabel(String(localized: "projects.search.clear"))
                 .accessibilityIdentifier("projects.search.clear")
             }
 
@@ -449,7 +499,10 @@ private struct SearchEmptyStateView: View {
 
     var body: some View {
         ContentUnavailableView(
-            "No results found for \"\(query)\"",
+            String.localizedStringWithFormat(
+                String(localized: "projects.search.empty.format"),
+                query
+            ),
             systemImage: "magnifyingglass"
         )
         .accessibilityIdentifier("projects.search.emptyState")
@@ -514,11 +567,18 @@ private struct ActionErrorToast: View {
     return ProjectsView(
         viewModel: ProjectsViewModel(service: service),
         projectsService: service,
+        notesService: MockNotesService(),
+        shareService: MockShareService(simulatedDelayNanoseconds: 0),
         currentUserID: AuthenticationSession.mockAppleUser.user.id
     )
 }
 
-private struct ScanDetailDestination: Hashable {
+private struct ScanDetailDestination: Hashable, Identifiable {
     let projectID: String
+    let projectName: String?
     let scan: RoomScanSummary
+
+    var id: String {
+        "\(projectID)-\(scan.id)"
+    }
 }

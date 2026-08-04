@@ -44,8 +44,30 @@ struct RoomScanRowView: View {
             String(localized: "projects.scan.notes.format"),
             scan.notes.count
         )
-        let dateText = scan.createdAt.formatted(.dateTime.month(.abbreviated).day())
+        let dateText = RoomScanRowPresentation.dateText(scan.createdAt)
         return "\(notesText) · \(dateText)"
+    }
+}
+
+private enum RoomScanRowPresentation {
+    static func dateText(
+        _ date: Date,
+        now: Date = .now,
+        calendar: Calendar = .current,
+        locale: Locale = .current
+    ) -> String {
+        var baseStyle = Date.FormatStyle()
+            .month(.abbreviated)
+            .day()
+            .locale(locale)
+        baseStyle.calendar = calendar
+        baseStyle.timeZone = calendar.timeZone
+
+        if calendar.isDate(date, equalTo: now, toGranularity: .year) {
+            return date.formatted(baseStyle)
+        }
+
+        return date.formatted(baseStyle.year())
     }
 }
 

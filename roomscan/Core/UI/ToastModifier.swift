@@ -5,12 +5,36 @@
 
 import SwiftUI
 
+enum ToastStyle: Equatable {
+    case success
+    case error
+
+    var iconName: String {
+        switch self {
+        case .success:
+            return "checkmark.circle.fill"
+        case .error:
+            return "exclamationmark.circle.fill"
+        }
+    }
+
+    var backgroundColor: Color {
+        switch self {
+        case .success:
+            return AppColors.toastSuccess
+        case .error:
+            return AppColors.error
+        }
+    }
+}
+
 struct ToastView: View {
     let message: String
+    let style: ToastStyle
 
     var body: some View {
         HStack(spacing: AppSpacing.small) {
-            Image(systemName: "exclamationmark.circle.fill")
+            Image(systemName: style.iconName)
                 .foregroundStyle(.white)
 
             Text(message)
@@ -22,7 +46,7 @@ struct ToastView: View {
         .padding(.vertical, AppSpacing.medium)
         .background(
             RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                .fill(AppColors.error)
+                .fill(style.backgroundColor)
                 .shadow(color: AppShadows.actionColor, radius: 8, y: 4)
         )
         .padding(.horizontal, AppSpacing.large)
@@ -31,6 +55,7 @@ struct ToastView: View {
 
 struct ToastModifier: ViewModifier {
     @Binding var message: String?
+    @Binding var style: ToastStyle
     @State private var timerTask: Task<Void, Never>?
 
     func body(content: Content) -> some View {
@@ -38,7 +63,7 @@ struct ToastModifier: ViewModifier {
             content
 
             if let message {
-                ToastView(message: message)
+                ToastView(message: message, style: style)
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .zIndex(1)
                     .padding(.top, AppSpacing.medium)
@@ -70,7 +95,7 @@ struct ToastModifier: ViewModifier {
 }
 
 extension View {
-    func toast(message: Binding<String?>) -> some View {
-        modifier(ToastModifier(message: message))
+    func toast(message: Binding<String?>, style: Binding<ToastStyle> = .constant(.error)) -> some View {
+        modifier(ToastModifier(message: message, style: style))
     }
 }
