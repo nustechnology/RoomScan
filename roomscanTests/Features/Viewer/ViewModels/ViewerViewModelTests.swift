@@ -25,6 +25,32 @@ struct ViewerViewModelTests {
         #expect(viewModel.viewMode == .threeD)
     }
 
+    @Test func renameScanUpdatesTitle() {
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-1", scanName: "Living Room"),
+            notesService: MockNotesService(),
+            modelLoadingService: DefaultModelLoadingService()
+        )
+
+        let didRename = viewModel.renameScan(to: "  Dining Room  ")
+
+        #expect(didRename)
+        #expect(viewModel.scanTitle == "Dining Room")
+    }
+
+    @Test func renameScanRejectsEmptyName() {
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-1", scanName: "Living Room"),
+            notesService: MockNotesService(),
+            modelLoadingService: DefaultModelLoadingService()
+        )
+
+        let didRename = viewModel.renameScan(to: "   ")
+
+        #expect(!didRename)
+        #expect(viewModel.scanTitle == "Living Room")
+    }
+
     @Test func switchingViewModeKeepsNotes() async {
         let viewModel = await loadedViewModel(scanID: "scan-mode")
         let noteCount = viewModel.notes.count

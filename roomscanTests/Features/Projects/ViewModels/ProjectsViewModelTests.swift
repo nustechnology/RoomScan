@@ -658,35 +658,22 @@ private actor TestProjectsService: ProjectsService {
             creatorDisplayName: existing.creatorDisplayName,
             notes: existing.notes
         )
-        var roomScans = project.roomScans
-        roomScans[scanIndex] = updatedScan
-        projects[projectIndex] = ProjectSummary(
-            id: project.id,
-            name: project.name,
-            ownerName: project.ownerName,
-            createdAt: project.createdAt,
-            updatedAt: Date(timeIntervalSince1970: 20_000),
-            description: project.description,
-            sharedUserCount: project.sharedUserCount,
-            roomScans: roomScans
-        )
+        guard let updatedProject = project.replacingScan(
+            updatedScan,
+            updatedAt: Date(timeIntervalSince1970: 20_000)
+        ) else {
+            throw ProjectsServiceError.notFound
+        }
+        projects[projectIndex] = updatedProject
         return updatedScan
     }
 
     func deleteScan(projectID: String, scanID: String) async throws {
-        let (projectIndex, scanIndex) = try indices(projectID: projectID, scanID: scanID)
+        let (projectIndex, _) = try indices(projectID: projectID, scanID: scanID)
         let project = projects[projectIndex]
-        var roomScans = project.roomScans
-        roomScans.remove(at: scanIndex)
-        projects[projectIndex] = ProjectSummary(
-            id: project.id,
-            name: project.name,
-            ownerName: project.ownerName,
-            createdAt: project.createdAt,
-            updatedAt: Date(timeIntervalSince1970: 20_000),
-            description: project.description,
-            sharedUserCount: project.sharedUserCount,
-            roomScans: roomScans
+        projects[projectIndex] = project.removingScan(
+            id: scanID,
+            updatedAt: Date(timeIntervalSince1970: 20_000)
         )
     }
 
@@ -705,18 +692,13 @@ private actor TestProjectsService: ProjectsService {
             creatorDisplayName: existing.creatorDisplayName,
             notes: existing.notes
         )
-        var roomScans = project.roomScans
-        roomScans[scanIndex] = updatedScan
-        projects[projectIndex] = ProjectSummary(
-            id: project.id,
-            name: project.name,
-            ownerName: project.ownerName,
-            createdAt: project.createdAt,
-            updatedAt: Date(timeIntervalSince1970: 20_000),
-            description: project.description,
-            sharedUserCount: project.sharedUserCount,
-            roomScans: roomScans
-        )
+        guard let updatedProject = project.replacingScan(
+            updatedScan,
+            updatedAt: Date(timeIntervalSince1970: 20_000)
+        ) else {
+            throw ProjectsServiceError.notFound
+        }
+        projects[projectIndex] = updatedProject
         return updatedScan
     }
 

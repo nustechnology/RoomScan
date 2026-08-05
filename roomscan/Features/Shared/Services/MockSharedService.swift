@@ -111,6 +111,26 @@ actor MockSharedService: SharedService {
         }
     }
 
+    func ingestSharedProject(_ project: SharedProjectItem) async throws {
+        try await simulateDelay()
+        try throwIfFailed()
+        projects.removeAll { $0.id == project.id }
+        projects.insert(project, at: 0)
+        if scenario == .empty {
+            scenario = .success
+        }
+    }
+
+    func ingestSharedScan(_ scan: SharedScanItem) async throws {
+        try await simulateDelay()
+        try throwIfFailed()
+        scans.removeAll { $0.id == scan.id }
+        scans.insert(scan, at: 0)
+        if scenario == .empty {
+            scenario = .success
+        }
+    }
+
     private func throwIfFailed() throws {
         if scenario == .failLoad {
             throw SharedServiceError.network
