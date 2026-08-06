@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import Testing
 @testable import roomscan
+import Testing
 
 @MainActor
 struct AuthenticationViewModelTests {
@@ -138,6 +138,7 @@ struct AuthenticationViewModelTests {
         #expect(session == nil)
         #expect(viewModel.viewState == .failed(.networkError))
         #expect(viewModel.toastMessage == AuthenticationError.networkError.errorDescription)
+        #expect(viewModel.toastStyle == .error)
     }
 
     @Test func invalidCredentialErrorExposesCredentialToastMessage() async {
@@ -156,5 +157,6 @@ struct AuthenticationViewModelTests {
         #expect(session == nil)
         #expect(viewModel.viewState == .failed(.invalidCredential))
         #expect(viewModel.toastMessage == AuthenticationError.invalidCredential.errorDescription)
+        #expect(viewModel.toastStyle == .error)
     }
 }

@@ -41,7 +41,7 @@ struct AppView: View {
                     )
                 ) {
                     Task {
-                        await appState.signOut()
+                        await appState.signOut(showSuccessToast: true)
                     }
                 }
 

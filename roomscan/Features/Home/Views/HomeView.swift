@@ -227,7 +227,13 @@ struct HomeView: View {
                 currentUserID: session.user.id
             )
         case .account:
-            AccountHomeView(session: session, onSignOut: onSignOut)
+            AccountView(
+                session: session,
+                projectsService: projectsService,
+                sharedService: sharedService,
+                storageMeasuring: RealAccountStorageMeasuring(),
+                onSignOut: onSignOut
+            )
         }
     }
 
@@ -453,39 +459,6 @@ private struct HomeHeader: View {
         .padding(.top, 2)
         .padding(.bottom, 4)
         .background(.background)
-    }
-}
-
-private struct AccountHomeView: View {
-    let session: AuthenticationSession
-    let onSignOut: () -> Void
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-
-            Text(session.user.displayName ?? String(localized: "account.defaultName"))
-                .font(.title3.bold())
-                .lineLimit(1)
-                .accessibilityIdentifier("account.displayName")
-
-            if let email = session.user.email {
-                Text(email)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .accessibilityIdentifier("account.email")
-            }
-
-            Button(String(localized: "account.signOut"), action: onSignOut)
-                .buttonStyle(.bordered)
-                .accessibilityIdentifier("account.signOut")
-        }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

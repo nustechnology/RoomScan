@@ -19,6 +19,7 @@ final class AuthenticationViewModel {
 
     private(set) var viewState: ViewState = .idle
     var toastMessage: String?
+    var toastStyle: ToastStyle = .error
 
     private let authenticationService: any AuthenticationService
 
@@ -114,6 +115,7 @@ final class AuthenticationViewModel {
         } else {
             viewState = .failed(error)
             toastMessage = error.errorDescription
+            toastStyle = .error
         }
     }
 

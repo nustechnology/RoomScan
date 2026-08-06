@@ -72,7 +72,13 @@ struct AuthenticationView: View {
                 }
             }
         }
-        .toast(message: $viewModel.toastMessage)
+        .toast(message: $viewModel.toastMessage, style: $viewModel.toastStyle)
+        .onAppear {
+            if let pendingToast = appState.consumePendingToastMessage() {
+                viewModel.toastMessage = pendingToast
+                viewModel.toastStyle = .success
+            }
+        }
         .preferredColorScheme(.light)
     }
 
