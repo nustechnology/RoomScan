@@ -68,61 +68,126 @@ struct ViewerView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
+        NavigationStack {
+            VStack(spacing: 0) {
+                ViewerModeSwitcher(
+                    selectedMode: viewModel.viewMode,
+                    isEnabled: viewModel.isModelReady,
+                    onSelect: { viewModel.setViewMode($0) }
+                )
                 .padding(.horizontal, AppSpacing.extraLarge)
-                .padding(.top, AppSpacing.small)
+                .padding(.top, AppSpacing.medium)
                 .padding(.bottom, AppSpacing.medium)
 
-            ViewerModeSwitcher(
-                selectedMode: viewModel.viewMode,
-                isEnabled: viewModel.isModelReady,
-                onSelect: { viewModel.setViewMode($0) }
-            )
-            .padding(.horizontal, AppSpacing.extraLarge)
-            .padding(.bottom, AppSpacing.medium)
+                canvasSection
+                    .padding(.horizontal, viewModel.isFullscreen ? 0 : AppSpacing.extraLarge)
+                    .animation(.easeInOut(duration: 0.25), value: viewModel.isFullscreen)
 
-            canvasSection
-                .padding(.horizontal, viewModel.isFullscreen ? 0 : AppSpacing.extraLarge)
-                .animation(.easeInOut(duration: 0.25), value: viewModel.isFullscreen)
-
-            if !viewModel.isFullscreen && viewModel.isModelReady {
-                ZStack(alignment: .top) {
-                    NotesListSection(
-                        notes: viewModel.notes,
-                        selectedNoteID: viewModel.selectedNoteID,
-                        isAddEnabled: viewModel.isModelReady && viewModel.allowsOwnerActions,
-                        showsOwnerActions: viewModel.allowsOwnerActions,
-                        onAddNote: { viewModel.beginAddNote() },
-                        onSelectNote: { viewModel.selectNote(id: $0.id) },
-                        onEditNote: { viewModel.openEditor(for: $0) },
-                        onMoveNote: { viewModel.beginMoveNote($0) },
-                        onDeleteNote: { viewModel.requestDelete($0) }
-                    )
-
-                    if viewModel.isPlacementActive {
-                        PinPlacementBanner(
-                            mode: viewModel.movingNote == nil ? .add : .move,
-                            hasDraftPosition: viewModel.placementDraftPosition != nil,
-                            onCancel: { viewModel.cancelPlacement() },
-                            onDone: { viewModel.confirmPlacement() }
+                if !viewModel.isFullscreen && viewModel.isModelReady {
+                    ZStack(alignment: .top) {
+                        NotesListSection(
+                            notes: viewModel.notes,
+                            selectedNoteID: viewModel.selectedNoteID,
+                            isAddEnabled: viewModel.isModelReady && viewModel.allowsOwnerActions,
+                            showsOwnerActions: viewModel.allowsOwnerActions,
+                            onAddNote: { viewModel.beginAddNote() },
+                            onSelectNote: { viewModel.selectNote(id: $0.id) },
+                            onEditNote: { viewModel.openEditor(for: $0) },
+                            onMoveNote: { viewModel.beginMoveNote($0) },
+                            onDeleteNote: { viewModel.requestDelete($0) }
                         )
-                        .padding(AppSpacing.medium)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+
+                        if viewModel.isPlacementActive {
+                            PinPlacementBanner(
+                                mode: viewModel.movingNote == nil ? .add : .move,
+                                hasDraftPosition: viewModel.placementDraftPosition != nil,
+                                onCancel: { viewModel.cancelPlacement() },
+                                onDone: { viewModel.confirmPlacement() }
+                            )
+                            .padding(AppSpacing.medium)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                        }
                     }
+                    .padding(.horizontal, AppSpacing.extraLarge)
+                    .padding(.top, AppSpacing.large)
+                    .padding(.bottom, AppSpacing.extraLarge)
+                    .frame(maxHeight: 300)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                .padding(.horizontal, AppSpacing.extraLarge)
-                .padding(.top, AppSpacing.large)
-                .padding(.bottom, AppSpacing.extraLarge)
-                .frame(maxHeight: 300)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(AppColors.background)
+            .navigationTitle(viewModel.scanTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(AppColors.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        onBack?()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.headline.weight(.semibold))
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
+                    }
+                    .foregroundStyle(AppColors.primaryText)
+                    .accessibilityLabel(String(localized: "common.back"))
+                    .accessibilityIdentifier("viewer.back")
+                }
+                ToolbarItem(placement: .principal) {
+                    Text(viewModel.scanTitle)
+                        .appTypography(AppTypography.headingSmall)
+                        .foregroundStyle(AppColors.primaryText)
+                        .lineLimit(1)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        if viewModel.allowsOwnerActions {
+                            Button(
+                                action: {
+                                    renameTitle = viewModel.scanTitle
+                                    isRenamePresented = true
+                                },
+                                label: {
+                                    Label(String(localized: "viewer.menu.rename"), systemImage: "pencil")
+                                }
+                            )
+                        }
+
+                        Button(
+                            action: { viewModel.toggleNotesVisibility() },
+                            label: {
+                                if viewModel.areNotesVisible {
+                                    Label(String(localized: "viewer.menu.hideNotes"), systemImage: "eye.slash")
+                                } else {
+                                    Label(String(localized: "viewer.menu.showNotes"), systemImage: "eye")
+                                }
+                            }
+                        )
+
+                        if viewModel.allowsOwnerActions {
+                            Button(
+                                action: { isSharePresented = true },
+                                label: {
+                                    Label(String(localized: "viewer.menu.shareScan"), systemImage: "square.and.arrow.up")
+                                }
+                            )
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.body.weight(.semibold))
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
+                    }
+                    .foregroundStyle(AppColors.primaryText)
+                    .accessibilityLabel(String(localized: "viewer.header.more"))
+                    .accessibilityIdentifier("viewer.more")
+                }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(AppColors.background)
         .overlay { alertHosts }
         .animation(.easeInOut(duration: 0.25), value: viewModel.isFullscreen)
-        .toolbar(.hidden, for: .navigationBar)
         .task {
             await viewModel.load()
         }
@@ -171,8 +236,10 @@ struct ViewerView: View {
         }
         .accessibilityIdentifier("viewer.screen")
     }
+}
 
-    private var alertHosts: some View {
+private extension ViewerView {
+    var alertHosts: some View {
         ZStack {
             Color.clear
                 .alert(
@@ -216,27 +283,8 @@ struct ViewerView: View {
         .allowsHitTesting(false)
     }
 
-    private var header: some View {
-        ViewerHeader(
-            title: viewModel.scanTitle,
-            areNotesVisible: viewModel.areNotesVisible,
-            onBack: { onBack?() },
-            onRename: {
-                guard viewModel.allowsOwnerActions else { return }
-                renameTitle = viewModel.scanTitle
-                isRenamePresented = true
-            },
-            onToggleNotes: { viewModel.toggleNotesVisibility() },
-            onShare: {
-                guard viewModel.allowsOwnerActions else { return }
-                isSharePresented = true
-            },
-            showsOwnerActions: viewModel.allowsOwnerActions
-        )
-    }
-
     @ViewBuilder
-    private var canvasSection: some View {
+    var canvasSection: some View {
         ZStack(alignment: .top) {
             RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
                 .fill(Color(red: 0.90, green: 0.94, blue: 0.98))
@@ -336,89 +384,6 @@ private struct ViewerModeSwitcher: View {
         .background(Color.primary.opacity(0.06), in: Capsule())
         .opacity(isEnabled ? 1 : 0.45)
         .accessibilityIdentifier("viewer.mode.switcher")
-    }
-}
-
-private struct ViewerHeader: View {
-    let title: String
-    let areNotesVisible: Bool
-    let onBack: () -> Void
-    let onRename: () -> Void
-    let onToggleNotes: () -> Void
-    let onShare: () -> Void
-    let showsOwnerActions: Bool
-
-    var body: some View {
-        HStack(spacing: AppSpacing.medium) {
-            circleButton(
-                systemImage: "chevron.left",
-                accessibilityLabel: String(localized: "common.back"),
-                accessibilityIdentifier: "viewer.back",
-                action: onBack
-            )
-
-            Text(title)
-                .appTypography(AppTypography.headingLarge)
-                .foregroundStyle(AppColors.primaryText)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity)
-
-            Menu {
-                if showsOwnerActions {
-                    Button(action: onRename) {
-                        Label(String(localized: "viewer.menu.rename"), systemImage: "pencil")
-                    }
-                }
-
-                Button(action: onToggleNotes) {
-                    if areNotesVisible {
-                        Label(String(localized: "viewer.menu.hideNotes"), systemImage: "eye.slash")
-                    } else {
-                        Label(String(localized: "viewer.menu.showNotes"), systemImage: "eye")
-                    }
-                }
-
-                if showsOwnerActions {
-                    Button(action: onShare) {
-                        Label(String(localized: "viewer.menu.shareScan"), systemImage: "square.and.arrow.up")
-                    }
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(AppColors.primaryText)
-                    .frame(width: 40, height: 40)
-            }
-            .buttonStyle(.plain)
-            .overlay {
-                Circle()
-                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
-            }
-            .accessibilityLabel(String(localized: "viewer.header.more"))
-            .accessibilityIdentifier("viewer.more")
-        }
-    }
-
-    private func circleButton(
-        systemImage: String,
-        accessibilityLabel: String,
-        accessibilityIdentifier: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(AppColors.primaryText)
-                .frame(width: 40, height: 40)
-        }
-        .buttonStyle(.plain)
-        .overlay {
-            Circle()
-                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
-        }
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityIdentifier(accessibilityIdentifier)
     }
 }
 
