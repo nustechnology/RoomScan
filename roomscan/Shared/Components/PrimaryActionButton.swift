@@ -21,22 +21,26 @@ struct PrimaryActionButton: View {
         Button(
             action: action,
             label: {
-                Group {
-                    if let systemImageName {
-                        Label(title, systemImage: systemImageName)
-                    } else {
-                        Text(title)
+                ZStack {
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .fill(color)
+
+                    Group {
+                        if let systemImageName {
+                            Label(title, systemImage: systemImageName)
+                        } else {
+                            Text(title)
+                        }
                     }
+                    .appTypography(typography)
                 }
-                .appTypography(typography)
                 .frame(maxWidth: .infinity)
                 .frame(height: 60)
+                .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
             }
         )
         .buttonStyle(.plain)
         .foregroundStyle(foregroundColor)
-        .background(color)
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         .overlay {
             if let borderColor {
                 RoundedRectangle(cornerRadius: cornerRadius)

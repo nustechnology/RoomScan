@@ -9,14 +9,22 @@ struct StatusBadge: View {
     let status: InvitationStatus
 
     var body: some View {
-        Text(title)
-            .appTypography(AppTypography.labelBadge)
-            .foregroundStyle(foregroundColor)
-            .padding(.horizontal, AppSpacing.small)
-            .padding(.vertical, 6)
-            .background(backgroundColor)
-            .clipShape(Capsule())
-            .accessibilityIdentifier("share.status.\(status.rawValue)")
+        HStack(spacing: 5) {
+            Circle()
+                .fill(foregroundColor)
+                .frame(width: 6, height: 6)
+                .accessibilityHidden(true)
+
+            Text(title)
+                .appTypography(AppTypography.labelBadge)
+                .lineLimit(1)
+        }
+        .foregroundStyle(foregroundColor)
+        .padding(.horizontal, AppSpacing.small)
+        .padding(.vertical, 6)
+        .background(backgroundColor)
+        .clipShape(Capsule())
+        .accessibilityIdentifier("share.status.\(status.rawValue)")
     }
 
     private var title: String {

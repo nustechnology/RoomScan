@@ -55,10 +55,10 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     private var lastOrbitPoint: CGPoint?
     private var lastPanPoint: CGPoint?
     private var activePinDrag: ActivePinDrag?
-    private var pinAppearanceStates: [ObjectIdentifier: PinAppearanceState] = [:]
+    var pinAppearanceStates: [ObjectIdentifier: PinAppearanceState] = [:]
     private var pinFacingTask: Task<Void, Never>?
     private let cameraAnimationDuration: TimeInterval = 0.35
-    private static var materialCache: [NoteColor: UnlitMaterial] = [:]
+    static var materialCache: [NoteColor: UnlitMaterial] = [:]
 
     init(
         onPinTapped: @escaping (String) -> Void,
@@ -86,6 +86,11 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         switch source {
         case .sampleRoom:
             let room = SampleRoomFactory.makeRoom()
+            RoomModelCollision.applyFilter(
+                to: room,
+                group: RoomModelCollision.roomSurfaceGroup,
+                mask: RoomModelCollision.pinGroup
+            )
             roomEntity = room
             loadedSource = source
             anchor.addChild(room)
@@ -99,6 +104,12 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
             Task.detached(priority: .userInitiated) { [weak self] in
                 do {
                     let room = try Entity.load(contentsOf: url)
+                    room.generateCollisionShapes(recursive: true)
+                    RoomModelCollision.applyFilter(
+                        to: room,
+                        group: RoomModelCollision.roomSurfaceGroup,
+                        mask: RoomModelCollision.pinGroup
+                    )
                     await MainActor.run {
                         guard let self,
                               self.pendingFileSource == source,
@@ -144,6 +155,8 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
             }
         }
 
+        updateAllPinModePresentations()
+
         if let camera {
             facePinsTowardCamera(eye: camera.position(relativeTo: nil))
         }
@@ -162,6 +175,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
             distance = 8.5
         }
         target = defaultTarget
+        updateAllPinModePresentations()
         updateCamera(animated: animated)
     }
 
@@ -234,104 +248,6 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         )
         let forward = normalize(-offset)
         return normalize(cross(SIMD3<Float>(0, 1, 0), -forward))
-    }
-
-}
-
-@MainActor
-extension RoomModelCanvasCoordinator {
-    private func makePin(for note: SpatialNote, isSelected: Bool) -> Entity {
-        let root = Entity()
-        root.name = note.id
-        root.position = note.position
-
-        let size: Float = isSelected ? 0.28 : 0.22
-        let plane = ModelEntity(
-            mesh: .generatePlane(width: size, height: size),
-            materials: [Self.pinMaterial(color: note.color)]
-        )
-        plane.name = "pinBillboard"
-        // Stand upright in world space (plane is XY by default facing +Z).
-        plane.orientation = simd_quatf(angle: 0, axis: [0, 1, 0])
-        plane.position = [0, size * 0.5, 0]
-        plane.generateCollisionShapes(recursive: false)
-
-        root.addChild(plane)
-        pinAppearanceStates[ObjectIdentifier(root)] = PinAppearanceState(
-            color: note.color,
-            isSelected: isSelected
-        )
-        return root
-    }
-
-    private func applyPinAppearance(to entity: Entity, color: NoteColor, isSelected: Bool) {
-        let appearanceState = PinAppearanceState(color: color, isSelected: isSelected)
-        let entityID = ObjectIdentifier(entity)
-        guard pinAppearanceStates[entityID] != appearanceState else { return }
-
-        let size: Float = isSelected ? 0.28 : 0.22
-        for child in entity.children {
-            guard let model = child as? ModelEntity, child.name == "pinBillboard" else { continue }
-            model.model?.mesh = .generatePlane(width: size, height: size)
-            model.model?.materials = [Self.pinMaterial(color: color)]
-            model.position = [0, size * 0.5, 0]
-            model.generateCollisionShapes(recursive: false)
-        }
-        pinAppearanceStates[entityID] = appearanceState
-    }
-
-    private func facePinsTowardCamera(eye: SIMD3<Float>) {
-        for pin in pinsRoot.children {
-            let toCamera = normalize(eye - pin.position(relativeTo: nil))
-            // Y-up billboard: yaw only so pin stays upright.
-            let yaw = atan2(toCamera.x, toCamera.z)
-            pin.orientation = simd_quatf(angle: yaw, axis: [0, 1, 0])
-        }
-    }
-
-    private static func pinMaterial(color: NoteColor) -> UnlitMaterial {
-        if let cached = materialCache[color] {
-            return cached
-        }
-        let image = pinUIImage(for: color)
-        if let cgImage = image.cgImage,
-           let texture = try? TextureResource.generate(
-            from: cgImage,
-            options: TextureResource.CreateOptions(semantic: .color)
-           ) {
-            var material = UnlitMaterial()
-            material.color = .init(tint: .white, texture: .init(texture))
-            material.blending = .transparent(opacity: .init(scale: 1))
-            materialCache[color] = material
-            return material
-        }
-
-        let fallback = UnlitMaterial(color: UIColor(color.swiftUIColor))
-        materialCache[color] = fallback
-        return fallback
-    }
-
-    private static func pinUIImage(for color: NoteColor) -> UIImage {
-        let assetName = color.pinImageName
-        let size = CGSize(width: 256, height: 256)
-        let format = UIGraphicsImageRendererFormat()
-        format.opaque = false
-        format.scale = 1
-        let renderer = UIGraphicsImageRenderer(size: size, format: format)
-
-        return renderer.image { context in
-            UIColor.clear.setFill()
-            context.fill(CGRect(origin: .zero, size: size))
-
-            if let image = UIImage(named: assetName) {
-                image.draw(in: CGRect(origin: .zero, size: size))
-            } else {
-                let config = UIImage.SymbolConfiguration(pointSize: 96, weight: .bold)
-                let symbol = UIImage(systemName: "mappin.circle.fill", withConfiguration: config)?
-                    .withTintColor(UIColor(color.swiftUIColor), renderingMode: .alwaysOriginal)
-                symbol?.draw(in: CGRect(origin: .zero, size: size))
-            }
-        }
     }
 
 }
@@ -435,6 +351,10 @@ extension RoomModelCanvasCoordinator {
         screenLocation: CGPoint,
         in arView: ARView
     ) -> SIMD3<Float>? {
+        if let surfacePosition = firstSurfaceHitPosition(at: screenLocation, in: arView) {
+            return surfacePosition
+        }
+
         guard let ray = arView.ray(through: screenLocation) else { return nil }
         let direction = normalize(ray.direction)
         let denominator = simd_dot(direction, planeNormal)
@@ -489,8 +409,8 @@ extension RoomModelCanvasCoordinator {
 
         guard isPlacementMode else { return }
 
-        if let hit = hits.first {
-            onSurfaceTapped(hit.position)
+        if let surfacePosition = firstSurfaceHitPosition(at: location, in: arView) {
+            onSurfaceTapped(surfacePosition)
             return
         }
 
@@ -518,6 +438,37 @@ extension RoomModelCanvasCoordinator {
             current = candidate.parent
         }
         return nil
+    }
+
+    private func firstSurfaceHitPosition(at location: CGPoint, in arView: ARView) -> SIMD3<Float>? {
+        guard let ray = arView.ray(through: location) else { return nil }
+
+        return arView.scene.raycast(
+            origin: ray.origin,
+            direction: normalize(ray.direction),
+            length: maxDistance * 2,
+            query: .nearest,
+            mask: RoomModelCollision.roomSurfaceGroup,
+            relativeTo: nil
+        )
+        .first(where: { isRoomSurfaceEntity($0.entity) })?
+        .position
+    }
+
+    private func isRoomSurfaceEntity(_ entity: Entity) -> Bool {
+        guard let roomEntity else { return false }
+
+        var current: Entity? = entity
+        while let candidate = current {
+            if candidate === pinsRoot {
+                return false
+            }
+            if candidate === roomEntity {
+                return true
+            }
+            current = candidate.parent
+        }
+        return false
     }
 
     func gestureRecognizer(
