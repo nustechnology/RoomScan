@@ -17,10 +17,19 @@ struct ProjectsView: View {
     var showsNavigationTitle = true
     @Binding var isShowingDetail: Bool
 
-    @State private var showsScanCheck = false
     @State private var projectToEdit: ProjectSummary?
     @State private var projectPendingDelete: ProjectSummary?
     @FocusState private var isSearchFocused: Bool
+
+    @State private var scanningSourceProjectID: String?
+    @State private var pendingScanSourceProjectID: String?
+    @State private var recoveredDraft: RoomScanDraft?
+    @State private var recoveredDraftToPrompt: RoomScanDraft?
+    @State private var savedScanForDetails: RoomScanSummary?
+    @State private var pendingSavedScanForDetails: RoomScanSummary?
+    @State private var showsScanFlow = false
+
+    private let storageService: ScanStorageService = LocalScanStorageService()
 
     init(
         viewModel: ProjectsViewModel,
@@ -54,7 +63,6 @@ struct ProjectsView: View {
                 selectedProject: $selectedProject,
                 selectedScanDetail: $selectedScanDetail,
                 shareInput: $shareInput,
-                showsScanCheck: $showsScanCheck,
                 projectToEdit: $projectToEdit,
                 projectPendingDelete: $projectPendingDelete,
                 isShowingDetail: $isShowingDetail,
@@ -62,7 +70,15 @@ struct ProjectsView: View {
                 projectsService: projectsService,
                 notesService: notesService,
                 shareService: shareService,
-                currentUserID: currentUserID
+                currentUserID: currentUserID,
+                showsScanFlow: $showsScanFlow,
+                scanningSourceProjectID: $scanningSourceProjectID,
+                pendingScanSourceProjectID: $pendingScanSourceProjectID,
+                recoveredDraft: $recoveredDraft,
+                recoveredDraftToPrompt: $recoveredDraftToPrompt,
+                savedScanForDetails: $savedScanForDetails,
+                pendingSavedScanForDetails: $pendingSavedScanForDetails,
+                storageService: storageService
             ))
     }
 
@@ -134,7 +150,10 @@ struct ProjectsView: View {
                     )
                     ProjectsContentSection(
                         viewModel: viewModel,
-                        onNewScan: { showsScanCheck = true },
+                        onNewScan: {
+                            scanningSourceProjectID = nil
+                            showsScanFlow = true
+                        },
                         onProjectTap: { project in
                             selectedProject = project
                         },
@@ -156,6 +175,10 @@ struct ProjectsView: View {
                         },
                         onDelete: { project in
                             projectPendingDelete = project
+                        },
+                        onAddScan: { project in
+                            scanningSourceProjectID = project.id
+                            showsScanFlow = true
                         }
                     )
                 }
@@ -166,195 +189,6 @@ struct ProjectsView: View {
                 await viewModel.refreshProjects()
             }
             .accessibilityIdentifier("projects.list")
-        }
-    }
-}
-
-private struct ProjectsPresentationModifier: ViewModifier {
-    @Binding var selectedProject: ProjectSummary?
-    @Binding var selectedScanDetail: ScanDetailDestination?
-    @Binding var shareInput: ShareScreenInput?
-    @Binding var showsScanCheck: Bool
-    @Binding var projectToEdit: ProjectSummary?
-    @Binding var projectPendingDelete: ProjectSummary?
-    @Binding var isShowingDetail: Bool
-    var viewModel: ProjectsViewModel
-    let projectsService: any ProjectsService
-    let notesService: any NotesService
-    let shareService: any ShareService
-    var currentUserID: String
-
-    func body(content: Content) -> some View {
-        content
-            .fullScreenCover(item: $selectedProject) { project in
-                projectDetailCover(for: project)
-            }
-            .fullScreenCover(item: $shareInput) { input in
-                ShareView(input: input, service: shareService)
-            }
-            .navigationDestination(isPresented: $showsScanCheck) {
-                ScanCheckView(
-                    viewModel: ScanCheckViewModel(readinessService: RealScanReadinessService()),
-                    // TODO: Route to scan capture flow (MOB-XX) when capture feature is implemented.
-                    onStartScan: { showsScanCheck = false }
-                )
-            }
-            .fullScreenCover(item: $selectedScanDetail) { destination in
-                NavigationStack {
-                    scanDetailView(for: destination)
-                }
-            }
-            .onChange(of: selectedScanDetail) { _, destination in
-                isShowingDetail = destination != nil
-            }
-            .task {
-                await viewModel.loadInitialProjects()
-            }
-            .fullScreenCover(item: $projectToEdit) { project in
-                editProjectCover(for: project)
-            }
-            .alert(
-                String(localized: "projects.delete.title"),
-                isPresented: Binding(
-                    get: { projectPendingDelete != nil },
-                    set: { if !$0 { projectPendingDelete = nil } }
-                ),
-                presenting: projectPendingDelete
-            ) { project in
-                Button(String(localized: "projects.delete.cancel"), role: .cancel) {
-                    projectPendingDelete = nil
-                }
-                Button(String(localized: "projects.delete.confirm"), role: .destructive) {
-                    Task {
-                        await viewModel.deleteProject(id: project.id)
-                        projectPendingDelete = nil
-                    }
-                }
-            } message: { project in
-                Text(
-                    String.localizedStringWithFormat(
-                        String(localized: "projects.delete.message.format"),
-                        project.roomScans.count,
-                        project.name
-                    )
-                )
-            }
-            .onChange(of: viewModel.showsDeleteSuccessToast) { _, showsToast in
-                guard showsToast else { return }
-                Task {
-                    try? await Task.sleep(nanoseconds: 2_500_000_000)
-                    viewModel.dismissDeleteSuccessToast()
-                }
-            }
-            .onChange(of: viewModel.showsActionErrorToast) { _, showsToast in
-                guard showsToast, projectToEdit == nil else { return }
-                Task {
-                    try? await Task.sleep(nanoseconds: 2_500_000_000)
-                    viewModel.dismissActionErrorToast()
-                }
-            }
-            .ignoresSafeArea(.keyboard, edges: .bottom)
-    }
-
-    private func projectDetailView(for project: ProjectSummary) -> some View {
-        ProjectDetailView(
-            project: project,
-            projectsService: projectsService,
-            notesService: notesService,
-            shareService: shareService,
-            currentUserID: currentUserID,
-            onScanUpdated: { updatedScan in
-                viewModel.applyUpdatedScan(projectID: project.id, scan: updatedScan)
-            },
-            onScanDeleted: { scanID in
-                viewModel.applyDeletedScan(projectID: project.id, scanID: scanID)
-            }
-        )
-    }
-
-    private func scanDetailView(for destination: ScanDetailDestination) -> some View {
-        ScanDetailView(
-            viewModel: ScanDetailViewModel(
-                projectID: destination.projectID,
-                scan: destination.scan,
-                currentUserID: currentUserID,
-                service: projectsService
-            ),
-            projectID: destination.projectID,
-            projectName: destination.projectName,
-            notesService: notesService,
-            shareService: shareService,
-            onScanUpdated: { updatedScan in
-                viewModel.applyUpdatedScan(
-                    projectID: destination.projectID,
-                    scan: updatedScan
-                )
-            },
-            onScanDeleted: {
-                viewModel.applyDeletedScan(
-                    projectID: destination.projectID,
-                    scanID: destination.scan.id
-                )
-            },
-            // TODO: Implement scan sharing.
-            onShare: {}
-        )
-    }
-
-    private func projectDetailCover(for project: ProjectSummary) -> some View {
-        ProjectDetailView(
-            project: project,
-            projectsService: projectsService,
-            notesService: notesService,
-            shareService: shareService,
-            currentUserID: currentUserID,
-            onScanUpdated: { updatedScan in
-                viewModel.applyUpdatedScan(
-                    projectID: project.id,
-                    scan: updatedScan
-                )
-            },
-            onScanDeleted: { scanID in
-                viewModel.applyDeletedScan(
-                    projectID: project.id,
-                    scanID: scanID
-                )
-            }
-        )
-    }
-
-    private func editProjectCover(for project: ProjectSummary) -> some View {
-        NewProjectView(
-            mode: .edit,
-            initialName: project.name,
-            initialDescription: project.description,
-            onSave: { name, description in
-                Task {
-                    let didUpdate = await viewModel.updateProject(
-                        id: project.id,
-                        name: name,
-                        description: description
-                    )
-                    if didUpdate {
-                        projectToEdit = nil
-                    }
-                }
-            },
-            onCancel: {
-                projectToEdit = nil
-                viewModel.dismissActionErrorToast()
-            }
-        )
-        .alert(
-            String(localized: "projects.action.error"),
-            isPresented: Binding(
-                get: { viewModel.showsActionErrorToast },
-                set: { if !$0 { viewModel.dismissActionErrorToast() } }
-            )
-        ) {
-            Button(String(localized: "projects.action.error.dismiss"), role: .cancel) {
-                viewModel.dismissActionErrorToast()
-            }
         }
     }
 }
@@ -407,6 +241,7 @@ private struct ProjectsContentSection: View {
     let onToggleExpansion: (ProjectSummary.ID) -> Void
     let onEdit: (ProjectSummary) -> Void
     let onDelete: (ProjectSummary) -> Void
+    let onAddScan: (ProjectSummary) -> Void
 
     var body: some View {
         VStack(spacing: 16) {
@@ -440,14 +275,17 @@ private struct ProjectsContentSection: View {
                     onToggleExpansion: {
                         onToggleExpansion(visibleProject.project.id)
                     },
-                    onRoomTap: { scan in
-                        onRoomTap(visibleProject.project, scan)
-                    },
                     onEdit: {
                         onEdit(visibleProject.project)
                     },
                     onDelete: {
                         onDelete(visibleProject.project)
+                    },
+                    onRoomTap: { scan in
+                        onRoomTap(visibleProject.project, scan)
+                    },
+                    onAddScan: {
+                        onAddScan(visibleProject.project)
                     }
                 )
                 .onAppear {
@@ -587,14 +425,4 @@ private struct ActionErrorToast: View {
         shareService: MockShareService(simulatedDelayNanoseconds: 0),
         currentUserID: AuthenticationSession.mockAppleUser.user.id
     )
-}
-
-private struct ScanDetailDestination: Hashable, Identifiable {
-    let projectID: String
-    let projectName: String?
-    let scan: RoomScanSummary
-
-    var id: String {
-        "\(projectID)-\(scan.id)"
-    }
 }

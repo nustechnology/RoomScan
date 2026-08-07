@@ -75,7 +75,7 @@ actor MockProjectsService: ProjectsService {
         try await simulateDelay()
 
         guard let index = projects.firstIndex(where: { $0.id == id }) else {
-            throw ProjectsServiceError.notFound
+            throw ProjectsServiceError.projectNotFound
         }
 
         let existing = projects[index]
@@ -98,10 +98,96 @@ actor MockProjectsService: ProjectsService {
         try await simulateDelay()
 
         guard projects.contains(where: { $0.id == id }) else {
-            throw ProjectsServiceError.notFound
+            throw ProjectsServiceError.projectNotFound
         }
 
         projects.removeAll { $0.id == id }
+    }
+
+    func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] {
+        try await simulateDelay()
+        if case .failPage = scenario {
+            throw ProjectsServiceError.network
+        }
+        return sourceProjectsForScenario().sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    func createProject(name: String) async throws -> ProjectSummary {
+        try await simulateDelay()
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 50 else {
+            throw ProjectsServiceError.invalidProjectName
+        }
+
+        let newProject = ProjectSummary(
+            id: UUID().uuidString,
+            name: trimmed,
+            ownerName: "You",
+            createdAt: Date(),
+            updatedAt: Date(),
+            sharedUserCount: 0,
+            roomScans: []
+        )
+        projects.insert(newProject, at: 0)
+        return newProject
+    }
+
+    func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool {
+        try await simulateDelay()
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let project = projects.first(where: { $0.id == projectID }) else {
+            return false
+        }
+        return project.roomScans.contains { $0.name.lowercased() == trimmed.lowercased() }
+    }
+
+    func saveScan(draft: RoomScanDraft, name: String, projectID: String, meshURL: URL) async throws -> RoomScanSummary {
+        try await simulateDelay()
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty, trimmedName.count <= 50 else {
+            throw ProjectsServiceError.invalidScanName
+        }
+
+        guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else {
+            throw ProjectsServiceError.projectNotFound
+        }
+
+        let isDuplicate = projects[projectIndex].roomScans.contains {
+            $0.name.lowercased() == trimmedName.lowercased()
+        }
+        if isDuplicate {
+            throw ProjectsServiceError.duplicateScanName
+        }
+
+        let newScan = RoomScanSummary(
+            id: draft.id,
+            name: trimmedName,
+            createdAt: draft.createdAt,
+            localModelURL: meshURL,
+            thumbnailName: "thumbnail-0",
+            syncStatus: .pending,
+            notes: []
+        )
+
+        var updatedScans = projects[projectIndex].roomScans
+        updatedScans.insert(newScan, at: 0)
+
+        let existing = projects[projectIndex]
+        let updatedProject = ProjectSummary(
+            id: existing.id,
+            name: existing.name,
+            ownerName: existing.ownerName,
+            createdAt: existing.createdAt,
+            updatedAt: Date(),
+            description: existing.description,
+            sharedUserCount: existing.sharedUserCount,
+            roomScans: updatedScans
+        )
+
+        projects[projectIndex] = updatedProject
+        projects.sort { $0.updatedAt > $1.updatedAt }
+
+        return newScan
     }
 
     func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary {
@@ -109,7 +195,7 @@ actor MockProjectsService: ProjectsService {
 
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty, trimmedName.count <= 100 else {
-            throw ProjectsServiceError.invalidName
+            throw ProjectsServiceError.invalidScanName
         }
 
         let (projectIndex, scanIndex) = try indices(projectID: projectID, scanID: scanID)
@@ -170,52 +256,13 @@ actor MockProjectsService: ProjectsService {
 
     private func indices(projectID: String, scanID: String) throws -> (Int, Int) {
         guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else {
-            throw ProjectsServiceError.notFound
+            throw ProjectsServiceError.projectNotFound
         }
         guard let scanIndex = projects[projectIndex].roomScans.firstIndex(where: { $0.id == scanID }) else {
             throw ProjectsServiceError.notFound
         }
         return (projectIndex, scanIndex)
     }
-
-    nonisolated static func makeSeedProjects() -> [ProjectSummary] {
-        let baseDate = fixtureBaseDate
-        return (1...14).map { index in
-            ProjectSummary(
-                id: "project-\(index)",
-                name: projectNames[index - 1],
-                ownerName: "You",
-                createdAt: baseDate.addingTimeInterval(TimeInterval(-index * 86_400)),
-                updatedAt: baseDate.addingTimeInterval(TimeInterval(-index * 3_600)),
-                description: "",
-                sharedUserCount: 4,
-                roomScans: makeRoomScans(projectIndex: index)
-            )
-        }
-    }
-
-    private nonisolated static let fixtureBaseDate = Date(timeIntervalSince1970: 1_750_000_000)
-
-    /// Matches `AuthenticationSession.mockAppleUser` without crossing MainActor isolation.
-    private nonisolated static let mockCurrentUserID = "mock-user-apple"
-    private nonisolated static let mockCurrentUserDisplayName = "Mock Apple User"
-
-    private nonisolated static let projectNames = [
-        "Lakeside Remodel",
-        "Downtown Loft",
-        "Market Street Retail",
-        "North Campus Suite",
-        "Hillview Residence",
-        "Atrium Office",
-        "Garden Apartment",
-        "Warehouse Conversion",
-        "Harbor Guest House",
-        "Pine Dental Clinic",
-        "South Wing Lobby",
-        "Cedar Workshop",
-        "Ridgeview Kitchen",
-        "Union Hall"
-    ]
 
     private func sourceProjectsForScenario() -> [ProjectSummary] {
         switch scenario {
@@ -236,68 +283,6 @@ actor MockProjectsService: ProjectsService {
             }
         case .success, .failPage:
             return projects
-        }
-    }
-
-    private nonisolated static func makeRoomScans(projectIndex: Int) -> [RoomScanSummary] {
-        let baseDate = fixtureBaseDate
-        let roomNames = [
-            "Living Room",
-            "Kitchen",
-            "Primary Bedroom",
-            "Guest Bath",
-            "Entry Hall",
-            "Office",
-            "Dining Room"
-        ]
-        let count = 2 + (projectIndex % 6)
-
-        return (0..<count).map { index in
-            let scanNumber = index + 1
-            let scanID = "project-\(projectIndex)-scan-\(scanNumber)"
-            let createdAt = baseDate.addingTimeInterval(
-                TimeInterval(-(projectIndex * 86_400 + index * 3_600))
-            )
-            let thumbnailName = "thumbnail-\((projectIndex + index) % 5)"
-            let syncStatusIndex = (projectIndex + index) % RoomScanSyncStatus.allCases.count
-            let syncStatus = RoomScanSyncStatus.allCases[syncStatusIndex]
-            let notes = makeNotes(projectIndex: projectIndex, scanIndex: scanNumber)
-
-            let isCurrentUser = (projectIndex + index) % 5 != 0
-            return RoomScanSummary(
-                id: scanID,
-                name: roomNames[index],
-                createdAt: createdAt,
-                localModelURL: mockModelURL(forProjectIndex: projectIndex),
-                thumbnailName: thumbnailName,
-                syncStatus: syncStatus,
-                creatorUserID: isCurrentUser
-                    ? mockCurrentUserID
-                    : "other-user-\(projectIndex)",
-                creatorDisplayName: isCurrentUser
-                    ? mockCurrentUserDisplayName
-                    : "Alex Rivera",
-                notes: notes
-            )
-        }
-    }
-
-    private nonisolated static func mockModelURL(forProjectIndex projectIndex: Int) -> URL? {
-        guard projectIndex <= 3 else { return nil }
-        return DefaultModelLoadingService.mockSampleURL
-    }
-
-    private nonisolated static func makeNotes(projectIndex: Int, scanIndex: Int) -> [RoomScanNoteSummary] {
-        let count = (projectIndex + scanIndex) % 3
-        guard count > 0 else { return [] }
-
-        let baseDate = fixtureBaseDate
-        return (1...count).map { index in
-            RoomScanNoteSummary(
-                id: "project-\(projectIndex)-scan-\(scanIndex)-note-\(index)",
-                text: "Note \(index)",
-                createdAt: baseDate.addingTimeInterval(TimeInterval(-(projectIndex + scanIndex + index) * 600))
-            )
         }
     }
 

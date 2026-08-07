@@ -109,13 +109,13 @@ struct MockProjectsServiceTests {
         #expect(page.projects.map(\.id) == ["project-1"])
     }
 
-    @Test func updateOrDeleteMissingProjectThrowsNotFound() async {
+    @Test func updateOrDeleteMissingProjectThrowsProjectNotFound() async {
         let service = MockProjectsService(projects: [], simulatedDelayNanoseconds: 0)
 
-        await #expect(throws: ProjectsServiceError.notFound) {
+        await #expect(throws: ProjectsServiceError.projectNotFound) {
             _ = try await service.updateProject(id: "missing", name: "Name", description: "")
         }
-        await #expect(throws: ProjectsServiceError.notFound) {
+        await #expect(throws: ProjectsServiceError.projectNotFound) {
             try await service.deleteProject(id: "missing")
         }
     }
@@ -263,7 +263,7 @@ struct MockProjectsServiceTests {
         await #expect(throws: ProjectsServiceError.notFound) {
             try await service.deleteScan(projectID: "project-1", scanID: "missing")
         }
-        await #expect(throws: ProjectsServiceError.invalidName) {
+        await #expect(throws: ProjectsServiceError.invalidScanName) {
             _ = try await service.renameScan(projectID: "project-1", scanID: "scan-1", name: "   ")
         }
     }

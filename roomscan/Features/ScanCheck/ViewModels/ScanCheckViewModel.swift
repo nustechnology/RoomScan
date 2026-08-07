@@ -12,6 +12,7 @@ import Observation
 final class ScanCheckViewModel {
     private static let minimumStorageBytes: Int64 = 100 * 1_024 * 1_024
 
+    let sourceProjectID: String?
     private let readinessService: any ScanReadinessService
 
     private(set) var deviceSupportStatus: ReadinessStatus = .checking
@@ -19,8 +20,12 @@ final class ScanCheckViewModel {
     private(set) var storageStatus: ReadinessStatus = .checking
     private(set) var cameraAvailabilityStatus: ReadinessStatus = .checking
 
-    init(readinessService: any ScanReadinessService) {
-        self.readinessService = readinessService
+    init(
+        readinessService: (any ScanReadinessService)? = nil,
+        sourceProjectID: String? = nil
+    ) {
+        self.readinessService = readinessService ?? ScanReadinessServiceFactory.makeService()
+        self.sourceProjectID = sourceProjectID
     }
 
     var allChecksPassed: Bool {

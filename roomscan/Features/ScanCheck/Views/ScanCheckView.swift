@@ -8,6 +8,7 @@ import SwiftUI
 struct ScanCheckView: View {
     @State var viewModel: ScanCheckViewModel
     let onStartScan: () -> Void
+    var onCancel: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -30,7 +31,19 @@ struct ScanCheckView: View {
         }
         .navigationTitle(String(localized: "scancheck.title"))
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(false)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    onCancel?()
+                    dismiss()
+                } label: {
+                    Text(String(localized: "scanning.action.cancel"))
+                        .font(.body)
+                }
+                .accessibilityIdentifier("scancheck.cancelButton")
+            }
+        }
         .background(AppColors.background)
         .task {
             await viewModel.runAllChecks()
