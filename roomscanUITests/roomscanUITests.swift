@@ -46,10 +46,20 @@ final class roomscanUITests: XCTestCase {
     func testPrivacyPolicyNavigation() throws {
         let app = launchApp(arguments: ["-UITesting"])
 
-        XCTAssertTrue(app.buttons["auth.privacy"].waitForExistence(timeout: 5))
-        app.buttons["auth.privacy"].tap()
+        XCTAssertTrue(app.links["Privacy Policy"].waitForExistence(timeout: 5))
+        app.links["Privacy Policy"].tap()
 
-        XCTAssertTrue(app.navigationBars.element.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Privacy Policy"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testTermsOfServiceNavigation() throws {
+        let app = launchApp(arguments: ["-UITesting"])
+
+        XCTAssertTrue(app.links["Terms of Service"].waitForExistence(timeout: 5))
+        app.links["Terms of Service"].tap()
+
+        XCTAssertTrue(app.navigationBars["Terms of Service"].waitForExistence(timeout: 5))
     }
 
     @MainActor
