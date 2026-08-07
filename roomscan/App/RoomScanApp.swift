@@ -26,13 +26,36 @@ struct RoomScanApp: App {
     @State private var shareService: MockShareService
     @State private var sharedService: MockSharedService
 
+    private let authenticatedHTTPClient: any HTTPClient
+
     init() {
         let isUITesting = ProcessInfo.processInfo.arguments.contains("-UITesting")
+        let httpClient = LiveHTTPClient()
+        let keychainStore = LiveKeychainTokenStore()
+        let refreshCoordinator = AccessTokenRefreshCoordinator(
+            httpClient: httpClient,
+            keychainStore: keychainStore
+        )
+
         let authenticationService: any AuthenticationService = isUITesting
             ? MockAuthenticationService.makeForCurrentProcess()
-            : FirebaseAuthenticationService()
+            : RemoteAuthenticationService(
+                httpClient: httpClient,
+                keychainStore: keychainStore,
+                refreshCoordinator: refreshCoordinator
+            )
+        let appState = AppState(authenticationService: authenticationService)
+        let authenticatedClient = AuthenticatedHTTPClient(
+            httpClient: httpClient,
+            keychainStore: keychainStore,
+            refreshCoordinator: refreshCoordinator
+        ) {
+            appState.handleSessionInvalidated()
+        }
 
-        _appState = State(initialValue: AppState(authenticationService: authenticationService))
+        self.authenticatedHTTPClient = authenticatedClient
+
+        _appState = State(initialValue: appState)
         _projectsService = State(initialValue: MockProjectsService.makeForCurrentProcess())
         _notesService = State(initialValue: MockNotesService())
         _shareService = State(initialValue: MockShareService.makeForCurrentProcess())

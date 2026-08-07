@@ -95,6 +95,11 @@ final class AppState {
         }
     }
 
+    func handleSessionInvalidated() {
+        activityTracker.clearActivity()
+        phase = .signedOut
+    }
+
     func consumePendingToastMessage() -> String? {
         let message = pendingToastMessage
         pendingToastMessage = nil

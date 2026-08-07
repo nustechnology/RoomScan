@@ -83,26 +83,54 @@ struct AuthenticationView: View {
     }
 
     private var legalLinks: some View {
-        VStack(spacing: AppSpacing.extraSmall) {
-            Text("auth.legal")
-                .appTypography(AppTypography.captionMedium)
-                .foregroundStyle(AppColors.secondaryText)
-                .multilineTextAlignment(.center)
-                .accessibilityIdentifier("auth.legal")
-
-            NavigationLink(value: AppRoute.privacyPolicy) {
-                Text("auth.privacy.title")
-                    .appTypography(AppTypography.captionMediumStrong)
-            }
-            .accessibilityIdentifier("auth.privacy")
-
-            NavigationLink(value: AppRoute.termsOfService) {
-                Text("auth.terms.title")
-                    .appTypography(AppTypography.captionMediumStrong)
-            }
-            .accessibilityIdentifier("auth.terms")
-        }
+        Text(legalAttributedText)
+            .appTypography(AppTypography.captionMedium)
+            .foregroundStyle(AppColors.secondaryText)
+            .multilineTextAlignment(.center)
+            .accessibilityIdentifier("auth.legal")
+            .environment(\.openURL, OpenURLAction { url in
+                switch url.absoluteString {
+                case AuthenticationLegalLink.privacyURL.absoluteString:
+                    path.append(AppRoute.privacyPolicy)
+                    return .handled
+                case AuthenticationLegalLink.termsURL.absoluteString:
+                    path.append(AppRoute.termsOfService)
+                    return .handled
+                default:
+                    return .systemAction
+                }
+            })
         .padding(.top, AppSpacing.medium)
+    }
+
+    private var legalAttributedText: AttributedString {
+        let privacyTitle = String(localized: "auth.privacy.title")
+        let termsTitle = String(localized: "auth.terms.title")
+        let markdown = String.localizedStringWithFormat(
+            String(localized: "auth.legal.markdown"),
+            privacyTitle,
+            AuthenticationLegalLink.privacyURL.absoluteString,
+            termsTitle,
+            AuthenticationLegalLink.termsURL.absoluteString
+        )
+
+        if let attributed = try? AttributedString(markdown: markdown) {
+            return attributed
+        }
+
+        var fallback = AttributedString("By continuing, you agree to the ")
+
+        var privacyLink = AttributedString(privacyTitle)
+        privacyLink.link = AuthenticationLegalLink.privacyURL
+        fallback.append(privacyLink)
+
+        fallback.append(AttributedString(" and "))
+
+        var termsLink = AttributedString(termsTitle)
+        termsLink.link = AuthenticationLegalLink.termsURL
+        fallback.append(termsLink)
+
+        return fallback
     }
 
     @ViewBuilder
@@ -210,6 +238,11 @@ private enum AuthenticationMetrics {
     static let logoSize: CGFloat = 82
     static let logoShadowRadius: CGFloat = 12
     static let logoShadowY: CGFloat = 8
+}
+
+private enum AuthenticationLegalLink {
+    static let privacyURL = URL(string: "roomscan-auth://privacy")!
+    static let termsURL = URL(string: "roomscan-auth://terms")!
 }
 
 #Preview("Signed out") {

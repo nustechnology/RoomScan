@@ -324,6 +324,17 @@
         }
       }
     },
+    "auth.legal.markdown" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "By continuing, you agree to the [%1$@](%2$@) and [%3$@](%4$@)"
+          }
+        }
+      }
+    },
     "auth.privacy.title" : {
       "extractionState" : "manual",
       "localizations" : {
