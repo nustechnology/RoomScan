@@ -88,7 +88,10 @@ struct AcceptedInvitationCollection: Equatable, Sendable {
                 syncStatus: detail.syncStatus,
                 creatorUserID: detail.creatorUserID,
                 creatorDisplayName: detail.creatorDisplayName,
-                notes: detail.notes
+                notes: detail.notes,
+                meshPath: detail.meshPath,
+                thumbnailPath: detail.thumbnailPath,
+                noteCount: detail.noteCount
             )
         }
         destinations[index] = .scan(

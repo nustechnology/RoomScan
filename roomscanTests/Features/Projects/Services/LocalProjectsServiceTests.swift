@@ -33,7 +33,7 @@ struct LocalProjectsServiceTests {
         let tempDir = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let service = LocalProjectsService(directory: tempDir)
-        let project = try await service.createProject(name: "Test Project With Description")
+        let project = try await service.createProject(name: "Test Project With Description", projectDescription: "")
         _ = try await service.updateProject(id: project.id, name: "Test Project With Description", description: "Custom Description")
 
         let tempMesh = tempDir.appendingPathComponent("test_mesh_\(UUID().uuidString).usdz")
@@ -53,7 +53,7 @@ struct LocalProjectsServiceTests {
         let tempDir = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let service = LocalProjectsService(directory: tempDir)
-        let project = try await service.createProject(name: "Test Project")
+        let project = try await service.createProject(name: "Test Project", projectDescription: "")
 
         let tempMesh = tempDir.appendingPathComponent("test_mesh_\(UUID().uuidString).usdz")
         try Data("mesh".utf8).write(to: tempMesh)
@@ -74,7 +74,7 @@ struct LocalProjectsServiceTests {
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let storage = RecordingScanStorageService()
         let service = LocalProjectsService(directory: tempDir, scanStorageService: storage)
-        let project = try await service.createProject(name: "Test Project")
+        let project = try await service.createProject(name: "Test Project", projectDescription: "")
         let mesh = tempDir.appendingPathComponent("mesh.usdz")
         try Data("mesh".utf8).write(to: mesh)
         let draft = RoomScanDraft(id: "scan-1", meshFileURL: mesh, thumbnailFileURL: mesh)
@@ -90,7 +90,7 @@ struct LocalProjectsServiceTests {
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let storage = RecordingScanStorageService()
         let service = LocalProjectsService(directory: tempDir, scanStorageService: storage)
-        let project = try await service.createProject(name: "Test Project")
+        let project = try await service.createProject(name: "Test Project", projectDescription: "")
         for scanID in ["scan-1", "scan-2"] {
             let mesh = tempDir.appendingPathComponent("\(scanID).usdz")
             try Data("mesh".utf8).write(to: mesh)
@@ -108,7 +108,7 @@ struct LocalProjectsServiceTests {
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let storage = RecordingScanStorageService()
         let service = LocalProjectsService(directory: tempDir, scanStorageService: storage)
-        let project = try await service.createProject(name: "Test Project")
+        let project = try await service.createProject(name: "Test Project", projectDescription: "")
 
         do {
             try await service.deleteScan(projectID: project.id, scanID: "missing")
@@ -118,6 +118,55 @@ struct LocalProjectsServiceTests {
         }
 
         #expect(storage.deletedScanIDs.isEmpty)
+    }
+
+    @Test func init_whenSeedIfEmptyFalse_startsEmpty() async throws {
+        let tempDir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let service = LocalProjectsService(directory: tempDir, seedIfEmpty: false)
+        let page = try await service.fetchProjects(page: 1, pageSize: 10)
+        #expect(page.projects.isEmpty)
+    }
+
+    @Test func cacheProject_persistsAcrossReloadAndPreservesLocalScans() async throws {
+        let tempDir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let existingScan = RoomScanSummary(
+            id: "scan-1",
+            name: "Living Room",
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            thumbnailName: "thumbnail-0",
+            syncStatus: .synced,
+            notes: []
+        )
+        let service = LocalProjectsService(directory: tempDir, seedIfEmpty: false)
+        await service.cacheProject(
+            ProjectSummary(
+                id: "project-1",
+                name: "Cached",
+                roomScans: [existingScan],
+                scanCount: 1
+            )
+        )
+
+        await service.cacheProject(
+            ProjectSummary(
+                id: "project-1",
+                name: "Updated From Remote",
+                description: "Remote description",
+                roomScans: [],
+                scanCount: 0
+            )
+        )
+
+        let reloaded = LocalProjectsService(directory: tempDir, seedIfEmpty: false)
+        let project = try await reloaded.fetchProject(id: "project-1")
+        #expect(project.name == "Updated From Remote")
+        #expect(project.description == "Remote description")
+        #expect(project.roomScans.count == 1)
+        #expect(project.roomScans.first?.id == "scan-1")
+        #expect(project.scanCount == 1)
     }
 
     private func makeTempDir() throws -> URL {

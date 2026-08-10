@@ -21,12 +21,10 @@ struct RoomScanApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @Environment(\.scenePhase) private var scenePhase
     @State private var appState: AppState
-    @State private var projectsService: MockProjectsService
+    @State private var projectsService: any ProjectsService
     @State private var notesService: MockNotesService
     @State private var shareService: MockShareService
     @State private var sharedService: MockSharedService
-
-    private let authenticatedHTTPClient: any HTTPClient
 
     init() {
         let isUITesting = ProcessInfo.processInfo.arguments.contains("-UITesting")
@@ -53,10 +51,15 @@ struct RoomScanApp: App {
             appState.handleSessionInvalidated()
         }
 
-        self.authenticatedHTTPClient = authenticatedClient
+        let resolvedProjectsService: any ProjectsService = isUITesting
+            ? MockProjectsService.makeForCurrentProcess()
+            : RemoteProjectsService(
+                httpClient: authenticatedClient,
+                localStore: LocalProjectsService(seedIfEmpty: false)
+            )
 
         _appState = State(initialValue: appState)
-        _projectsService = State(initialValue: MockProjectsService.makeForCurrentProcess())
+        _projectsService = State(initialValue: resolvedProjectsService)
         _notesService = State(initialValue: MockNotesService())
         _shareService = State(initialValue: MockShareService.makeForCurrentProcess())
         _sharedService = State(initialValue: MockSharedService.makeForCurrentProcess())

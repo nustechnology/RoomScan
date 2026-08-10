@@ -6,7 +6,7 @@
 import Foundation
 
 @MainActor
-final class LocalProjectsService: ProjectsService, @unchecked Sendable {
+final class LocalProjectsService: ProjectsLocalCache, @unchecked Sendable {
     private var projects: [ProjectSummary]
     private let storeURL: URL
     private let scanStorageService: ScanStorageService
@@ -20,7 +20,8 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
     init(
         fileManager: FileManager = .default,
         directory: URL? = nil,
-        scanStorageService: ScanStorageService = LocalScanStorageService()
+        scanStorageService: ScanStorageService = LocalScanStorageService(),
+        seedIfEmpty: Bool = true
     ) {
         self.scanStorageService = scanStorageService
         let supportDirectory = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -37,7 +38,7 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
 
         switch Self.loadProjects(from: url, fileManager: fileManager) {
         case .fileNotFound:
-            let seeds = Self.initialProjects()
+            let seeds = seedIfEmpty ? Self.initialProjects() : []
             self.projects = seeds
             try? Self.persist(projects: seeds, to: url)
 
@@ -47,7 +48,7 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
         case .decodeFailed(let error):
             print("[LocalProjectsService ERROR] Corrupted or unreadable projects store at \(url.path): \(error)")
             Self.backupCorruptedFile(at: url, fileManager: fileManager)
-            self.projects = Self.initialProjects()
+            self.projects = seedIfEmpty ? Self.initialProjects() : []
         }
     }
 
@@ -77,6 +78,13 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
         )
     }
 
+    func fetchProject(id: String) async throws -> ProjectSummary {
+        guard let project = projects.first(where: { $0.id == id }) else {
+            throw ProjectsServiceError.projectNotFound
+        }
+        return project
+    }
+
     func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] {
         projects.sorted { $0.updatedAt > $1.updatedAt }
     }
@@ -94,7 +102,8 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
             updatedAt: Date(),
             description: description,
             sharedUserCount: existing.sharedUserCount,
-            roomScans: existing.roomScans
+            roomScans: existing.roomScans,
+            scanCount: existing.scanCount
         )
         projects[index] = updated
         projects.sort { $0.updatedAt > $1.updatedAt }
@@ -113,9 +122,13 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
         }
     }
 
-    func createProject(name: String) async throws -> ProjectSummary {
+    func createProject(name: String, projectDescription: String) async throws -> ProjectSummary {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDescription = projectDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty, trimmedName.count <= 50 else {
+            throw ProjectsServiceError.invalidProjectName
+        }
+        guard trimmedDescription.count <= 500 else {
             throw ProjectsServiceError.invalidProjectName
         }
 
@@ -125,12 +138,23 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
             ownerName: "You",
             createdAt: Date(),
             updatedAt: Date(),
+            description: trimmedDescription,
             sharedUserCount: 0,
             roomScans: []
         )
         projects.insert(project, at: 0)
         try persist()
         return project
+    }
+
+    func cacheProject(_ project: ProjectSummary) async {
+        if let index = projects.firstIndex(where: { $0.id == project.id }) {
+            projects[index] = ProjectSummary.mergingRemoteCache(project, over: projects[index])
+        } else {
+            projects.insert(project, at: 0)
+        }
+        projects.sort { $0.updatedAt > $1.updatedAt }
+        try? persist()
     }
 
     func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool {
@@ -173,7 +197,7 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
         )
         var scans = projects[projectIndex].roomScans
         scans.insert(scan, at: 0)
-        projects[projectIndex] = projects[projectIndex].withRoomScans(scans)
+        projects[projectIndex] = projects[projectIndex].withRoomScans(scans, scanCountDelta: 1)
         projects.sort { $0.updatedAt > $1.updatedAt }
         try persist()
         return scan
@@ -203,7 +227,8 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
             creatorDisplayName: existing.creatorDisplayName,
             notes: existing.notes,
             meshPath: existing.meshPath,
-            thumbnailPath: existing.thumbnailPath
+            thumbnailPath: existing.thumbnailPath,
+            noteCount: existing.noteCount
         )
         guard let updatedProject = project.replacingScan(updated) else {
             throw ProjectsServiceError.notFound
@@ -249,7 +274,8 @@ final class LocalProjectsService: ProjectsService, @unchecked Sendable {
             creatorDisplayName: existing.creatorDisplayName,
             notes: existing.notes,
             meshPath: existing.meshPath,
-            thumbnailPath: existing.thumbnailPath
+            thumbnailPath: existing.thumbnailPath,
+            noteCount: existing.noteCount
         )
         guard let updatedProject = project.replacingScan(updated) else {
             throw ProjectsServiceError.notFound

@@ -5,6 +5,12 @@
 
 import SwiftUI
 
+/// Named fields for create/edit save callbacks (avoids positional String,String + `description` clashes).
+struct ProjectFormInput: Equatable, Sendable {
+    let name: String
+    let projectDescription: String
+}
+
 struct NewProjectView: View {
     enum Mode: Equatable {
         case create
@@ -14,26 +20,30 @@ struct NewProjectView: View {
     let mode: Mode
     let initialName: String
     let initialDescription: String
-    let onSave: (String, String) -> Void
+    // `@MainActor` required: without it, Approachable Concurrency miscompiles async
+    // closure ABI and the first field becomes the isolation token (corrupt form in save).
+    let onSave: @MainActor (ProjectFormInput) async -> Bool
     let onCancel: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @FocusState private var focusedField: Field?
     @State private var projectName: String
-    @State private var description: String
+    @State private var projectDescription: String
     @State private var showsNameError = false
     @State private var showsDiscardAlert = false
+    @State private var isSaving = false
+    @State private var showsSaveError = false
 
     private enum Field {
         case name
-        case description
+        case projectDescription
     }
 
     init(
         mode: Mode = .create,
         initialName: String = "",
         initialDescription: String = "",
-        onSave: @escaping (String, String) -> Void,
+        onSave: @escaping @MainActor (ProjectFormInput) async -> Bool,
         onCancel: @escaping () -> Void
     ) {
         self.mode = mode
@@ -42,7 +52,7 @@ struct NewProjectView: View {
         self.onSave = onSave
         self.onCancel = onCancel
         _projectName = State(initialValue: initialName)
-        _description = State(initialValue: initialDescription)
+        _projectDescription = State(initialValue: initialDescription)
     }
 
     var body: some View {
@@ -69,12 +79,15 @@ struct NewProjectView: View {
             actions
         }
         .background(AppColors.background)
-        .interactiveDismissDisabled(isDirty)
+        .interactiveDismissDisabled(isDirty || isSaving)
         .alert(discardTitleKey, isPresented: $showsDiscardAlert) {
             Button("projects.form.discard.keepEditing", role: .cancel) {}
             Button("projects.form.discard.action", role: .destructive) {
                 discard()
             }
+        }
+        .alert("projects.form.save.error", isPresented: $showsSaveError) {
+            Button("projects.action.error.dismiss", role: .cancel) {}
         }
     }
 
@@ -97,7 +110,7 @@ struct NewProjectView: View {
     private var isDirty: Bool {
         ProjectValidation.isDirty(
             name: projectName,
-            description: description,
+            description: projectDescription,
             originalName: initialName,
             originalDescription: initialDescription,
             mode: mode
@@ -107,7 +120,7 @@ struct NewProjectView: View {
     private var canSave: Bool {
         ProjectValidation.canSave(
             name: projectName,
-            description: description,
+            description: projectDescription,
             originalName: initialName,
             originalDescription: initialDescription,
             mode: mode
@@ -131,6 +144,7 @@ struct NewProjectView: View {
                 .background(.quaternary.opacity(0.45), in: Circle())
                 .accessibilityLabel(String(localized: "common.back"))
                 .accessibilityIdentifier("\(accessibilityRootID).back")
+                .disabled(isSaving)
 
                 Spacer()
             }
@@ -152,9 +166,10 @@ struct NewProjectView: View {
                 .foregroundStyle(AppColors.primaryText)
                 .focused($focusedField, equals: .name)
                 .textInputAutocapitalization(.words)
+                .disabled(isSaving)
                 .submitLabel(.next)
                 .onSubmit {
-                    focusedField = .description
+                    focusedField = .projectDescription
                 }
                 .onChange(of: projectName) { _, newValue in
                     projectName = String(newValue.prefix(ProjectValidation.nameLimit))
@@ -188,7 +203,7 @@ struct NewProjectView: View {
                 .foregroundStyle(AppColors.secondaryText)
 
             ZStack(alignment: .topLeading) {
-                if description.isEmpty {
+                if projectDescription.isEmpty {
                     Text("projects.form.description.placeholder")
                         .appTypography(AppTypography.bodyLarge)
                         .foregroundStyle(AppColors.secondaryText)
@@ -197,15 +212,16 @@ struct NewProjectView: View {
                         .allowsHitTesting(false)
                 }
 
-                TextEditor(text: $description)
+                TextEditor(text: $projectDescription)
                     .appTypography(AppTypography.bodyLarge)
                     .foregroundStyle(AppColors.primaryText)
-                    .focused($focusedField, equals: .description)
+                    .focused($focusedField, equals: .projectDescription)
                     .scrollContentBackground(.hidden)
+                    .disabled(isSaving)
                     .padding(.horizontal, AppSpacing.medium)
                     .padding(.vertical, AppSpacing.small)
-                    .onChange(of: description) { _, newValue in
-                        description = String(newValue.prefix(ProjectValidation.descriptionLimit))
+                    .onChange(of: projectDescription) { _, newValue in
+                        projectDescription = String(newValue.prefix(ProjectValidation.descriptionLimit))
                     }
             }
             .frame(minHeight: 260)
@@ -222,18 +238,29 @@ struct NewProjectView: View {
     private var actions: some View {
         VStack(spacing: AppSpacing.large) {
             Button(action: save) {
-                Text(saveKey)
-                    .appTypography(AppTypography.labelButton)
-                    .foregroundStyle(AppColors.primaryActionLabel)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-                    .background(
-                        AppColors.brandBlueBottom,
-                        in: RoundedRectangle(cornerRadius: AppCornerRadius.large)
-                    )
+                ZStack {
+                    Text(saveKey)
+                        .appTypography(AppTypography.labelButton)
+                        .foregroundStyle(AppColors.primaryActionLabel)
+                        .opacity(isSaving ? 0 : 1)
+
+                    if isSaving {
+                        ProgressView()
+                            .tint(AppColors.primaryActionLabel)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(
+                    AppColors.brandBlueBottom,
+                    in: RoundedRectangle(cornerRadius: AppCornerRadius.large)
+                )
             }
             .buttonStyle(.plain)
+            // Keep enabled visually while saving so ProgressView keeps animating;
+            // `save()` already guards against double-submit via `isSaving`.
             .disabled(!canSave)
+            .allowsHitTesting(canSave && !isSaving)
             .opacity(canSave ? 1 : 0.3)
             .accessibilityIdentifier("\(accessibilityRootID).save")
 
@@ -253,6 +280,7 @@ struct NewProjectView: View {
                     }
             }
             .buttonStyle(.plain)
+            .disabled(isSaving)
             .accessibilityIdentifier("\(accessibilityRootID).cancel")
         }
         .padding(.horizontal, AppSpacing.extraLarge)
@@ -262,19 +290,29 @@ struct NewProjectView: View {
 
     private func save() {
         let trimmedName = projectName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDescription = projectDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         let isValid = ProjectValidation.isValidName(trimmedName)
-            && ProjectValidation.isValidDescription(description)
+            && ProjectValidation.isValidDescription(trimmedDescription)
 
         showsNameError = !ProjectValidation.isValidName(trimmedName)
-        guard isValid else {
-            focusedField = showsNameError ? .name : .description
+        guard isValid, !isSaving else {
+            focusedField = showsNameError ? .name : .projectDescription
             return
         }
 
-        onSave(trimmedName, description.trimmingCharacters(in: .whitespacesAndNewlines))
+        isSaving = true
+        Task { @MainActor in
+            let projectForm = ProjectFormInput(name: trimmedName, projectDescription: trimmedDescription)
+            let didSave = await onSave(projectForm)
+            isSaving = false
+            if !didSave {
+                showsSaveError = true
+            }
+        }
     }
 
     private func cancel() {
+        guard !isSaving else { return }
         guard isDirty else {
             discard()
             return
@@ -348,7 +386,7 @@ enum ProjectValidation {
 }
 
 #Preview("Create") {
-    NewProjectView(onSave: { _, _ in }, onCancel: {})
+    NewProjectView(onSave: { _ in true }, onCancel: {})
 }
 
 #Preview("Edit") {
@@ -356,7 +394,7 @@ enum ProjectValidation {
         mode: .edit,
         initialName: "Lakeside Remodel",
         initialDescription: "Kitchen and living room refresh",
-        onSave: { _, _ in },
+        onSave: { _ in true },
         onCancel: {}
     )
 }

@@ -91,6 +91,19 @@ struct ProjectsViewModelTests {
         #expect(!viewModel.showsPaginationError)
     }
 
+    @Test func prependCreatedProjectAfterFailedLoadSetsLoadedState() async {
+        let service = TestProjectsService(projects: makeProjects(count: 12), failingPages: [1])
+        let viewModel = ProjectsViewModel(service: service)
+        await viewModel.loadInitialProjects()
+        #expect(viewModel.viewState == .failed)
+
+        let created = makeProject(index: 99, scanCount: 0)
+        viewModel.prependCreatedProject(created)
+
+        #expect(viewModel.projects.map(\.id) == ["project-99"])
+        #expect(viewModel.viewState == .loaded)
+    }
+
     @Test func stalePaginationResponseAfterRefreshDoesNotAppendOrAdvanceState() async {
         let service = TestProjectsService(
             projects: makeProjects(count: 12),
@@ -396,6 +409,7 @@ struct ProjectsViewModelTests {
         let didDelete = await viewModel.deleteProject(id: "project-2")
 
         #expect(didDelete)
+        #expect(!viewModel.isDeletingProject)
         #expect(viewModel.projects.map(\.id) == ["project-1", "project-3", "project-4", "project-5"])
         #expect(!viewModel.expandedProjectIDs.contains("project-2"))
         #expect(viewModel.showsDeleteSuccessToast)
@@ -458,6 +472,7 @@ struct ProjectsViewModelTests {
         let didDelete = await viewModel.deleteProject(id: "project-1")
 
         #expect(!didDelete)
+        #expect(!viewModel.isDeletingProject)
         #expect(viewModel.projects.map(\.id) == [
             "project-1", "project-2", "project-3", "project-4", "project-5"
         ])
@@ -599,6 +614,13 @@ private actor TestProjectsService: ProjectsService {
         )
     }
 
+    func fetchProject(id: String) async throws -> ProjectSummary {
+        guard let project = projects.first(where: { $0.id == id }) else {
+            throw ProjectsServiceError.projectNotFound
+        }
+        return project
+    }
+
     func updateProject(id: String, name: String, description: String) async throws -> ProjectSummary {
         if updateFails {
             throw ProjectsServiceError.network
@@ -658,7 +680,8 @@ private actor TestProjectsService: ProjectsService {
             creatorDisplayName: existing.creatorDisplayName,
             notes: existing.notes,
             meshPath: existing.meshPath,
-            thumbnailPath: existing.thumbnailPath
+            thumbnailPath: existing.thumbnailPath,
+            noteCount: existing.noteCount
         )
         guard let updatedProject = project.replacingScan(
             updatedScan,
@@ -694,7 +717,8 @@ private actor TestProjectsService: ProjectsService {
             creatorDisplayName: existing.creatorDisplayName,
             notes: existing.notes,
             meshPath: existing.meshPath,
-            thumbnailPath: existing.thumbnailPath
+            thumbnailPath: existing.thumbnailPath,
+            noteCount: existing.noteCount
         )
         guard let updatedProject = project.replacingScan(
             updatedScan,
@@ -732,13 +756,14 @@ private actor TestProjectsService: ProjectsService {
         projects.sorted { $0.updatedAt > $1.updatedAt }
     }
 
-    func createProject(name: String) async throws -> ProjectSummary {
+    func createProject(name: String, projectDescription: String) async throws -> ProjectSummary {
         ProjectSummary(
             id: UUID().uuidString,
             name: name,
             ownerName: "You",
             createdAt: Date(),
             updatedAt: Date(),
+            description: projectDescription,
             sharedUserCount: 0,
             roomScans: []
         )

@@ -144,16 +144,17 @@ struct ProjectsPresentationModifier: ViewModifier {
                     projectPendingDelete = nil
                 }
                 Button(String(localized: "projects.delete.confirm"), role: .destructive) {
+                    let projectID = project.id
+                    projectPendingDelete = nil
                     Task {
-                        await viewModel.deleteProject(id: project.id)
-                        projectPendingDelete = nil
+                        await viewModel.deleteProject(id: projectID)
                     }
                 }
             } message: { project in
                 Text(
                     String.localizedStringWithFormat(
                         String(localized: "projects.delete.message.format"),
-                        project.roomScans.count,
+                        max(project.scanCount, project.roomScans.count),
                         project.name
                     )
                 )
@@ -240,17 +241,16 @@ struct ProjectsPresentationModifier: ViewModifier {
             mode: .edit,
             initialName: project.name,
             initialDescription: project.description,
-            onSave: { name, description in
-                Task {
-                    let didUpdate = await viewModel.updateProject(
-                        id: project.id,
-                        name: name,
-                        description: description
-                    )
-                    if didUpdate {
-                        projectToEdit = nil
-                    }
+            onSave: { form in
+                let didUpdate = await viewModel.updateProject(
+                    id: project.id,
+                    name: form.name,
+                    description: form.projectDescription
+                )
+                if didUpdate {
+                    projectToEdit = nil
                 }
+                return didUpdate
             },
             onCancel: {
                 projectToEdit = nil

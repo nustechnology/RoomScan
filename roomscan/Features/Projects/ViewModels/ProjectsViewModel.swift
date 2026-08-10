@@ -42,6 +42,7 @@ struct VisibleProject: Identifiable, Equatable {
     private(set) var showsPaginationError = false
     private(set) var showsDeleteSuccessToast = false
     private(set) var showsActionErrorToast = false
+    private(set) var isDeletingProject = false
     private(set) var expandedProjectIDs: Set<ProjectSummary.ID> = []
     private(set) var searchQuery = ""
 
@@ -140,6 +141,10 @@ struct VisibleProject: Identifiable, Equatable {
 
     @discardableResult
     func deleteProject(id: ProjectSummary.ID) async -> Bool {
+        guard !isDeletingProject else { return false }
+        isDeletingProject = true
+        defer { isDeletingProject = false }
+
         do {
             try await service.deleteProject(id: id)
             requestGeneration += 1
@@ -192,6 +197,18 @@ struct VisibleProject: Identifiable, Equatable {
         )
         projects.sort { $0.updatedAt > $1.updatedAt }
         allProjects.sort { $0.updatedAt > $1.updatedAt }
+    }
+
+    func prependCreatedProject(_ project: ProjectSummary) {
+        projects.removeAll { $0.id == project.id }
+        allProjects.removeAll { $0.id == project.id }
+        projects.insert(project, at: 0)
+        allProjects.insert(project, at: 0)
+        projects.sort { $0.updatedAt > $1.updatedAt }
+        allProjects.sort { $0.updatedAt > $1.updatedAt }
+        if !projects.isEmpty {
+            viewState = .loaded
+        }
     }
 
     func dismissDeleteSuccessToast() {
@@ -321,32 +338,6 @@ struct VisibleProject: Identifiable, Equatable {
         mergeIntoAllProjects(loadedProjects)
         hasLoadedCompleteDataset = true
     }
-
-    private func filteredProjects(matching query: String) -> [VisibleProject] {
-        let normalizedQuery = query.localizedLowercase
-
-        return allProjects.compactMap { project in
-            let projectMatches = project.name.localizedLowercase.contains(normalizedQuery)
-            if projectMatches {
-                return VisibleProject(
-                    project: project,
-                    roomScans: project.roomScans,
-                    showsAllRoomScans: true
-                )
-            }
-
-            let matchingRoomScans = project.roomScans.filter {
-                $0.name.localizedLowercase.contains(normalizedQuery)
-            }
-
-            guard !matchingRoomScans.isEmpty else { return nil }
-            return VisibleProject(
-                project: project,
-                roomScans: matchingRoomScans,
-                showsAllRoomScans: false
-            )
-        }
-    }
 }
 
 extension ProjectsViewModel {
@@ -376,6 +367,32 @@ extension ProjectsViewModel {
 }
 
 private extension ProjectsViewModel {
+    func filteredProjects(matching query: String) -> [VisibleProject] {
+        let normalizedQuery = query.localizedLowercase
+
+        return allProjects.compactMap { project in
+            let projectMatches = project.name.localizedLowercase.contains(normalizedQuery)
+            if projectMatches {
+                return VisibleProject(
+                    project: project,
+                    roomScans: project.roomScans,
+                    showsAllRoomScans: true
+                )
+            }
+
+            let matchingRoomScans = project.roomScans.filter {
+                $0.name.localizedLowercase.contains(normalizedQuery)
+            }
+
+            guard !matchingRoomScans.isEmpty else { return nil }
+            return VisibleProject(
+                project: project,
+                roomScans: matchingRoomScans,
+                showsAllRoomScans: false
+            )
+        }
+    }
+
     func mergeIntoAllProjects(_ newProjects: [ProjectSummary]) {
         guard !newProjects.isEmpty else { return }
 
@@ -399,22 +416,10 @@ private extension ProjectsViewModel {
     ) -> [ProjectSummary] {
         guard let projectIndex = source.firstIndex(where: { $0.id == projectID }) else { return source }
         let project = source[projectIndex]
-        guard let scanIndex = project.roomScans.firstIndex(where: { $0.id == scan.id }) else { return source }
-
-        var roomScans = project.roomScans
-        roomScans[scanIndex] = scan
+        guard let updatedProject = project.replacingScan(scan) else { return source }
 
         var updatedProjects = source
-        updatedProjects[projectIndex] = ProjectSummary(
-            id: project.id,
-            name: project.name,
-            ownerName: project.ownerName,
-            createdAt: project.createdAt,
-            updatedAt: Date(),
-            description: project.description,
-            sharedUserCount: project.sharedUserCount,
-            roomScans: roomScans
-        )
+        updatedProjects[projectIndex] = updatedProject
         return updatedProjects
     }
 
@@ -428,16 +433,7 @@ private extension ProjectsViewModel {
         guard project.roomScans.contains(where: { $0.id == scanID }) else { return source }
 
         var updatedProjects = source
-        updatedProjects[projectIndex] = ProjectSummary(
-            id: project.id,
-            name: project.name,
-            ownerName: project.ownerName,
-            createdAt: project.createdAt,
-            updatedAt: Date(),
-            description: project.description,
-            sharedUserCount: project.sharedUserCount,
-            roomScans: project.roomScans.filter { $0.id != scanID }
-        )
+        updatedProjects[projectIndex] = project.removingScan(id: scanID)
         return updatedProjects
     }
 }

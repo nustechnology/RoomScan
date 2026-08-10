@@ -22,9 +22,12 @@ struct ProjectCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            if project.roomScans.isEmpty {
+            switch project.scansContentState {
+            case .empty:
                 EmptyRoomScansView(onTap: onAddScan)
-            } else {
+            case .remoteOnly:
+                RemoteOnlyRoomScansView()
+            case .local:
                 roomScanList
             }
             expandButton
@@ -105,9 +108,9 @@ struct ProjectCardView: View {
     }
 
     private var scanCountText: String {
-        String.localizedStringWithFormat(
-            String(localized: "projects.card.scanCount.format"),
-            project.roomScans.count
+        ProjectCardPresentation.scanCountText(
+            remoteScanCount: project.scanCount,
+            loadedScanCount: project.roomScans.count
         )
     }
 
@@ -116,11 +119,35 @@ struct ProjectCardView: View {
             return String(localized: "projects.card.showLess")
         }
 
-        let remainingCount = project.roomScans.count - visibleRoomScans.count
-        return String.localizedStringWithFormat(
-            String(localized: "projects.card.showMore.format"),
-            remainingCount
+        let remainingLoadedCount = max(0, project.roomScans.count - visibleRoomScans.count)
+        return ProjectCardPresentation.showMoreTitle(
+            remainingLoadedCount: remainingLoadedCount,
+            hasIncompleteLocalCache: project.roomScans.count < project.scanCount
         )
+    }
+}
+
+enum ProjectCardPresentation {
+    static func scanCountText(remoteScanCount: Int, loadedScanCount: Int) -> String {
+        if loadedScanCount > 0, loadedScanCount < remoteScanCount {
+            return String.localizedStringWithFormat(
+                String(localized: "projects.card.scanCount.partial.format"),
+                remoteScanCount,
+                loadedScanCount
+            )
+        }
+
+        return String.localizedStringWithFormat(
+            String(localized: "projects.card.scanCount.format"),
+            remoteScanCount
+        )
+    }
+
+    static func showMoreTitle(remainingLoadedCount: Int, hasIncompleteLocalCache: Bool) -> String {
+        let key = hasIncompleteLocalCache
+            ? String(localized: "projects.card.showMore.loaded.format")
+            : String(localized: "projects.card.showMore.format")
+        return String.localizedStringWithFormat(key, remainingLoadedCount)
     }
 }
 
@@ -146,6 +173,17 @@ private struct EmptyRoomScansView: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 12)
+    }
+}
+
+private struct RemoteOnlyRoomScansView: View {
+    var body: some View {
+        Text("projects.card.remoteScansUnavailable")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 12)
+            .accessibilityIdentifier("projects.card.remoteScansUnavailable")
     }
 }
 

@@ -174,8 +174,9 @@ final class ReviewScanViewModelTests: XCTestCase {
 
 private actor FailingProjectsService: ProjectsService {
     func fetchProjects(page: Int, pageSize: Int) async throws -> ProjectPage { throw ProjectsServiceError.network }
+    func fetchProject(id: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }
     func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] { throw ProjectsServiceError.network }
-    func createProject(name: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }
+    func createProject(name: String, projectDescription: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }
     func updateProject(id: String, name: String, description: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }
     func deleteProject(id: String) async throws { throw ProjectsServiceError.network }
     func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool { false }

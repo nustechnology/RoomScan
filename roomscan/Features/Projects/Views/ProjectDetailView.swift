@@ -18,7 +18,33 @@ struct ProjectDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedScanDetail: ProjectDetailScanDestination?
     @State private var shareInput: ShareScreenInput?
+    @State private var displayedProject: ProjectSummary
     @State private var roomScans: [RoomScanSummary] = []
+    @State private var isLoadingDetail = false
+    @State private var showsDetailLoadError = false
+
+    init(
+        project: ProjectSummary,
+        projectsService: any ProjectsService,
+        notesService: any NotesService,
+        shareService: any ShareService,
+        currentUserID: String,
+        accessPolicy: DetailAccessPolicy = .editable,
+        onScanUpdated: @escaping (RoomScanSummary) -> Void = { _ in },
+        onScanDeleted: @escaping (RoomScanSummary.ID) -> Void = { _ in },
+        onAddScan: ((String) -> Void)? = nil
+    ) {
+        self.project = project
+        self.projectsService = projectsService
+        self.notesService = notesService
+        self.shareService = shareService
+        self.currentUserID = currentUserID
+        self.accessPolicy = accessPolicy
+        self.onScanUpdated = onScanUpdated
+        self.onScanDeleted = onScanDeleted
+        self.onAddScan = onAddScan
+        _displayedProject = State(initialValue: project)
+    }
 
     private var showsOwnerActions: Bool {
         ProjectDetailPresentation.showsOwnerActions(for: accessPolicy)
@@ -28,16 +54,24 @@ struct ProjectDetailView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
+                    if isLoadingDetail {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .accessibilityIdentifier("projects.detail.loading")
+                    }
+
                     projectMetadata
 
                     Text(scansTitle)
                         .font(.title3.bold())
                         .padding(.top, 24)
                         .padding(.bottom, 14)
-                        .accessibilityIdentifier("projects.detail.scanCount.\(project.id)")
+                        .accessibilityIdentifier("projects.detail.scanCount.\(displayedProject.id)")
 
                     VStack(spacing: 0) {
-                        if roomScans.isEmpty {
+                        switch detailScansContentState {
+                        case .empty:
                             Text("projects.detail.emptyScans.message")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
@@ -46,13 +80,22 @@ struct ProjectDetailView: View {
                                 .padding(.horizontal, 18)
                                 .padding(.vertical, 28)
                                 .accessibilityIdentifier("projects.detail.emptyScans")
-                        } else {
+                        case .remoteOnly:
+                            Text("projects.detail.remoteScansUnavailable.message")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity)
+                                .padding(.horizontal, 18)
+                                .padding(.vertical, 28)
+                                .accessibilityIdentifier("projects.detail.remoteScansUnavailable")
+                        case .local:
                             ForEach(Array(roomScans.enumerated()), id: \.element.id) { index, scan in
                                 RoomScanRowView(
                                     scan: scan,
                                     onTap: {
                                         selectedScanDetail = ProjectDetailScanDestination(
-                                            projectID: project.id,
+                                            projectID: displayedProject.id,
                                             scan: scan
                                         )
                                     }
@@ -80,7 +123,7 @@ struct ProjectDetailView: View {
                                 systemImageName: "plus",
                                 color: AppColors.background,
                                 action: {
-                                    onAddScan?(project.id)
+                                    onAddScan?(displayedProject.id)
                                 },
                                 foregroundColor: .primary,
                                 borderColor: .secondary.opacity(0.35),
@@ -108,6 +151,13 @@ struct ProjectDetailView: View {
             .background(AppColors.background)
             .task {
                 roomScans = project.roomScans
+                await loadProjectDetail()
+            }
+            .alert("projects.action.error", isPresented: $showsDetailLoadError) {
+                Button("projects.action.error.dismiss", role: .cancel) {}
+                Button("projects.pagination.retry") {
+                    Task { await loadProjectDetail() }
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(AppColors.background, for: .navigationBar)
@@ -127,10 +177,10 @@ struct ProjectDetailView: View {
                 }
 
                 ToolbarItem(placement: .principal) {
-                    Text(project.name)
+                    Text(displayedProject.name)
                         .font(.title2.bold())
                         .lineLimit(1)
-                        .accessibilityIdentifier("projects.detail.title.\(project.id)")
+                        .accessibilityIdentifier("projects.detail.title.\(displayedProject.id)")
                 }
             }
             .accessibilityIdentifier("projects.detail")
@@ -145,7 +195,7 @@ struct ProjectDetailView: View {
                             accessPolicy: accessPolicy
                         ),
                         projectID: destination.projectID,
-                        projectName: project.name,
+                        projectName: displayedProject.name,
                         notesService: notesService,
                         shareService: shareService,
                         accessPolicy: accessPolicy,
@@ -168,7 +218,7 @@ struct ProjectDetailView: View {
         VStack(spacing: 0) {
             DetailMetadataRow(
                 title: "projects.detail.metadata.owner.label",
-                value: project.ownerName,
+                value: displayedProject.ownerName,
                 accessibilityIdentifier: "projects.detail.metadata.owner"
             )
             metadataDivider
@@ -190,15 +240,21 @@ struct ProjectDetailView: View {
     }
 
     private var createdDateText: String {
-        ProjectDetailPresentation.createdDateText(for: project.createdAt)
+        ProjectDetailPresentation.createdDateText(for: displayedProject.createdAt)
     }
 
     private var sharedUserCountText: String {
-        ProjectDetailPresentation.sharedUserCountText(for: project.sharedUserCount)
+        ProjectDetailPresentation.sharedUserCountText(for: displayedProject.sharedUserCount)
     }
 
     private var scansTitle: String {
-        ProjectDetailPresentation.scansTitle(for: roomScans.count)
+        ProjectDetailPresentation.scansTitle(
+            for: max(displayedProject.scanCount, roomScans.count)
+        )
+    }
+
+    private var detailScansContentState: ProjectScansContentState {
+        .resolve(localScanCount: roomScans.count, remoteScanCount: displayedProject.scanCount)
     }
 
     private var shareMetadataAction: (() -> Void)? {
@@ -212,7 +268,37 @@ struct ProjectDetailView: View {
     }
 
     private func openShareProject() {
-        shareInput = .project(id: project.id, name: project.name)
+        shareInput = .project(id: displayedProject.id, name: displayedProject.name)
+    }
+
+    private func loadProjectDetail() async {
+        isLoadingDetail = true
+        defer { isLoadingDetail = false }
+
+        do {
+            let remote = try await projectsService.fetchProject(id: project.id)
+            // fetchProject already merges API scans with the local store; also merge
+            // any fresher in-memory scans from this screen (e.g. mid-session edits).
+            let mergedScans = ProjectAPIMapping.mergeRoomScans(
+                apiScans: remote.roomScans,
+                localScans: roomScans
+            )
+            displayedProject = ProjectSummary(
+                id: remote.id,
+                name: remote.name,
+                ownerName: remote.ownerName,
+                createdAt: remote.createdAt,
+                updatedAt: remote.updatedAt,
+                description: remote.description,
+                sharedUserCount: remote.sharedUserCount,
+                roomScans: mergedScans,
+                scanCount: max(remote.scanCount, mergedScans.count)
+            )
+            roomScans = mergedScans
+            showsDetailLoadError = false
+        } catch {
+            showsDetailLoadError = true
+        }
     }
 
     private func handleScanUpdated(_ updatedScan: RoomScanSummary) {

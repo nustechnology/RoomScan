@@ -97,7 +97,7 @@ struct AuthenticatedHTTPClient: HTTPClient {
         case .invalidCredential:
             return .serverError(statusCode: 401, apiError: nil)
         case .unknown, .unavailable, .appleSystemError, .cancelled:
-            return .decodingError
+            return .decodingError(underlying: String(describing: error), bodyPreview: "")
         }
     }
 }
