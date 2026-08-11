@@ -8,6 +8,7 @@ import SwiftUI
 struct ProjectDetailView: View {
     let project: ProjectSummary
     let projectsService: any ProjectsService
+    let scanDetailService: (any ScanDetailService)?
     let notesService: any NotesService
     let shareService: any ShareService
     let currentUserID: String
@@ -26,6 +27,7 @@ struct ProjectDetailView: View {
     init(
         project: ProjectSummary,
         projectsService: any ProjectsService,
+        scanDetailService: (any ScanDetailService)? = nil,
         notesService: any NotesService,
         shareService: any ShareService,
         currentUserID: String,
@@ -36,6 +38,7 @@ struct ProjectDetailView: View {
     ) {
         self.project = project
         self.projectsService = projectsService
+        self.scanDetailService = scanDetailService
         self.notesService = notesService
         self.shareService = shareService
         self.currentUserID = currentUserID
@@ -192,6 +195,7 @@ struct ProjectDetailView: View {
                             scan: destination.scan,
                             currentUserID: currentUserID,
                             service: projectsService,
+                            scanDetailService: scanDetailService,
                             accessPolicy: accessPolicy
                         ),
                         projectID: destination.projectID,

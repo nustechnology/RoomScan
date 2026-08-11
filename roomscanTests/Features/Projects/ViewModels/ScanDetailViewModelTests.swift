@@ -56,7 +56,8 @@ struct ScanDetailViewModelTests {
             projectID: "project-1",
             scan: makeScan(name: "Living Room"),
             currentUserID: Self.mockCurrentUserID,
-            service: service
+            service: service,
+            scanDetailService: ScanDetailRenameStub()
         )
         viewModel.renameDraft = "  Dining Room  "
 
@@ -65,6 +66,26 @@ struct ScanDetailViewModelTests {
         #expect(didRename)
         #expect(viewModel.title == "Dining Room")
         #expect(viewModel.scan.name == "Dining Room")
+    }
+
+    @Test func renameScanUsesLocalServiceWhenRemoteServiceIsNotInjected() async throws {
+        let service = MockProjectsService(
+            projects: [makeProject()],
+            simulatedDelayNanoseconds: 0
+        )
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(name: "Living Room"),
+            currentUserID: Self.mockCurrentUserID,
+            service: service
+        )
+        viewModel.renameDraft = "Dining Room"
+
+        let didRename = await viewModel.renameScan()
+        let projects = try await service.fetchAllProjectsSortedByUpdated()
+        let project = try #require(projects.first)
+        #expect(didRename)
+        #expect(project.roomScans.first?.name == "Dining Room")
     }
 
     @Test func renameScanRejectsEmptyName() async {
@@ -87,7 +108,57 @@ struct ScanDetailViewModelTests {
         #expect(viewModel.title == "Living Room")
     }
 
+    @Test func renameScanBeforeDetailLoadsOmitsDescription() async {
+        let scanDetailService = ScanDetailRenameSpy()
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(name: "Living Room"),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(
+                projects: [makeProject()],
+                simulatedDelayNanoseconds: 0
+            ),
+            scanDetailService: scanDetailService
+        )
+        viewModel.renameDraft = "Dining Room"
+
+        let didRename = await viewModel.renameScan()
+        let updateDescription = await scanDetailService.lastUpdateDescription()
+
+        #expect(didRename)
+        #expect(updateDescription == nil)
+    }
+
+    @Test func scanDetailUpdateRequestOmitsMissingDescription() throws {
+        let data = try JSONEncoder().encode(
+            ScanDetailUpdateRequest(name: "Dining Room", description: nil)
+        )
+        let body = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        #expect(body["name"] as? String == "Dining Room")
+        #expect(body["description"] == nil)
+    }
+
     @Test func deleteScanMarksDeletion() async {
+        let service = MockProjectsService(
+            projects: [makeProject()],
+            simulatedDelayNanoseconds: 0
+        )
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(),
+            currentUserID: Self.mockCurrentUserID,
+            service: service,
+            scanDetailService: ScanDetailRenameStub()
+        )
+
+        let didDelete = await viewModel.deleteScan()
+
+        #expect(didDelete)
+        #expect(viewModel.didDeleteScan)
+    }
+
+    @Test func deleteScanUsesLocalServiceWhenRemoteServiceIsNotInjected() async throws {
         let service = MockProjectsService(
             projects: [makeProject()],
             simulatedDelayNanoseconds: 0
@@ -100,9 +171,10 @@ struct ScanDetailViewModelTests {
         )
 
         let didDelete = await viewModel.deleteScan()
-
+        let projects = try await service.fetchAllProjectsSortedByUpdated()
+        let project = try #require(projects.first)
         #expect(didDelete)
-        #expect(viewModel.didDeleteScan)
+        #expect(project.roomScans.isEmpty)
     }
 
     @Test func retryUploadUpdatesFailedStatusToSynced() async {
@@ -123,6 +195,28 @@ struct ScanDetailViewModelTests {
 
         #expect(didRetry)
         #expect(viewModel.scan.syncStatus == .synced)
+        #expect(!viewModel.showsRetryUpload)
+    }
+
+    @Test func retryUploadUpdatesLoadedDetailStatus() async {
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(syncStatus: .failed),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(
+                projects: [makeProject(syncStatus: .failed)],
+                simulatedDelayNanoseconds: 0
+            ),
+            scanDetailService: ScanDetailRetryStub()
+        )
+
+        await viewModel.loadDetail()
+        #expect(viewModel.displaySyncStatus == .failed)
+
+        let didRetry = await viewModel.retryUpload()
+
+        #expect(didRetry)
+        #expect(viewModel.displaySyncStatus == .synced)
         #expect(!viewModel.showsRetryUpload)
     }
 
@@ -263,4 +357,72 @@ struct ScanDetailViewModelTests {
             }
         )
     }
+}
+
+private struct ScanDetailRenameStub: ScanDetailService {
+    func fetchScanDetail(id: String) async throws -> ScanDetail {
+        makeDetail(id: id, name: "Living Room", description: "")
+    }
+
+    func updateScanDetail(id: String, name: String, description: String?) async throws -> ScanDetail {
+        makeDetail(id: id, name: name, description: description)
+    }
+
+    func deleteScanDetail(id: String) async throws {}
+
+    func makeDetail(id: String, name: String, description: String?) -> ScanDetail {
+        ScanDetail(
+            id: id,
+            projectID: "project-1",
+            name: name,
+            description: description,
+            thumbnail: nil,
+            creatorID: "mock-user-apple",
+            creatorEmail: nil,
+            noteCount: 0,
+            assetStatus: "NONE",
+            syncStatus: .synced,
+            modelVersion: 1,
+            createdAt: .now,
+            updatedAt: .now,
+            permissions: ScanDetailPermissions(
+                role: "OWNER",
+                canView: true,
+                canEdit: true,
+                canDelete: true
+            )
+        )
+    }
+}
+
+private actor ScanDetailRenameSpy: ScanDetailService {
+    private var updateDescription: String?
+
+    func fetchScanDetail(id: String) async throws -> ScanDetail {
+        ScanDetailRenameStub().makeDetail(id: id, name: "Living Room", description: nil)
+    }
+
+    func updateScanDetail(id: String, name: String, description: String?) async throws -> ScanDetail {
+        updateDescription = description
+        return ScanDetailRenameStub().makeDetail(id: id, name: name, description: description)
+    }
+
+    func deleteScanDetail(id: String) async throws {}
+
+    func lastUpdateDescription() -> String? {
+        updateDescription
+    }
+}
+
+private struct ScanDetailRetryStub: ScanDetailService {
+    func fetchScanDetail(id: String) async throws -> ScanDetail {
+        ScanDetailRenameStub().makeDetail(id: id, name: "Living Room", description: nil)
+            .updating(syncStatus: .failed)
+    }
+
+    func updateScanDetail(id: String, name: String, description: String?) async throws -> ScanDetail {
+        ScanDetailRenameStub().makeDetail(id: id, name: name, description: description)
+    }
+
+    func deleteScanDetail(id: String) async throws {}
 }

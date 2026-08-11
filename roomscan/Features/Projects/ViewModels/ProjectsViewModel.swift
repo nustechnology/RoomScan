@@ -33,6 +33,7 @@ struct VisibleProject: Identifiable, Equatable {
     private var allProjects: [ProjectSummary] = []
     private var hasLoadedCompleteDataset = false
     private var searchLoadingTask: Task<Void, Never>?
+    private var hasQueuedRefresh = false
 
     private(set) var viewState: ViewState = .idle
     private(set) var projects: [ProjectSummary] = []
@@ -79,10 +80,6 @@ struct VisibleProject: Identifiable, Equatable {
     func loadInitialProjects() async {
         guard viewState == .idle else { return }
         await reloadProjects(collapseExpanded: false)
-    }
-
-    func refreshProjects() async {
-        await reloadProjects(collapseExpanded: true)
     }
 
     func loadNextPageIfNeeded(currentProjectID: ProjectSummary.ID) async {
@@ -225,7 +222,7 @@ struct VisibleProject: Identifiable, Equatable {
         searchLoadingTask = nil
         let generation = requestGeneration
         defer {
-            if generation == requestGeneration {
+            if generation == requestGeneration || !hasQueuedRefresh {
                 isRefreshing = false
             }
         }
@@ -253,6 +250,11 @@ struct VisibleProject: Identifiable, Equatable {
             if hasActiveSearch {
                 await ensureCompleteDatasetLoadedForSearch()
             }
+        } catch is CancellationError {
+            if generation == requestGeneration, !hasLoadedProjects {
+                viewState = .idle
+            }
+            return
         } catch {
             guard generation == requestGeneration else { return }
             if hasLoadedProjects {
@@ -282,6 +284,8 @@ struct VisibleProject: Identifiable, Equatable {
             currentPage = page
             hasMoreProjects = projectPage.hasMore
             hasLoadedCompleteDataset = !projectPage.hasMore
+        } catch is CancellationError {
+            return
         } catch {
             guard generation == requestGeneration else { return }
             showsPaginationError = true
@@ -341,6 +345,21 @@ struct VisibleProject: Identifiable, Equatable {
 }
 
 extension ProjectsViewModel {
+    func refreshProjects() async {
+        guard !Task.isCancelled else { return }
+        guard !isRefreshing else {
+            hasQueuedRefresh = true
+            return
+        }
+
+        while true {
+            guard !Task.isCancelled else { return }
+            hasQueuedRefresh = false
+            await reloadProjects(collapseExpanded: true)
+            guard hasQueuedRefresh else { return }
+        }
+    }
+
     func updateSearchQuery(_ query: String) {
         searchQuery = query
 

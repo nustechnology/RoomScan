@@ -14,6 +14,7 @@ struct HomeView: View {
 
     let session: AuthenticationSession
     let projectsService: any ProjectsService
+    let scanDetailService: (any ScanDetailService)?
     let notesService: any NotesService
     let shareService: any ShareService
     let sharedService: any SharedService
@@ -38,6 +39,7 @@ struct HomeView: View {
     init(
         session: AuthenticationSession,
         projectsService: any ProjectsService,
+        scanDetailService: (any ScanDetailService)? = nil,
         notesService: any NotesService,
         shareService: any ShareService,
         sharedService: any SharedService,
@@ -47,6 +49,7 @@ struct HomeView: View {
     ) {
         self.session = session
         self.projectsService = projectsService
+        self.scanDetailService = scanDetailService
         self.notesService = notesService
         self.shareService = shareService
         self.sharedService = sharedService
@@ -140,6 +143,7 @@ struct HomeView: View {
             ProjectDetailView(
                 project: project,
                 projectsService: projectsService,
+                scanDetailService: scanDetailService,
                 notesService: notesService,
                 shareService: shareService,
                 currentUserID: session.user.id,
@@ -170,6 +174,7 @@ struct HomeView: View {
             ProjectDetailView(
                 project: project,
                 projectsService: projectsService,
+                scanDetailService: scanDetailService,
                 notesService: notesService,
                 shareService: shareService,
                 currentUserID: session.user.id,
@@ -213,6 +218,7 @@ struct HomeView: View {
             ProjectsView(
                 viewModel: projectsViewModel,
                 projectsService: projectsService,
+                scanDetailService: scanDetailService,
                 notesService: notesService,
                 shareService: shareService,
                 currentUserID: session.user.id,
@@ -223,6 +229,7 @@ struct HomeView: View {
             SharedWithMeView(
                 viewModel: sharedViewModel,
                 projectsService: projectsService,
+                scanDetailService: scanDetailService,
                 notesService: notesService,
                 shareService: shareService,
                 currentUserID: session.user.id

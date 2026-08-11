@@ -58,6 +58,8 @@ final class RemoteProjectsService: ProjectsService, @unchecked Sendable {
             }
             let hasMore = response.pagination.page < response.pagination.totalPages
             return ProjectPage(projects: projects, hasMore: hasMore)
+        } catch is CancellationError {
+            throw CancellationError()
         } catch let error as HTTPClientError {
             #if DEBUG
             logHTTPClientError("fetchProjects", error)

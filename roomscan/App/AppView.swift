@@ -8,6 +8,7 @@ import SwiftUI
 struct AppView: View {
     @Bindable var appState: AppState
     let projectsService: any ProjectsService
+    let scanDetailService: (any ScanDetailService)?
     let notesService: any NotesService
     let shareService: any ShareService
     let sharedService: any SharedService
@@ -27,6 +28,7 @@ struct AppView: View {
                 HomeView(
                     session: session,
                     projectsService: projectsService,
+                    scanDetailService: scanDetailService,
                     notesService: notesService,
                     shareService: shareService,
                     sharedService: sharedService,

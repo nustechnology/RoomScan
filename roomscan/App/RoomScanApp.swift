@@ -25,6 +25,7 @@ struct RoomScanApp: App {
     @State private var notesService: MockNotesService
     @State private var shareService: MockShareService
     @State private var sharedService: MockSharedService
+    private let scanDetailService: (any ScanDetailService)?
 
     init() {
         let isUITesting = ProcessInfo.processInfo.arguments.contains("-UITesting")
@@ -50,6 +51,9 @@ struct RoomScanApp: App {
         ) {
             appState.handleSessionInvalidated()
         }
+        self.scanDetailService = isUITesting
+            ? nil
+            : ScanDetailRemoteService(httpClient: authenticatedClient)
 
         let resolvedProjectsService: any ProjectsService = isUITesting
             ? MockProjectsService.makeForCurrentProcess()
@@ -70,6 +74,7 @@ struct RoomScanApp: App {
             AppView(
                 appState: appState,
                 projectsService: projectsService,
+                scanDetailService: scanDetailService,
                 notesService: notesService,
                 shareService: shareService,
                 sharedService: sharedService
