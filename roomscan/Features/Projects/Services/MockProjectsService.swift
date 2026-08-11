@@ -5,7 +5,7 @@
 
 import Foundation
 
-actor MockProjectsService: ProjectsService {
+actor MockProjectsService: ProjectsLocalCache {
     enum Scenario: Equatable, Sendable {
         case success
         case empty
@@ -71,6 +71,14 @@ actor MockProjectsService: ProjectsService {
         )
     }
 
+    func fetchProject(id: String) async throws -> ProjectSummary {
+        try await simulateDelay()
+        guard let project = sourceProjectsForScenario().first(where: { $0.id == id }) else {
+            throw ProjectsServiceError.projectNotFound
+        }
+        return project
+    }
+
     func updateProject(id: String, name: String, description: String) async throws -> ProjectSummary {
         try await simulateDelay()
 
@@ -87,7 +95,8 @@ actor MockProjectsService: ProjectsService {
             updatedAt: Date(),
             description: description,
             sharedUserCount: existing.sharedUserCount,
-            roomScans: existing.roomScans
+            roomScans: existing.roomScans,
+            scanCount: existing.scanCount
         )
         projects[index] = updated
         projects.sort { $0.updatedAt > $1.updatedAt }
@@ -112,10 +121,14 @@ actor MockProjectsService: ProjectsService {
         return sourceProjectsForScenario().sorted { $0.updatedAt > $1.updatedAt }
     }
 
-    func createProject(name: String) async throws -> ProjectSummary {
+    func createProject(name: String, projectDescription: String) async throws -> ProjectSummary {
         try await simulateDelay()
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDescription = projectDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= 50 else {
+            throw ProjectsServiceError.invalidProjectName
+        }
+        guard trimmedDescription.count <= 500 else {
             throw ProjectsServiceError.invalidProjectName
         }
 
@@ -125,11 +138,21 @@ actor MockProjectsService: ProjectsService {
             ownerName: "You",
             createdAt: Date(),
             updatedAt: Date(),
+            description: trimmedDescription,
             sharedUserCount: 0,
             roomScans: []
         )
         projects.insert(newProject, at: 0)
         return newProject
+    }
+
+    func cacheProject(_ project: ProjectSummary) {
+        if let index = projects.firstIndex(where: { $0.id == project.id }) {
+            projects[index] = ProjectSummary.mergingRemoteCache(project, over: projects[index])
+        } else {
+            projects.insert(project, at: 0)
+        }
+        projects.sort { $0.updatedAt > $1.updatedAt }
     }
 
     func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool {
@@ -172,19 +195,10 @@ actor MockProjectsService: ProjectsService {
         var updatedScans = projects[projectIndex].roomScans
         updatedScans.insert(newScan, at: 0)
 
-        let existing = projects[projectIndex]
-        let updatedProject = ProjectSummary(
-            id: existing.id,
-            name: existing.name,
-            ownerName: existing.ownerName,
-            createdAt: existing.createdAt,
-            updatedAt: Date(),
-            description: existing.description,
-            sharedUserCount: existing.sharedUserCount,
-            roomScans: updatedScans
+        projects[projectIndex] = projects[projectIndex].withRoomScans(
+            updatedScans,
+            scanCountDelta: 1
         )
-
-        projects[projectIndex] = updatedProject
         projects.sort { $0.updatedAt > $1.updatedAt }
 
         return newScan
@@ -210,7 +224,8 @@ actor MockProjectsService: ProjectsService {
             syncStatus: existing.syncStatus,
             creatorUserID: existing.creatorUserID,
             creatorDisplayName: existing.creatorDisplayName,
-            notes: existing.notes
+            notes: existing.notes,
+            noteCount: existing.noteCount
         )
         guard let updatedProject = project.replacingScan(updatedScan) else {
             throw ProjectsServiceError.notFound
@@ -244,7 +259,8 @@ actor MockProjectsService: ProjectsService {
             syncStatus: .synced,
             creatorUserID: existing.creatorUserID,
             creatorDisplayName: existing.creatorDisplayName,
-            notes: existing.notes
+            notes: existing.notes,
+            noteCount: existing.noteCount
         )
         guard let updatedProject = project.replacingScan(updatedScan) else {
             throw ProjectsServiceError.notFound

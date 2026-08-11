@@ -85,6 +85,14 @@ struct ProjectsView: View {
     private var toastOverlay: some View {
         ZStack(alignment: .bottom) {
             content
+                .transaction { transaction in
+                    // Keep list updates under the delete overlay from animating,
+                    // so hiding the overlay does not flash card layout changes.
+                    if viewModel.isDeletingProject {
+                        transaction.disablesAnimations = true
+                    }
+                }
+
             toastViews
         }
         .animation(.default, value: viewModel.showsPaginationError)

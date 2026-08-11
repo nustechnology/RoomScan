@@ -93,7 +93,7 @@ final class ReviewScanViewModel: ObservableObject {
 
     func createProject(name: String) async -> Bool {
         do {
-            let newProject = try await projectsService.createProject(name: name)
+            let newProject = try await projectsService.createProject(name: name, projectDescription: "")
             await loadProjects()
             selectedProjectID = newProject.id
             previousSelectedProjectID = newProject.id

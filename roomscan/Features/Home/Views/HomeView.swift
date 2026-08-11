@@ -87,6 +87,9 @@ struct HomeView: View {
                 HomeBottomNav(selectedTab: $selectedTab)
             }
         }
+        .overlay {
+            projectDeleteLoadingOverlay
+        }
         .overlay(alignment: .bottom) {
             if let feedbackToastMessage {
                 Text(feedbackToastMessage)
@@ -124,10 +127,8 @@ struct HomeView: View {
             },
             content: {
                 NewProjectView(
-                    onSave: { name, _ in
-                        let createdProject = makeCreatedProject(named: name)
-                        pendingCreatedProject = createdProject
-                        showsNewProject = false
+                    onSave: { form in
+                        await saveNewProject(form)
                     },
                     onCancel: {
                         showsNewProject = false
@@ -293,17 +294,44 @@ struct HomeView: View {
         projectsViewModel.applyDeletedScan(projectID: projectID, scanID: scanID)
     }
 
-    private func makeCreatedProject(named name: String) -> ProjectSummary {
-        ProjectSummary(
-            id: "created-project-\(UUID().uuidString)",
-            name: name,
-            ownerName: "You",
-            createdAt: Date(),
-            updatedAt: Date(),
-            description: "",
-            sharedUserCount: 0,
-            roomScans: []
-        )
+    private func saveNewProject(_ form: ProjectFormInput) async -> Bool {
+        let name = form.name
+        let projectDescription = form.projectDescription
+        do {
+            let createdProject = try await projectsService.createProject(
+                name: name,
+                projectDescription: projectDescription
+            )
+            projectsViewModel.prependCreatedProject(createdProject)
+            pendingCreatedProject = createdProject
+            showsNewProject = false
+            return true
+        } catch {
+            #if DEBUG
+            print("saveNewProject failed: \(error)")
+            #endif
+            return false
+        }
+    }
+}
+
+private extension HomeView {
+    /// Covers Home header, tab content, and bottom nav while a project delete is in flight.
+    var projectDeleteLoadingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.35)
+                .ignoresSafeArea()
+
+            ProgressView(String(localized: "projects.delete.loading"))
+                .padding(24)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        }
+        .opacity(projectsViewModel.isDeletingProject ? 1 : 0)
+        .allowsHitTesting(projectsViewModel.isDeletingProject)
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(projectsViewModel.isDeletingProject ? .isModal : [])
+        .accessibilityHidden(!projectsViewModel.isDeletingProject)
+        .accessibilityIdentifier("projects.delete.loading")
     }
 }
 
