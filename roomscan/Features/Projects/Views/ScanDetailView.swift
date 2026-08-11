@@ -6,6 +6,11 @@
 import SwiftUI
 
 struct ScanDetailView: View {
+    private enum ConfirmationAction: Equatable {
+        case rename
+        case delete
+    }
+
     @State var viewModel: ScanDetailViewModel
     let projectID: String?
     let projectName: String?
@@ -19,6 +24,7 @@ struct ScanDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showsRenameAlert = false
     @State private var showsDeleteConfirmation = false
+    @State private var loadingAction: ConfirmationAction?
     @State private var viewerInput: ViewerInput?
     @State private var shareInput: ShareScreenInput?
 
@@ -102,12 +108,7 @@ struct ScanDetailView: View {
             TextField(String(localized: "scanDetail.rename.placeholder"), text: $viewModel.renameDraft)
             Button(String(localized: "scanDetail.rename.cancel"), role: .cancel) {}
             Button(String(localized: "scanDetail.rename.save")) {
-                Task {
-                    let didRename = await viewModel.renameScan()
-                    if didRename {
-                        onScanUpdated(viewModel.scan)
-                    }
-                }
+                performConfirmedAction(.rename)
             }
         }
         .alert(
@@ -116,13 +117,7 @@ struct ScanDetailView: View {
         ) {
             Button(String(localized: "scanDetail.delete.cancel"), role: .cancel) {}
             Button(String(localized: "scanDetail.delete.confirm"), role: .destructive) {
-                Task {
-                    let didDelete = await viewModel.deleteScan()
-                    if didDelete {
-                        onScanDeleted()
-                        dismiss()
-                    }
-                }
+                performConfirmedAction(.delete)
             }
         } message: {
             Text("scanDetail.delete.message")
@@ -149,6 +144,14 @@ struct ScanDetailView: View {
         }
         .fullScreenCover(item: $shareInput) { input in
             ShareView(input: input, service: shareService)
+        }
+        .overlay {
+            if let loadingAction {
+                loadingOverlay(for: loadingAction)
+            }
+        }
+        .task {
+            await viewModel.loadDetail()
         }
         .disabled(viewModel.isPerformingAction)
     }
@@ -282,7 +285,7 @@ struct ScanDetailView: View {
             Spacer(minLength: AppSpacing.small)
 
             ScanSyncStatusBadge(
-                syncStatus: viewModel.scan.syncStatus,
+                syncStatus: viewModel.displaySyncStatus,
                 showsRetry: viewModel.showsRetryUpload,
                 onRetry: {
                     Task {
@@ -296,6 +299,46 @@ struct ScanDetailView: View {
         }
         .padding(.vertical, AppSpacing.medium)
         .accessibilityIdentifier("scanDetail.status")
+    }
+}
+
+private extension ScanDetailView {
+    private func loadingOverlay(for action: ConfirmationAction) -> some View {
+        ZStack {
+            Color.black.opacity(0.2)
+                .ignoresSafeArea()
+
+            VStack(spacing: AppSpacing.medium) {
+                ProgressView()
+                    .controlSize(.large)
+                Text(action == .rename ? "Updating scan…" : "Deleting scan…")
+                    .appTypography(AppTypography.bodyMediumStrong)
+                    .foregroundStyle(AppColors.primaryText)
+            }
+            .padding(AppSpacing.large)
+            .frame(width: 180, height: 140)
+            .background(AppColors.background, in: RoundedRectangle(cornerRadius: 20))
+            .shadow(radius: 12)
+            .accessibilityIdentifier("scanDetail.action.loading")
+        }
+    }
+
+    private func performConfirmedAction(_ action: ConfirmationAction) {
+        loadingAction = action
+        Task {
+            defer { loadingAction = nil }
+            switch action {
+            case .rename:
+                if await viewModel.renameScan() {
+                    onScanUpdated(viewModel.scan)
+                }
+            case .delete:
+                if await viewModel.deleteScan() {
+                    onScanDeleted()
+                    dismiss()
+                }
+            }
+        }
     }
 }
 

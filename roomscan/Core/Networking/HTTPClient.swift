@@ -10,8 +10,8 @@ import Foundation
 enum HTTPMethod: String, Sendable {
     case get = "GET"
     case post = "POST"
-    case put = "PUT"
     case patch = "PATCH"
+    case put = "PUT"
     case delete = "DELETE"
 }
 
@@ -142,6 +142,12 @@ struct LiveHTTPClient: HTTPClient {
         do {
             (data, response) = try await urlSession.data(for: request)
         } catch {
+            if Task.isCancelled || (error as? URLError)?.code == .cancelled {
+                #if DEBUG
+                print("[HTTP] request cancelled method=\(endpoint.method.rawValue) path=\(endpoint.path)")
+                #endif
+                throw CancellationError()
+            }
             #if DEBUG
             print(
                 """

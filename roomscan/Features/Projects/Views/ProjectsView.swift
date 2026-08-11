@@ -11,6 +11,7 @@ struct ProjectsView: View {
     @State private var selectedScanDetail: ScanDetailDestination?
     @State private var shareInput: ShareScreenInput?
     let projectsService: any ProjectsService
+    let scanDetailService: (any ScanDetailService)?
     let notesService: any NotesService
     let shareService: any ShareService
     var currentUserID: String
@@ -34,6 +35,7 @@ struct ProjectsView: View {
     init(
         viewModel: ProjectsViewModel,
         projectsService: any ProjectsService,
+        scanDetailService: (any ScanDetailService)? = nil,
         notesService: any NotesService,
         shareService: any ShareService,
         currentUserID: String,
@@ -42,6 +44,7 @@ struct ProjectsView: View {
     ) {
         _viewModel = State(initialValue: viewModel)
         self.projectsService = projectsService
+        self.scanDetailService = scanDetailService
         self.notesService = notesService
         self.shareService = shareService
         self.currentUserID = currentUserID
@@ -68,6 +71,7 @@ struct ProjectsView: View {
                 isShowingDetail: $isShowingDetail,
                 viewModel: viewModel,
                 projectsService: projectsService,
+                scanDetailService: scanDetailService,
                 notesService: notesService,
                 shareService: shareService,
                 currentUserID: currentUserID,

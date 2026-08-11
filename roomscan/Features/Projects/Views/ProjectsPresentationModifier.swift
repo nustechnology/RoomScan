@@ -24,6 +24,7 @@ struct ProjectsPresentationModifier: ViewModifier {
     @Binding var isShowingDetail: Bool
     var viewModel: ProjectsViewModel
     let projectsService: any ProjectsService
+    let scanDetailService: (any ScanDetailService)?
     let notesService: any NotesService
     let shareService: any ShareService
     var currentUserID: String
@@ -188,7 +189,8 @@ struct ProjectsPresentationModifier: ViewModifier {
                 projectID: destination.projectID,
                 scan: destination.scan,
                 currentUserID: currentUserID,
-                service: projectsService
+                service: projectsService,
+                scanDetailService: scanDetailService
             ),
             projectID: destination.projectID,
             projectName: destination.projectName,
@@ -214,6 +216,7 @@ struct ProjectsPresentationModifier: ViewModifier {
         ProjectDetailView(
             project: project,
             projectsService: projectsService,
+            scanDetailService: scanDetailService,
             notesService: notesService,
             shareService: shareService,
             currentUserID: currentUserID,

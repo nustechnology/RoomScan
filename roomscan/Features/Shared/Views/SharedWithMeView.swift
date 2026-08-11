@@ -8,6 +8,7 @@ import SwiftUI
 struct SharedWithMeView: View {
     @State var viewModel: SharedWithMeViewModel
     let projectsService: any ProjectsService
+    let scanDetailService: (any ScanDetailService)?
     let notesService: any NotesService
     let shareService: any ShareService
     let currentUserID: String
@@ -19,12 +20,14 @@ struct SharedWithMeView: View {
     init(
         viewModel: SharedWithMeViewModel,
         projectsService: any ProjectsService,
+        scanDetailService: (any ScanDetailService)? = nil,
         notesService: any NotesService,
         shareService: any ShareService,
         currentUserID: String
     ) {
         _viewModel = State(initialValue: viewModel)
         self.projectsService = projectsService
+        self.scanDetailService = scanDetailService
         self.notesService = notesService
         self.shareService = shareService
         self.currentUserID = currentUserID
@@ -44,6 +47,7 @@ struct SharedWithMeView: View {
             ProjectDetailView(
                 project: project,
                 projectsService: projectsService,
+                scanDetailService: scanDetailService,
                 notesService: notesService,
                 shareService: shareService,
                 currentUserID: currentUserID,
@@ -157,6 +161,7 @@ struct SharedWithMeView: View {
                     scan: destination.scan,
                     currentUserID: currentUserID,
                     service: projectsService,
+                    scanDetailService: scanDetailService,
                     accessPolicy: .readOnly
                 ),
                 projectID: destination.projectID,
