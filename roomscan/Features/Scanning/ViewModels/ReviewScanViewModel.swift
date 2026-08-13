@@ -39,7 +39,7 @@ final class ReviewScanViewModel: ObservableObject {
         self.storageService = storageService
         self.selectedProjectID = preselectedProjectID ?? draft.projectID
         self.previousSelectedProjectID = self.selectedProjectID
-        self.scanName = draft.name.isEmpty ? "New Room Scan" : draft.name
+        self.scanName = draft.name
 
         print("[RoomScan STEP 9.2] ReviewScanViewModel initialized. Draft ID: \(draft.id), Mesh URL: \(draft.meshFileURL.path)")
         setupValidation()
@@ -178,7 +178,6 @@ final class ReviewScanViewModel: ObservableObject {
 
     func cleanupDraftCache() {
         storageService.clearDraftManifest()
-        try? FileManager.default.removeItem(at: draft.meshFileURL)
-        try? FileManager.default.removeItem(at: draft.thumbnailFileURL)
+        draft.deleteManagedFiles()
     }
 }

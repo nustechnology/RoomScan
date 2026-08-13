@@ -40,6 +40,67 @@ struct UpdateProjectAPIRequest: Encodable, Sendable {
     }
 }
 
+/// POST body for `/api/v1/projects/{projectId}/scans`.
+struct CreateScanAPIRequest: Encodable, Sendable {
+    let name: String
+    let thumbnail: ScanAssetMetadataRequest
+    let scanFile: ScanAssetMetadataRequest
+}
+
+struct ScanAssetMetadataRequest: Encodable, Sendable {
+    let contentType: String
+    let sizeBytes: Int
+    let checksum: String?
+    let modelVersion: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case contentType
+        case sizeBytes
+        case checksum
+        case modelVersion
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(contentType, forKey: .contentType)
+        try container.encode(sizeBytes, forKey: .sizeBytes)
+        try container.encodeIfPresent(checksum, forKey: .checksum)
+        try container.encodeIfPresent(modelVersion, forKey: .modelVersion)
+    }
+}
+
+/// Response from creating a scan. Each asset has a presigned URL to upload its binary data.
+struct CreateScanAPIResponse: Decodable, Sendable {
+    let id: String
+    let uploads: ScanUploadURLs
+}
+
+struct ScanUploadURLs: Decodable, Sendable {
+    let thumbnail: PresignedUploadTarget
+    let scanFile: PresignedUploadTarget
+}
+
+struct PresignedUploadTarget: Decodable, Sendable {
+    let uploadSessionId: String
+    let uploadUrl: URL
+}
+
+struct UploadCompletionAPIRequest: Encodable, Sendable {
+    let sizeBytes: Int
+    let checksum: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case sizeBytes
+        case checksum
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sizeBytes, forKey: .sizeBytes)
+        try container.encodeIfPresent(checksum, forKey: .checksum)
+    }
+}
+
 struct ProjectAPIResponse: Decodable, Sendable, Equatable {
     let id: String
     let name: String

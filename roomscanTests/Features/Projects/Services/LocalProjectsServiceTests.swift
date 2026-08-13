@@ -69,20 +69,22 @@ struct LocalProjectsServiceTests {
         #expect(scan?.localModelURL == tempMesh)
     }
 
-    @Test func deleteScan_removesScanFiles() async throws {
+    @Test func deleteScan_removesFilesUsingLocalStorageID() async throws {
         let tempDir = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let storage = RecordingScanStorageService()
         let service = LocalProjectsService(directory: tempDir, scanStorageService: storage)
         let project = try await service.createProject(name: "Test Project", projectDescription: "")
-        let mesh = tempDir.appendingPathComponent("mesh.usdz")
+        let meshDirectory = tempDir.appendingPathComponent("Scans/local-scan-id", isDirectory: true)
+        try FileManager.default.createDirectory(at: meshDirectory, withIntermediateDirectories: true)
+        let mesh = meshDirectory.appendingPathComponent("mesh.usdz")
         try Data("mesh".utf8).write(to: mesh)
-        let draft = RoomScanDraft(id: "scan-1", meshFileURL: mesh, thumbnailFileURL: mesh)
+        let draft = RoomScanDraft(id: "server-scan-id", meshFileURL: mesh, thumbnailFileURL: mesh)
         _ = try await service.saveScan(draft: draft, name: "Scan One", projectID: project.id, meshURL: mesh)
 
-        try await service.deleteScan(projectID: project.id, scanID: "scan-1")
+        try await service.deleteScan(projectID: project.id, scanID: "server-scan-id")
 
-        #expect(storage.deletedScanIDs == ["scan-1"])
+        #expect(storage.deletedScanIDs == ["local-scan-id"])
     }
 
     @Test func deleteProject_removesChildScanFiles() async throws {
@@ -170,7 +172,10 @@ struct LocalProjectsServiceTests {
     }
 
     private func makeTempDir() throws -> URL {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("LocalProjectsServiceTest_\(UUID().uuidString)", isDirectory: true)
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "LocalProjectsServiceTest_\(UUID().uuidString)",
+            isDirectory: true
+        )
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

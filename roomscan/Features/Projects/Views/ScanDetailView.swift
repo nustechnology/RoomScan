@@ -216,19 +216,22 @@ struct ScanDetailView: View {
             metadataRow(
                 label: "scanDetail.createdBy",
                 value: viewModel.createdByText,
-                accessibilityIdentifier: "scanDetail.createdBy"
+                accessibilityIdentifier: "scanDetail.createdBy",
+                isLoading: viewModel.isLoadingDetail
             )
             Divider()
             metadataRow(
                 label: "scanDetail.date",
                 value: viewModel.formattedDate,
-                accessibilityIdentifier: "scanDetail.date"
+                accessibilityIdentifier: "scanDetail.date",
+                isLoading: viewModel.isLoadingDetail
             )
             Divider()
             metadataRow(
                 label: "scanDetail.notes",
                 value: viewModel.notesCountText,
-                accessibilityIdentifier: "scanDetail.notes"
+                accessibilityIdentifier: "scanDetail.notes",
+                isLoading: viewModel.isLoadingDetail
             )
             Divider()
             statusRow
@@ -258,7 +261,8 @@ struct ScanDetailView: View {
     private func metadataRow(
         label: LocalizedStringKey,
         value: String,
-        accessibilityIdentifier: String
+        accessibilityIdentifier: String,
+        isLoading: Bool
     ) -> some View {
         HStack {
             Text(label)
@@ -267,11 +271,17 @@ struct ScanDetailView: View {
 
             Spacer(minLength: AppSpacing.small)
 
-            Text(value)
-                .appTypography(AppTypography.bodySmallStrong)
-                .foregroundStyle(AppColors.primaryText)
-                .multilineTextAlignment(.trailing)
-                .accessibilityIdentifier(accessibilityIdentifier)
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityIdentifier("\(accessibilityIdentifier).loading")
+            } else {
+                Text(value)
+                    .appTypography(AppTypography.bodySmallStrong)
+                    .foregroundStyle(AppColors.primaryText)
+                    .multilineTextAlignment(.trailing)
+                    .accessibilityIdentifier(accessibilityIdentifier)
+            }
         }
         .padding(.vertical, AppSpacing.medium)
     }
@@ -284,18 +294,24 @@ struct ScanDetailView: View {
 
             Spacer(minLength: AppSpacing.small)
 
-            ScanSyncStatusBadge(
-                syncStatus: viewModel.displaySyncStatus,
-                showsRetry: viewModel.showsRetryUpload,
-                onRetry: {
-                    Task {
-                        let didRetry = await viewModel.retryUpload()
-                        if didRetry {
-                            onScanUpdated(viewModel.scan)
+            if viewModel.isLoadingDetail {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityIdentifier("scanDetail.status.loading")
+            } else {
+                ScanSyncStatusBadge(
+                    syncStatus: viewModel.displaySyncStatus,
+                    showsRetry: viewModel.showsRetryUpload,
+                    onRetry: {
+                        Task {
+                            let didRetry = await viewModel.retryUpload()
+                            if didRetry {
+                                onScanUpdated(viewModel.scan)
+                            }
                         }
                     }
-                }
-            )
+                )
+            }
         }
         .padding(.vertical, AppSpacing.medium)
         .accessibilityIdentifier("scanDetail.status")

@@ -313,6 +313,7 @@ struct ProjectDetailView: View {
 
     private func handleScanDeleted(scanID: RoomScanSummary.ID) {
         roomScans.removeAll { $0.id == scanID }
+        displayedProject = displayedProject.removingScan(id: scanID)
         onScanDeleted(scanID)
     }
 }

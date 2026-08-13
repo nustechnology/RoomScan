@@ -73,7 +73,7 @@ struct ReviewScanView: View {
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundColor(.secondary)
 
-                            TextField("", text: $viewModel.scanName)
+                            TextField(String(localized: "review.placeholder.scan_name"), text: $viewModel.scanName)
                                 .font(.body)
                                 .onChange(of: viewModel.scanName) { _, newValue in
                                     if newValue.count > 50 {

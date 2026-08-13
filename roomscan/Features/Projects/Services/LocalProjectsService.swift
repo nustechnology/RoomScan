@@ -118,7 +118,7 @@ final class LocalProjectsService: ProjectsLocalCache, @unchecked Sendable {
         projects.removeAll { $0.id == id }
         try persist()
         for scan in project.roomScans {
-            scanStorageService.deleteScanFiles(scanID: scan.id)
+            scanStorageService.deleteScanFiles(scanID: localStorageID(for: scan))
         }
     }
 
@@ -244,14 +244,14 @@ final class LocalProjectsService: ProjectsLocalCache, @unchecked Sendable {
             throw ProjectsServiceError.projectNotFound
         }
         let project = projects[projectIndex]
-        guard project.roomScans.contains(where: { $0.id == scanID }) else {
+        guard let scan = project.roomScans.first(where: { $0.id == scanID }) else {
             throw ProjectsServiceError.notFound
         }
 
         projects[projectIndex] = project.removingScan(id: scanID)
         projects.sort { $0.updatedAt > $1.updatedAt }
         try persist()
-        scanStorageService.deleteScanFiles(scanID: scanID)
+        scanStorageService.deleteScanFiles(scanID: localStorageID(for: scan))
     }
 
     func retryScanUpload(projectID: String, scanID: String) async throws -> RoomScanSummary {
@@ -288,6 +288,15 @@ final class LocalProjectsService: ProjectsLocalCache, @unchecked Sendable {
 
     private func persist() throws {
         try Self.persist(projects: projects, to: storeURL)
+    }
+
+    private func localStorageID(for scan: RoomScanSummary) -> String {
+        guard let modelURL = scan.localModelURL,
+              modelURL.lastPathComponent == "mesh.usdz",
+              modelURL.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent == "Scans" else {
+            return scan.id
+        }
+        return modelURL.deletingLastPathComponent().lastPathComponent
     }
 
     private static func persist(projects: [ProjectSummary], to url: URL) throws {
