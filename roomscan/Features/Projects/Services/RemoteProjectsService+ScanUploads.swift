@@ -64,6 +64,7 @@ extension RemoteProjectsService {
                 thumbnail: try Data(contentsOf: thumbnailURL),
                 mesh: try Data(contentsOf: meshURL)
             )
+            try validateNonEmptyScanAssets(assets)
             return try await retryScanUpload(projectID: projectID, scanID: scanID, assets: assets)
         } catch let error as ProjectsServiceError {
             throw error
@@ -72,27 +73,6 @@ extension RemoteProjectsService {
         }
     }
 
-    func mapHTTPClientError(_ error: HTTPClientError) -> ProjectsServiceError {
-        switch error {
-        case .networkError, .invalidURL, .decodingError:
-            return .network
-        case .serverError(let statusCode, _):
-            switch statusCode {
-            case 400:
-                return .invalidProjectName
-            case 404:
-                return .projectNotFound
-            default:
-                return .network
-            }
-        }
-    }
-
-    #if DEBUG
-    func logHTTPClientError(_ operation: String, _ error: HTTPClientError) {
-        print("[RemoteProjectsService] \(operation) failed: \(error)")
-    }
-    #endif
 }
 
 private extension RemoteProjectsService {
@@ -113,10 +93,14 @@ private extension RemoteProjectsService {
 
     func readScanAssets(draft: RoomScanDraft, meshURL: URL) throws -> (thumbnail: Data, mesh: Data) {
         do {
-            return (
+            let assets = (
                 thumbnail: try Data(contentsOf: draft.thumbnailFileURL),
                 mesh: try Data(contentsOf: meshURL)
             )
+            try validateNonEmptyScanAssets(assets)
+            return assets
+        } catch let error as ProjectsServiceError {
+            throw error
         } catch {
             throw ProjectsServiceError.network
         }
@@ -129,12 +113,22 @@ private extension RemoteProjectsService {
         let thumbnailFilename = scan.thumbnailName.isEmpty ? "thumbnail.jpg" : scan.thumbnailName
         let thumbnailURL = meshURL.deletingLastPathComponent().appendingPathComponent(thumbnailFilename)
         do {
-            return (
+            let assets = (
                 thumbnail: try Data(contentsOf: thumbnailURL),
                 mesh: try Data(contentsOf: meshURL)
             )
+            try validateNonEmptyScanAssets(assets)
+            return assets
+        } catch let error as ProjectsServiceError {
+            throw error
         } catch {
             throw ProjectsServiceError.notFound
+        }
+    }
+
+    func validateNonEmptyScanAssets(_ assets: (thumbnail: Data, mesh: Data)) throws {
+        guard !assets.thumbnail.isEmpty, !assets.mesh.isEmpty else {
+            throw ProjectsServiceError.network
         }
     }
 
@@ -181,7 +175,7 @@ private extension RemoteProjectsService {
                 )
             )
         } catch let error as HTTPClientError {
-            throw mapHTTPClientError(error)
+            throw mapHTTPClientError(error, operation: .createAssetUploadSession)
         } catch {
             throw ProjectsServiceError.network
         }
@@ -208,7 +202,7 @@ private extension RemoteProjectsService {
                 APIEndpoint(path: "/api/v1/projects/\(projectID)/scans", method: .post, body: body)
             )
         } catch let error as HTTPClientError {
-            throw mapHTTPClientError(error)
+            throw mapHTTPClientError(error, operation: .createScan)
         } catch {
             throw ProjectsServiceError.network
         }
@@ -267,6 +261,10 @@ private extension RemoteProjectsService {
             )
         } catch is CancellationError {
             throw CancellationError()
+        } catch let error as HTTPClientError {
+            guard !Task.isCancelled else { throw CancellationError() }
+            await reportUploadFailure(target)
+            throw mapHTTPClientError(error, operation: .completeUploadSession)
         } catch {
             guard !Task.isCancelled else { throw CancellationError() }
             await reportUploadFailure(target)

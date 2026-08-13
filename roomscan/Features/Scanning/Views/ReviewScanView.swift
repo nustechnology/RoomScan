@@ -19,7 +19,6 @@ struct ReviewScanView: View {
         onScanAgain: @escaping () -> Void,
         onDiscard: @escaping () -> Void
     ) {
-        print("[RoomScan STEP 9] ReviewScanView.init() entered. Draft ID: \(draft.id)")
         _viewModel = StateObject(wrappedValue: ReviewScanViewModel(
             draft: draft,
             preselectedProjectID: preselectedProjectID,
@@ -28,7 +27,6 @@ struct ReviewScanView: View {
         self.onSaveSuccess = onSaveSuccess
         self.onScanAgain = onScanAgain
         self.onDiscard = onDiscard
-        print("[RoomScan STEP 10] ReviewScanView.init() completed.")
     }
 
     var body: some View {
@@ -238,14 +236,7 @@ struct ReviewScanView: View {
         .background(Color.white.ignoresSafeArea())
         .foregroundStyle(Color.black)
         .preferredColorScheme(.light)
-        .onAppear {
-            print("[RoomScan STEP 10.4] ReviewScanView appeared.")
-        }
-        .onDisappear {
-            print("[RoomScan STEP 10.5] ReviewScanView disappeared.")
-        }
         .task {
-            print("[RoomScan STEP 11] ReviewScanView .task triggered -> loading projects...")
             await viewModel.loadProjects()
         }
         .sheet(isPresented: $viewModel.showCreateProjectModal) {

@@ -33,7 +33,6 @@ final class ReviewScanViewModel: ObservableObject {
         projectsService: ProjectsService,
         storageService: ScanStorageService = LocalScanStorageService()
     ) {
-        print("[RoomScan STEP 9.1] ReviewScanViewModel.init() started...")
         self.draft = draft
         self.projectsService = projectsService
         self.storageService = storageService
@@ -41,7 +40,6 @@ final class ReviewScanViewModel: ObservableObject {
         self.previousSelectedProjectID = self.selectedProjectID
         self.scanName = draft.name
 
-        print("[RoomScan STEP 9.2] ReviewScanViewModel initialized. Draft ID: \(draft.id), Mesh URL: \(draft.meshFileURL.path)")
         setupValidation()
     }
 
@@ -62,18 +60,15 @@ final class ReviewScanViewModel: ObservableObject {
     }
 
     func loadProjects() async {
-        print("[RoomScan STEP 11.1] ReviewScanViewModel.loadProjects() started...")
         isLoadingProjects = true
         saveErrorMessage = nil
         defer {
             isLoadingProjects = false
-            print("[RoomScan STEP 11.2] ReviewScanViewModel.loadProjects() completed. Count: \(self.projects.count)")
         }
         do {
             let fetchedProjects = try await projectsService.fetchAllProjectsSortedByUpdated()
             self.projects = fetchedProjects
         } catch {
-            print("[RoomScan STEP 11-ERROR] loadProjects failed: \(error.localizedDescription)")
             self.saveErrorMessage = String(localized: "review.error.load_projects_failed")
         }
     }

@@ -2528,6 +2528,16 @@
         }
       }
     },
+    "scanning.error.missing_model_catalog" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The furniture catalog could not be loaded. Please reinstall the app and try again."
+          }
+        }
+      }
+    },
     "scanning.error.missing_capture" : {
       "localizations" : {
         "en" : {
@@ -2654,6 +2664,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Turn on the lights"
+          }
+        }
+      }
+    },
+    "scanning.keep_scanning_hint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep scanning until all walls and the floor are captured"
           }
         }
       }

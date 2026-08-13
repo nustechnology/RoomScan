@@ -1,8 +1,8 @@
 # RoomScan
 
-A native iOS application for scanning 3D rooms, attaching spatial notes, and sharing multi-scan projects. RoomPlan is the planned room-capture technology but has not yet been integrated.
+A native iOS application for scanning 3D rooms with Apple's RoomPlan framework, attaching spatial notes, and sharing multi-scan projects.
 
-The repository currently includes a minimal `App` / `Features` architecture and a mock Authentication reference implementation. Real Sign in with Apple, Room scanning, and backend sync are not implemented yet.
+The app uses a feature-based MVVM architecture with Sign in with Apple, RoomPlan capture, and backend project sync. Spatial notes and project sharing are still mock implementations.
 
 ## Documentation
 
@@ -26,6 +26,18 @@ Read the relevant documents before contributing or implementing new features. AI
 3. Use an Xcode version that supports the configured iOS 26.2 deployment target.
 4. Build and run the `roomscan` scheme.
 
+RoomPlan furniture preview uses Apple's sample `RoomPlanCatalog.bundle` (WWDC23 *Providing custom models for captured rooms and structure exports*, MIT). License: `roomscan/Resources/RoomPlanCatalog.LICENSE.txt`.
+
+Scan-time still shows parametric boxes. Finish exports `.model` so Review and the 3D viewer replace recognized tables, chairs, sofas, and some storage with catalog meshes. Categories without a catalog file remain as boxes.
+
+Verify on a LiDAR device (not Simulator):
+
+1. Scan a room that includes a table or chair.
+2. Finish → Review preview shows catalog furniture, not cuboids; walls can have door/window openings.
+3. Save and open the 3D viewer — same model.
+4. Live capture overlay is still boxes.
+5. Unrecognized object types may remain boxes.
+
 ## Pre-Commit Checks
 
 The shared pre-commit hook runs:
@@ -37,4 +49,4 @@ xcodebuild test -project roomscan.xcodeproj -scheme roomscan -destination 'platf
 
 Run `./scripts/install-git-hooks.sh` once after cloning the repository to enable the hook locally.
 
-A LiDAR-capable device will be required once RoomPlan-based room scanning is implemented.
+RoomPlan capture requires a LiDAR-capable iPhone or iPad; live scanning is not available in the Simulator.
