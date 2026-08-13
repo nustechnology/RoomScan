@@ -23,6 +23,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     var onSurfaceTapped: (SIMD3<Float>) -> Void
     var onMoveDraftChanged: (SIMD3<Float>) -> Void
     var onCameraCommandConsumed: () -> Void
+    var onModelLoaded: () -> Void
     var onModelLoadFailed: () -> Void
     var isPlacementMode = false
     var movingNoteID: String?
@@ -65,12 +66,14 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         onSurfaceTapped: @escaping (SIMD3<Float>) -> Void,
         onMoveDraftChanged: @escaping (SIMD3<Float>) -> Void,
         onCameraCommandConsumed: @escaping () -> Void,
+        onModelLoaded: @escaping () -> Void,
         onModelLoadFailed: @escaping () -> Void
     ) {
         self.onPinTapped = onPinTapped
         self.onSurfaceTapped = onSurfaceTapped
         self.onMoveDraftChanged = onMoveDraftChanged
         self.onCameraCommandConsumed = onCameraCommandConsumed
+        self.onModelLoaded = onModelLoaded
         self.onModelLoadFailed = onModelLoadFailed
     }
 
@@ -97,6 +100,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
             pinsRoot.name = "PinsRoot"
             anchor.addChild(pinsRoot)
             updateCamera(animated: false)
+            DispatchQueue.main.async(execute: onModelLoaded)
             return true
         case .file(let url):
             pendingFileSource = source
@@ -122,6 +126,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
                         self.pinsRoot.name = "PinsRoot"
                         anchor.addChild(self.pinsRoot)
                         self.updateCamera(animated: false)
+                        DispatchQueue.main.async(execute: self.onModelLoaded)
                     }
                 } catch {
                     await MainActor.run {

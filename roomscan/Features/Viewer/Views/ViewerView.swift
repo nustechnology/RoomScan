@@ -18,6 +18,7 @@ struct ViewerView: View {
         input: ViewerInput,
         notesService: any NotesService,
         modelLoadingService: any ModelLoadingService,
+        modelDownloadService: (any ScanDetailService)? = nil,
         accessPolicy: DetailAccessPolicy = .editable,
         shareService: any ShareService,
         onBack: (() -> Void)? = nil,
@@ -28,6 +29,7 @@ struct ViewerView: View {
                 input: input,
                 notesService: notesService,
                 modelLoadingService: modelLoadingService,
+                modelDownloadService: modelDownloadService,
                 accessPolicy: accessPolicy
             )
         )
@@ -39,6 +41,7 @@ struct ViewerView: View {
     init(
         input: ViewerInput,
         notesService: any NotesService,
+        modelDownloadService: (any ScanDetailService)? = nil,
         accessPolicy: DetailAccessPolicy = .editable,
         shareService: any ShareService,
         onBack: (() -> Void)? = nil,
@@ -48,6 +51,7 @@ struct ViewerView: View {
             input: input,
             notesService: notesService,
             modelLoadingService: DefaultModelLoadingService(),
+            modelDownloadService: modelDownloadService,
             accessPolicy: accessPolicy,
             shareService: shareService,
             onBack: onBack,
@@ -289,18 +293,7 @@ private extension ViewerView {
             RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
                 .fill(Color(red: 0.90, green: 0.94, blue: 0.98))
 
-            switch viewModel.loadState {
-            case .idle, .loading:
-                ViewerCanvasLoadingState()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .accessibilityIdentifier("viewer.loading")
-
-            case .failed:
-                ViewerCanvasErrorState(onRetry: { viewModel.retryLoad() })
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .accessibilityIdentifier("viewer.loadError")
-
-            case .loaded(let source):
+            if let source = viewModel.modelSource {
                 RoomModelCanvas(
                     modelSource: source,
                     notes: viewModel.visibleNotes,
@@ -314,10 +307,26 @@ private extension ViewerView {
                     onPinTapped: { viewModel.handlePinTap(noteID: $0) },
                     onSurfaceTapped: { viewModel.handleCanvasTap(position: $0) },
                     onMoveDraftChanged: { viewModel.updateMoveDraft(position: $0) },
+                    onModelLoaded: { viewModel.reportModelLoaded() },
                     onModelLoadFailed: { viewModel.reportModelLoadFailed() }
                 )
                 .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
                 .accessibilityIdentifier("viewer.canvas")
+            }
+
+            switch viewModel.loadState {
+            case .idle, .loading:
+                ViewerCanvasLoadingState()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityIdentifier("viewer.loading")
+
+            case .failed:
+                ViewerCanvasErrorState(onRetry: { viewModel.retryLoad() })
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityIdentifier("viewer.loadError")
+
+            case .loaded:
+                EmptyView()
             }
 
             if case .loaded = viewModel.loadState {

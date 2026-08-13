@@ -101,6 +101,20 @@ final class ScanDetailViewModel {
         allowsOwnerActions && displaySyncStatus == .failed
     }
 
+    var hasRemoteModelDownload: Bool {
+        guard scanDetailService != nil else { return false }
+        let assetStatus = detail?.assetStatus.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return assetStatus == "READY" || assetStatus == "UPLOADED"
+    }
+
+    var canOpen3DModel: Bool {
+        scan.localModelURL != nil || hasRemoteModelDownload
+    }
+
+    var modelDownloadService: (any ScanDetailService)? {
+        scanDetailService
+    }
+
     func beginRename() {
         guard allowsOwnerActions else { return }
         renameDraft = scan.name
@@ -203,4 +217,5 @@ final class ScanDetailViewModel {
             thumbnailPath: scan.thumbnailPath
         )
     }
+
 }

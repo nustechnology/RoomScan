@@ -22,6 +22,7 @@ struct RoomModelCanvas: UIViewRepresentable {
     var onPinTapped: (String) -> Void
     var onSurfaceTapped: (SIMD3<Float>) -> Void
     var onMoveDraftChanged: (SIMD3<Float>) -> Void
+    var onModelLoaded: () -> Void
     var onModelLoadFailed: () -> Void
 
     private func deferToNextViewUpdate(_ action: @escaping () -> Void) {
@@ -34,6 +35,7 @@ struct RoomModelCanvas: UIViewRepresentable {
             onSurfaceTapped: onSurfaceTapped,
             onMoveDraftChanged: onMoveDraftChanged,
             onCameraCommandConsumed: onCameraCommandConsumed,
+            onModelLoaded: onModelLoaded,
             onModelLoadFailed: onModelLoadFailed
         )
     }
@@ -72,6 +74,7 @@ extension RoomModelCanvas {
         coordinator.onSurfaceTapped = onSurfaceTapped
         coordinator.onMoveDraftChanged = onMoveDraftChanged
         coordinator.onCameraCommandConsumed = onCameraCommandConsumed
+        coordinator.onModelLoaded = onModelLoaded
         coordinator.onModelLoadFailed = onModelLoadFailed
         coordinator.isPlacementMode = isPlacementMode
         coordinator.movingNoteID = movingNoteID

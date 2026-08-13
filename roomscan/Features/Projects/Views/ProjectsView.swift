@@ -147,10 +147,6 @@ struct ProjectsView: View {
         case .loaded:
             ScrollView {
                 LazyVStack(spacing: 14) {
-                    if viewModel.isRefreshing {
-                        RefreshingBannerView()
-                    }
-
                     SearchBarView(
                         searchQuery: Binding(
                             get: { viewModel.searchQuery },
@@ -202,26 +198,6 @@ struct ProjectsView: View {
             }
             .accessibilityIdentifier("projects.list")
         }
-    }
-}
-
-private struct RefreshingBannerView: View {
-    var body: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .controlSize(.small)
-
-            Text("projects.refreshing")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            Spacer()
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(.quaternary.opacity(0.5))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .accessibilityIdentifier("projects.refreshing")
     }
 }
 

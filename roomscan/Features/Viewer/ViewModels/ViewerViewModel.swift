@@ -22,6 +22,7 @@ final class ViewerViewModel {
     private(set) var scanTitle: String
     private let accessPolicy: DetailAccessPolicy
     private(set) var loadState: LoadState = .idle
+    private(set) var modelSource: ModelSource?
     private(set) var notes: [SpatialNote] = []
     private(set) var selectedNoteID: String?
     private(set) var viewMode: ViewerMode = .threeD
@@ -115,11 +116,13 @@ final class ViewerViewModel {
 
     private let notesService: any NotesService
     private let modelLoadingService: any ModelLoadingService
+    private let modelDownloadService: (any ScanDetailService)?
 
     init(
         input: ViewerInput,
         notesService: any NotesService,
         modelLoadingService: any ModelLoadingService,
+        modelDownloadService: (any ScanDetailService)? = nil,
         accessPolicy: DetailAccessPolicy = .editable
     ) {
         self.input = input
@@ -127,6 +130,7 @@ final class ViewerViewModel {
         self.accessPolicy = accessPolicy
         self.notesService = notesService
         self.modelLoadingService = modelLoadingService
+        self.modelDownloadService = modelDownloadService
     }
 
     convenience init(
@@ -145,20 +149,69 @@ final class ViewerViewModel {
     func load() async {
         guard loadState == .idle || loadState.isFailed else { return }
 
+        let isRetry = loadState.isFailed
+        let startedAt = Date()
+        modelSource = nil
         loadState = .loading
         do {
-            let source = try await modelLoadingService.resolveSource(modelURL: input.modelURL)
+            let modelURL = try await resolveModelURL(forceDownload: isRetry)
+            let source = try await modelLoadingService.resolveSource(modelURL: modelURL)
             notes = try await notesService.fetchNotes(scanID: input.scanID)
-            loadState = .loaded(source)
+            modelSource = source
+            if source == .sampleRoom {
+                loadState = .loaded(source)
+            }
         } catch let error as ModelLoadingError {
+            modelSource = nil
+            await keepRetryLoadingVisibleIfNeeded(isRetry: isRetry, startedAt: startedAt)
             loadState = .failed(error)
         } catch {
+            modelSource = nil
+            await keepRetryLoadingVisibleIfNeeded(isRetry: isRetry, startedAt: startedAt)
             loadState = .failed(.loadFailed)
         }
     }
 
+    private func keepRetryLoadingVisibleIfNeeded(isRetry: Bool, startedAt: Date) async {
+        guard isRetry else { return }
+        let remainingDuration = 3 - Date().timeIntervalSince(startedAt)
+        guard remainingDuration > 0 else { return }
+        try? await Task.sleep(nanoseconds: UInt64(remainingDuration * 1_000_000_000))
+    }
+
+    private func resolveModelURL(forceDownload: Bool) async throws -> URL? {
+        let destinationURL = FileManager.default.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        )[0]
+        .appendingPathComponent("Scans", isDirectory: true)
+        .appendingPathComponent(input.scanID, isDirectory: true)
+        .appendingPathComponent("mesh.usdz")
+
+        if !forceDownload || modelDownloadService == nil {
+            if let modelURL = input.modelURL,
+               FileManager.default.fileExists(atPath: modelURL.path) {
+                return modelURL
+            }
+
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                return destinationURL
+            }
+        }
+
+        guard let modelDownloadService else { return input.modelURL }
+        try await modelDownloadService.downloadModel(scanID: input.scanID, to: destinationURL)
+        return destinationURL
+    }
+
     func reportModelLoadFailed() {
+        modelSource = nil
         loadState = .failed(.loadFailed)
+    }
+
+    func reportModelLoaded() {
+        guard let modelSource else { return }
+        loadState = .loaded(modelSource)
     }
 
     func retryLoad() {

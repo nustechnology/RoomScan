@@ -359,7 +359,48 @@ struct ScanDetailViewModelTests {
     }
 }
 
+@MainActor
+struct ScanDetailAssetAvailabilityTests {
+    @Test func remoteModelDownloadRequiresAnAvailableAsset() async {
+        let unavailableViewModel = makeViewModel(assetStatus: "NONE")
+        let availableViewModel = makeViewModel(assetStatus: "UPLOADED")
+
+        #expect(!unavailableViewModel.canOpen3DModel)
+        await unavailableViewModel.loadDetail()
+        #expect(!unavailableViewModel.canOpen3DModel)
+
+        await availableViewModel.loadDetail()
+        #expect(availableViewModel.canOpen3DModel)
+    }
+
+    private func makeViewModel(assetStatus: String) -> ScanDetailViewModel {
+        ScanDetailViewModel(
+            projectID: "project-1",
+            scan: RoomScanSummary(
+                id: "scan-1",
+                name: "Living Room",
+                createdAt: .now,
+                localModelURL: nil,
+                thumbnailName: "thumbnail-0",
+                syncStatus: .synced,
+                creatorUserID: "mock-user-apple",
+                creatorDisplayName: "Mock Apple User",
+                notes: []
+            ),
+            currentUserID: "mock-user-apple",
+            service: MockProjectsService(projects: [], simulatedDelayNanoseconds: 0),
+            scanDetailService: ScanDetailRenameStub(assetStatus: assetStatus)
+        )
+    }
+}
+
 private struct ScanDetailRenameStub: ScanDetailService {
+    let assetStatus: String
+
+    init(assetStatus: String = "NONE") {
+        self.assetStatus = assetStatus
+    }
+
     func fetchScanDetail(id: String) async throws -> ScanDetail {
         makeDetail(id: id, name: "Living Room", description: "")
     }
@@ -380,7 +421,7 @@ private struct ScanDetailRenameStub: ScanDetailService {
             creatorID: "mock-user-apple",
             creatorEmail: nil,
             noteCount: 0,
-            assetStatus: "NONE",
+            assetStatus: assetStatus,
             syncStatus: .synced,
             modelVersion: 1,
             createdAt: .now,
