@@ -28,15 +28,11 @@ struct ScanDetailView: View {
     @State private var viewerInput: ViewerInput?
     @State private var shareInput: ShareScreenInput?
 
-    private var canOpen3DModel: Bool { viewModel.scan.localModelURL != nil }
-
-    private var open3DModelButtonTitle: String {
-        if canOpen3DModel {
-            String(localized: "scanDetail.open3DModel")
-        } else {
-            String(localized: "scanDetail.open3DModel.unavailable")
-        }
+    private var canOpen3DModel: Bool {
+        viewModel.canOpen3DModel
     }
+
+    private var open3DModelButtonTitle: String { String(localized: "scanDetail.open3DModel") }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -137,6 +133,7 @@ struct ScanDetailView: View {
             ViewerView(
                 input: input,
                 notesService: notesService,
+                modelDownloadService: viewModel.modelDownloadService,
                 accessPolicy: accessPolicy,
                 shareService: shareService,
                 onBack: { viewerInput = nil }
@@ -239,13 +236,12 @@ struct ScanDetailView: View {
     }
 
     private func open3DModel() {
-        guard let modelURL = viewModel.scan.localModelURL else { return }
         viewerInput = ViewerInput(
             projectID: projectID,
             projectName: projectName,
             scanID: viewModel.scan.id,
             scanName: viewModel.scan.name,
-            modelURL: modelURL
+            modelURL: viewModel.scan.localModelURL
         )
     }
 
