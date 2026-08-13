@@ -3,20 +3,30 @@
 //  roomscan
 //
 
+import CryptoKit
 import Foundation
+
+protocol AssetUploadSession: Sendable {
+    func data(for request: URLRequest) async throws -> (Data, URLResponse)
+}
+
+extension URLSession: AssetUploadSession {}
 
 /// Network-backed projects service for list/detail/create/update/delete.
 /// Other operations stay on the local cache for now.
 final class RemoteProjectsService: ProjectsService, @unchecked Sendable {
     private let httpClient: any HTTPClient
     private let localStore: any ProjectsLocalCache
+    private let uploadSession: any AssetUploadSession
 
     init(
         httpClient: any HTTPClient,
-        localStore: any ProjectsLocalCache
+        localStore: any ProjectsLocalCache,
+        uploadSession: any AssetUploadSession = URLSession.shared
     ) {
         self.httpClient = httpClient
         self.localStore = localStore
+        self.uploadSession = uploadSession
     }
 
     func fetchProjects(page: Int, pageSize: Int) async throws -> ProjectPage {
@@ -33,15 +43,6 @@ final class RemoteProjectsService: ProjectsService, @unchecked Sendable {
                 URLQueryItem(name: "sort", value: "updatedAt:desc")
             ]
         )
-
-        #if DEBUG
-        print(
-            """
-            [RemoteProjectsService] fetchProjects request method=\(endpoint.method.rawValue) \
-            path=\(endpoint.path) page=\(page) limit=\(pageSize)
-            """
-        )
-        #endif
 
         do {
             let response: ProjectsListAPIResponse = try await httpClient.request(endpoint)
@@ -78,15 +79,6 @@ final class RemoteProjectsService: ProjectsService, @unchecked Sendable {
             path: "/api/v1/projects/\(id)",
             method: .get
         )
-
-        #if DEBUG
-        print(
-            """
-            [RemoteProjectsService] fetchProject request method=\(endpoint.method.rawValue) \
-            path=\(endpoint.path)
-            """
-        )
-        #endif
 
         do {
             let response: ProjectAPIResponse = try await httpClient.request(endpoint)
@@ -275,21 +267,21 @@ final class RemoteProjectsService: ProjectsService, @unchecked Sendable {
         try await localStore.isScanNameDuplicate(name: name, projectID: projectID)
     }
 
-    func saveScan(
-        draft: RoomScanDraft,
-        name: String,
-        projectID: String,
-        meshURL: URL
-    ) async throws -> RoomScanSummary {
-        try await localStore.saveScan(draft: draft, name: name, projectID: projectID, meshURL: meshURL)
-    }
-
     func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary {
         try await localStore.renameScan(projectID: projectID, scanID: scanID, name: name)
     }
 
     func deleteScan(projectID: String, scanID: String) async throws {
-        try await localStore.deleteScan(projectID: projectID, scanID: scanID)
+        do {
+            let _: EmptyAPIResponse = try await httpClient.request(
+                APIEndpoint(path: "/api/v1/scans/\(scanID)", method: .delete)
+            )
+            // The server is the source of truth. A stale local cache must not
+            // turn a successful remote deletion into a UI failure.
+            try? await localStore.deleteScan(projectID: projectID, scanID: scanID)
+        } catch let error as HTTPClientError {
+            throw mapHTTPClientError(error)
+        }
     }
 
     func retryScanUpload(projectID: String, scanID: String) async throws -> RoomScanSummary {
@@ -336,4 +328,164 @@ final class RemoteProjectsService: ProjectsService, @unchecked Sendable {
         }
     }
     #endif
+}
+
+extension RemoteProjectsService {
+    func saveScan(
+        draft: RoomScanDraft,
+        name: String,
+        projectID: String,
+        meshURL: URL
+    ) async throws -> RoomScanSummary {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (1...50).contains(trimmedName.count) else {
+            throw ProjectsServiceError.invalidScanName
+        }
+
+        let assets = try readScanAssets(draft: draft, meshURL: meshURL)
+        let response = try await createScan(
+            draft: draft,
+            name: trimmedName,
+            projectID: projectID,
+            assets: assets
+        )
+        do {
+            try await uploadScanAssets(response.uploads, assets: assets)
+            let savedScan = try await persistCreatedScan(
+                response.id,
+                draft: draft,
+                name: trimmedName,
+                projectID: projectID,
+                meshURL: meshURL
+            )
+            _ = try? await fetchProject(id: projectID)
+            return savedScan
+        } catch {
+            try? await deleteScan(projectID: projectID, scanID: response.id)
+            throw error
+        }
+    }
+
+    private func readScanAssets(draft: RoomScanDraft, meshURL: URL) throws -> (thumbnail: Data, mesh: Data) {
+        do {
+            return (
+                thumbnail: try Data(contentsOf: draft.thumbnailFileURL),
+                mesh: try Data(contentsOf: meshURL)
+            )
+        } catch {
+            throw ProjectsServiceError.network
+        }
+    }
+
+    private func createScan(
+        draft: RoomScanDraft,
+        name: String,
+        projectID: String,
+        assets: (thumbnail: Data, mesh: Data)
+    ) async throws -> CreateScanAPIResponse {
+        let request = CreateScanAPIRequest(
+            name: name,
+            thumbnail: ScanAssetMetadataRequest(
+                contentType: "image/jpeg",
+                sizeBytes: assets.thumbnail.count,
+                checksum: nil,
+                modelVersion: nil
+            ),
+            scanFile: ScanAssetMetadataRequest(
+                contentType: "model/usdz",
+                sizeBytes: assets.mesh.count,
+                checksum: Self.sha256(for: assets.mesh),
+                modelVersion: "1.0"
+            )
+        )
+        do {
+            let body = try JSONEncoder().encode(request)
+            return try await httpClient.request(
+                APIEndpoint(path: "/api/v1/projects/\(projectID)/scans", method: .post, body: body)
+            )
+        } catch let error as HTTPClientError {
+            throw mapHTTPClientError(error)
+        } catch {
+            throw ProjectsServiceError.network
+        }
+    }
+
+    private func persistCreatedScan(
+        _ scanID: String,
+        draft: RoomScanDraft,
+        name: String,
+        projectID: String,
+        meshURL: URL
+    ) async throws -> RoomScanSummary {
+        let remoteDraft = RoomScanDraft(
+            id: scanID,
+            createdAt: draft.createdAt,
+            meshFileURL: meshURL,
+            thumbnailFileURL: draft.thumbnailFileURL,
+            name: name,
+            projectID: projectID
+        )
+        return try await localStore.saveScan(
+            draft: remoteDraft,
+            name: name,
+            projectID: projectID,
+            meshURL: meshURL
+        )
+    }
+
+    private func uploadScanAssets(
+        _ uploads: ScanUploadURLs,
+        assets: (thumbnail: Data, mesh: Data)
+    ) async throws {
+        async let thumbnailUpload: Void = uploadAndComplete(
+            assets.thumbnail,
+            contentType: "image/jpeg",
+            target: uploads.thumbnail
+        )
+        async let meshUpload: Void = uploadAndComplete(
+            assets.mesh,
+            contentType: "model/usdz",
+            target: uploads.scanFile
+        )
+        _ = try await (thumbnailUpload, meshUpload)
+    }
+
+    private func uploadAndComplete(
+        _ data: Data,
+        contentType: String,
+        target: PresignedUploadTarget
+    ) async throws {
+        var request = URLRequest(url: target.uploadUrl)
+        request.httpMethod = HTTPMethod.put.rawValue
+        request.httpBody = data
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+
+        let response: URLResponse
+        do {
+            (_, response) = try await uploadSession.data(for: request)
+        } catch {
+            throw ProjectsServiceError.network
+        }
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw ProjectsServiceError.network
+        }
+
+        let completionRequest = UploadCompletionAPIRequest(
+            sizeBytes: data.count,
+            checksum: contentType == "model/usdz" ? Self.sha256(for: data) : nil
+        )
+        let completionBody = try JSONEncoder().encode(completionRequest)
+        let _: EmptyAPIResponse = try await httpClient.request(
+            APIEndpoint(
+                path: "/api/v1/upload-sessions/\(target.uploadSessionId)/complete",
+                method: .post,
+                body: completionBody
+            )
+        )
+    }
+
+    private static func sha256(for data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
 }

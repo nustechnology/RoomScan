@@ -7,6 +7,158 @@ import Foundation
 @testable import roomscan
 import Testing
 
+struct RemoteProjectsServiceSaveScanTests {
+    @Test func saveScan_uploadsAndCompletesAssetsBeforePersistingLocally() async throws {
+        let project = ProjectSummary(id: "project-1", name: "Project")
+        let localStore = MockProjectsService(projects: [project], simulatedDelayNanoseconds: 0)
+        let recorder = SaveScanHTTPRecorder()
+        let httpClient = FakeHTTPClient { endpoint in
+            await recorder.record(endpoint)
+            switch endpoint.path {
+            case "/api/v1/projects/project-1/scans":
+                return .success(RemoteProjectsServiceFixtures.createScanJSON())
+            case "/api/v1/upload-sessions/thumbnail-session/complete",
+                 "/api/v1/upload-sessions/model-session/complete":
+                return .success(Data("{}".utf8))
+            case "/api/v1/projects/project-1":
+                return .success(RemoteProjectsServiceFixtures.sampleProjectJSON(
+                    id: "project-1",
+                    name: "Project",
+                    description: nil,
+                    scanCount: 1
+                ))
+            default:
+                Issue.record("Unexpected HTTP endpoint: \(endpoint.path)")
+                return .failure(.networkError)
+            }
+        }
+        let uploadSession = FakeAssetUploadSession { _ in .success(Data()) }
+        let service = RemoteProjectsService(
+            httpClient: httpClient,
+            localStore: localStore,
+            uploadSession: uploadSession
+        )
+        let files = try makeScanFiles()
+        defer { try? FileManager.default.removeItem(at: files.directory) }
+
+        let saved = try await service.saveScan(
+            draft: files.draft,
+            name: "Remote Scan",
+            projectID: project.id,
+            meshURL: files.meshURL
+        )
+
+        #expect(saved.id == "remote-scan-id")
+        let requests = await recorder.requests
+        #expect(requests.first?.path == "/api/v1/projects/project-1/scans")
+        #expect(requests.last?.path == "/api/v1/projects/project-1")
+        #expect(Set(requests.dropFirst().dropLast().map(\.path)) == Set([
+            "/api/v1/upload-sessions/thumbnail-session/complete",
+            "/api/v1/upload-sessions/model-session/complete"
+        ]))
+        assertCreateScanBody(requests[0].body, expectedMesh: files.meshData, expectedThumbnail: files.thumbnailData)
+
+        let uploads = await uploadSession.requests
+        #expect(Set(uploads.map(\.path)) == Set(["/thumbnail", "/model"]))
+        #expect(uploads.first { $0.path == "/thumbnail" }?.body == files.thumbnailData)
+        #expect(uploads.first { $0.path == "/model" }?.body == files.meshData)
+        #expect(uploads.allSatisfy { $0.contentType != nil })
+
+        let cached = try await localStore.fetchProject(id: project.id)
+        #expect(cached.roomScans.contains { $0.id == "remote-scan-id" })
+    }
+
+    @Test func saveScan_doesNotPersistWhenAssetUploadFails() async throws {
+        let project = ProjectSummary(id: "project-1", name: "Project")
+        let localStore = MockProjectsService(projects: [project], simulatedDelayNanoseconds: 0)
+        let recorder = SaveScanHTTPRecorder()
+        let httpClient = FakeHTTPClient { endpoint in
+            await recorder.record(endpoint)
+            if endpoint.path == "/api/v1/projects/project-1/scans" {
+                return .success(RemoteProjectsServiceFixtures.createScanJSON())
+            }
+            if endpoint.path == "/api/v1/upload-sessions/thumbnail-session/complete" {
+                return .success(Data("{}".utf8))
+            }
+            if endpoint.path == "/api/v1/scans/remote-scan-id" {
+                return .success(Data("{}".utf8))
+            }
+            Issue.record("Unexpected endpoint after a failed upload: \(endpoint.path)")
+            return .failure(.networkError)
+        }
+        let uploadSession = FakeAssetUploadSession { request in
+            request.url?.path == "/model" ? .failure(URLError(.cannotConnectToHost)) : .success(Data())
+        }
+        let service = RemoteProjectsService(
+            httpClient: httpClient,
+            localStore: localStore,
+            uploadSession: uploadSession
+        )
+        let files = try makeScanFiles()
+        defer { try? FileManager.default.removeItem(at: files.directory) }
+
+        await #expect(throws: ProjectsServiceError.network) {
+            _ = try await service.saveScan(
+                draft: files.draft,
+                name: "Remote Scan",
+                projectID: project.id,
+                meshURL: files.meshURL
+            )
+        }
+
+        let requests = await recorder.requests
+        #expect(requests.first?.path == "/api/v1/projects/project-1/scans")
+        #expect(requests.contains { $0.path == "/api/v1/scans/remote-scan-id" })
+        #expect(!requests.contains { $0.path == "/api/v1/projects/project-1" })
+        let cached = try await localStore.fetchProject(id: project.id)
+        #expect(cached.roomScans.isEmpty)
+    }
+
+    private func makeScanFiles() throws -> ScanFiles {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RemoteProjectsServiceSaveScan_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let meshURL = directory.appendingPathComponent("mesh.usdz")
+        let thumbnailURL = directory.appendingPathComponent("thumbnail.jpg")
+        let meshData = Data("model bytes".utf8)
+        let thumbnailData = Data("thumbnail bytes".utf8)
+        try meshData.write(to: meshURL)
+        try thumbnailData.write(to: thumbnailURL)
+        return ScanFiles(
+            directory: directory,
+            draft: RoomScanDraft(id: "local-draft-id", meshFileURL: meshURL, thumbnailFileURL: thumbnailURL),
+            meshURL: meshURL,
+            meshData: meshData,
+            thumbnailData: thumbnailData
+        )
+    }
+
+    private func assertCreateScanBody(_ body: Data?, expectedMesh: Data, expectedThumbnail: Data) {
+        guard let body,
+              let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              let scanFile = object["scanFile"] as? [String: Any],
+              let thumbnail = object["thumbnail"] as? [String: Any]
+        else {
+            Issue.record("Expected create-scan JSON body")
+            return
+        }
+        #expect(object["name"] as? String == "Remote Scan")
+        #expect(scanFile["contentType"] as? String == "model/usdz")
+        #expect(scanFile["sizeBytes"] as? Int == expectedMesh.count)
+        #expect(scanFile["checksum"] as? String == "9cb7487000bc86ac36ce83c4acfabe8878552be99572a6770f65ab1d048a5c48")
+        #expect(thumbnail["contentType"] as? String == "image/jpeg")
+        #expect(thumbnail["sizeBytes"] as? Int == expectedThumbnail.count)
+    }
+}
+
+private struct ScanFiles {
+    let directory: URL
+    let draft: RoomScanDraft
+    let meshURL: URL
+    let meshData: Data
+    let thumbnailData: Data
+}
+
 struct RemoteProjectsServiceTests {
     @Test func createProject_postsExpectedJSONAndCachesLocally() async throws {
         let httpClient = FakeHTTPClient { endpoint in
@@ -398,6 +550,26 @@ struct RemoteProjectsServiceMutationTests {
 }
 
 private enum RemoteProjectsServiceFixtures {
+    nonisolated static func createScanJSON() -> Data {
+        Data(
+            """
+            {
+              "id": "remote-scan-id",
+              "uploads": {
+                "thumbnail": {
+                  "uploadSessionId": "thumbnail-session",
+                  "uploadUrl": "https://uploads.example.com/thumbnail"
+                },
+                "scanFile": {
+                  "uploadSessionId": "model-session",
+                  "uploadUrl": "https://uploads.example.com/model"
+                }
+              }
+            }
+            """.utf8
+        )
+    }
+
     nonisolated static let diningScanJSON = """
         [
           {
@@ -533,6 +705,45 @@ private struct FakeHTTPClient: HTTPClient {
         case .success(let data):
             let decodeData = data.isEmpty ? Data("{}".utf8) : data
             return try LiveHTTPClient.makeAPIDecoder().decode(T.self, from: decodeData)
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
+private actor SaveScanHTTPRecorder {
+    private(set) var requests: [APIEndpoint] = []
+
+    func record(_ endpoint: APIEndpoint) {
+        requests.append(endpoint)
+    }
+}
+
+private struct UploadedRequest: Equatable, Sendable {
+    let path: String
+    let body: Data?
+    let contentType: String?
+}
+
+private actor FakeAssetUploadSession: AssetUploadSession {
+    private let handler: @Sendable (URLRequest) -> Result<Data, Error>
+    private(set) var requests: [UploadedRequest] = []
+
+    init(handler: @escaping @Sendable (URLRequest) -> Result<Data, Error>) {
+        self.handler = handler
+    }
+
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        guard let url = request.url else { throw URLError(.badURL) }
+        requests.append(UploadedRequest(
+            path: url.path,
+            body: request.httpBody,
+            contentType: request.value(forHTTPHeaderField: "Content-Type")
+        ))
+        switch handler(request) {
+        case .success(let data):
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (data, response)
         case .failure(let error):
             throw error
         }

@@ -123,8 +123,7 @@ struct ProjectsPresentationModifier: ViewModifier {
                 }
                 Button(String(localized: "scan.recovery.discard"), role: .destructive) {
                     storageService.clearDraftManifest()
-                    try? FileManager.default.removeItem(at: draft.meshFileURL)
-                    try? FileManager.default.removeItem(at: draft.thumbnailFileURL)
+                    draft.deleteManagedFiles()
                     recoveredDraftToPrompt = nil
                 }
             } message: { _ in

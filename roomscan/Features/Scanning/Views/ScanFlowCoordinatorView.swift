@@ -31,7 +31,8 @@ struct ScanFlowCoordinatorView: View {
         self.projectsService = projectsService
         self.onComplete = onComplete
         self.onCancel = onCancel
-        _step = State(initialValue: ScanFlowStep.initialStep(for: recoveredDraft))
+        let initialStep = ScanFlowStep.initialStep(for: recoveredDraft)
+        _step = State(initialValue: initialStep)
         _prewarmedService = State(initialValue: RoomCaptureServiceFactory.makeService())
     }
 

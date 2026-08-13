@@ -239,7 +239,7 @@ struct VisibleProject: Identifiable, Equatable {
         }
 
         do {
-            let page = try await service.fetchProjects(page: 1, pageSize: Self.pageSize)
+            let page = try await fetchProjects(page: 1)
             guard generation == requestGeneration else { return }
             currentPage = 1
             projects = page.projects
@@ -250,11 +250,6 @@ struct VisibleProject: Identifiable, Equatable {
             if hasActiveSearch {
                 await ensureCompleteDatasetLoadedForSearch()
             }
-        } catch is CancellationError {
-            if generation == requestGeneration, !hasLoadedProjects {
-                viewState = .idle
-            }
-            return
         } catch {
             guard generation == requestGeneration else { return }
             if hasLoadedProjects {
@@ -278,7 +273,7 @@ struct VisibleProject: Identifiable, Equatable {
         showsPaginationError = false
 
         do {
-            let projectPage = try await service.fetchProjects(page: page, pageSize: Self.pageSize)
+            let projectPage = try await fetchProjects(page: page)
             guard generation == requestGeneration else { return }
             appendUnique(projectPage.projects)
             currentPage = page
@@ -297,6 +292,15 @@ struct VisibleProject: Identifiable, Equatable {
         let existingIDs = Set(projects.map(\.id))
         projects.append(contentsOf: newProjects.filter { !existingIDs.contains($0.id) })
         mergeIntoAllProjects(newProjects)
+    }
+
+    /// Keeps a fetch alive if SwiftUI recreates a view while its `.task` or
+    /// `.refreshable` closure is awaiting the response.
+    private func fetchProjects(page: Int) async throws -> ProjectPage {
+        let requestTask = Task { [service] in
+            try await service.fetchProjects(page: page, pageSize: Self.pageSize)
+        }
+        return try await requestTask.value
     }
 
     private func ensureCompleteDatasetLoadedForSearch() async {
@@ -327,7 +331,7 @@ struct VisibleProject: Identifiable, Equatable {
         while hasMore {
             do {
                 try Task.checkCancellation()
-                let result = try await service.fetchProjects(page: page, pageSize: Self.pageSize)
+                let result = try await fetchProjects(page: page)
                 try Task.checkCancellation()
                 loadedProjects.append(contentsOf: result.projects)
                 hasMore = result.hasMore
@@ -346,14 +350,12 @@ struct VisibleProject: Identifiable, Equatable {
 
 extension ProjectsViewModel {
     func refreshProjects() async {
-        guard !Task.isCancelled else { return }
         guard !isRefreshing else {
             hasQueuedRefresh = true
             return
         }
 
         while true {
-            guard !Task.isCancelled else { return }
             hasQueuedRefresh = false
             await reloadProjects(collapseExpanded: true)
             guard hasQueuedRefresh else { return }

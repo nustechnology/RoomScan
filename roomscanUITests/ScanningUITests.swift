@@ -53,7 +53,7 @@ final class ScanningUITests: XCTestCase {
         XCTAssertTrue(projectDropdown.waitForExistence(timeout: 3))
         projectDropdown.tap()
 
-        let firstProject = app.buttons["Lakeside Remodel"]
+        let firstProject = app.buttons["projects.card.open.project-1"]
         XCTAssertTrue(firstProject.waitForExistence(timeout: 3))
         firstProject.tap()
 
@@ -93,7 +93,7 @@ final class ScanningUITests: XCTestCase {
 
         XCTAssertTrue(app.scrollViews["projects.list"].waitForExistence(timeout: 5))
 
-        let projectCard = app.staticTexts["Lakeside Remodel"]
+        let projectCard = app.buttons["projects.card.open.project-1"]
         XCTAssertTrue(projectCard.waitForExistence(timeout: 5))
         projectCard.tap()
 
@@ -117,6 +117,12 @@ final class ScanningUITests: XCTestCase {
 
         let saveButton = app.buttons["review.saveButton"]
         XCTAssertTrue(saveButton.waitForExistence(timeout: 5))
+
+        let scanNameField = app.textFields["review.scanNameField"]
+        XCTAssertTrue(scanNameField.waitForExistence(timeout: 3))
+        scanNameField.tap()
+        scanNameField.typeText("Project Scan")
+
         let saveEnabledPredicate = NSPredicate(format: "isEnabled == true")
         expectation(for: saveEnabledPredicate, evaluatedWith: saveButton, handler: nil)
         waitForExpectations(timeout: 5)

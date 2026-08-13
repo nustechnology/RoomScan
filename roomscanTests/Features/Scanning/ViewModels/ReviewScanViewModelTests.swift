@@ -138,7 +138,7 @@ final class ReviewScanViewModelTests: XCTestCase {
 
         XCTAssertNotNil(saved)
         XCTAssertEqual(saved?.name, "Unique Guest Room")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: dummyDraft.meshFileURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dummyDraft.meshFileURL.path))
     }
 
     func testSaveScan_whenPersistenceFails_exposesUserFacingError() async {

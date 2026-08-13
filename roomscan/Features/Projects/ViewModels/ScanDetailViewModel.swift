@@ -10,8 +10,7 @@ import Observation
 @Observable
 final class ScanDetailViewModel {
     private let service: any ProjectsService
-    /// Injected from the app composition root in production. `nil` is used only
-    /// by UI tests and previews that run without backend access.
+    /// Remote scan endpoints are optional until the backend contract provides them.
     private let scanDetailService: (any ScanDetailService)?
     private let currentUserID: String
     private let projectID: String
@@ -153,11 +152,7 @@ final class ScanDetailViewModel {
         defer { isPerformingAction = false }
 
         do {
-            if let scanDetailService {
-                try await scanDetailService.deleteScanDetail(id: scan.id)
-            } else {
-                try await service.deleteScan(projectID: projectID, scanID: scan.id)
-            }
+            try await service.deleteScan(projectID: projectID, scanID: scan.id)
             didDeleteScan = true
             showsActionError = false
             return true

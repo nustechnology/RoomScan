@@ -14,7 +14,6 @@ protocol ScanDetailService: Sendable {
 struct ScanDetailRemoteService: ScanDetailService {
     private let httpClient: any HTTPClient
 
-    /// Backend route contract: `docs/scan-detail-api-contract.md`.
     /// The caller must inject the app-level authenticated client so session
     /// invalidation is consistently propagated to `AppState`.
     init(httpClient: any HTTPClient) {
