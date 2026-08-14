@@ -1846,6 +1846,17 @@
         }
       }
     },
+    "review.placeholder.scan_name" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan name..."
+          }
+        }
+      }
+    },
     "review.placeholder.select_project" : {
       "localizations" : {
         "en" : {
@@ -1862,17 +1873,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Review Scan"
-          }
-        }
-      }
-    },
-    "review.placeholder.scan_name" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scan name..."
           }
         }
       }
@@ -2234,6 +2234,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Share Scan"
+          }
+        }
+      }
+    },
+    "scanDetail.missingScan.cancel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        }
+      }
+    },
+    "scanDetail.missingScan.message" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The original scan files are not available on this device. Scan again to upload replacement files."
+          }
+        }
+      }
+    },
+    "scanDetail.missingScan.scanAgain" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan again"
+          }
+        }
+      }
+    },
+    "scanDetail.missingScan.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan file not found"
           }
         }
       }

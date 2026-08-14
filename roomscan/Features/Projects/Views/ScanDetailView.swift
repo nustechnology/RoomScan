@@ -27,6 +27,8 @@ struct ScanDetailView: View {
     @State private var loadingAction: ConfirmationAction?
     @State private var viewerInput: ViewerInput?
     @State private var shareInput: ShareScreenInput?
+    @State private var showsMissingScanAlert = false
+    @State private var showsRetryCamera = false
 
     private var canOpen3DModel: Bool {
         viewModel.canOpen3DModel
@@ -150,6 +152,13 @@ struct ScanDetailView: View {
         .task {
             await viewModel.loadDetail()
         }
+        .modifier(RetryScanPresentationModifier(
+            showsMissingScanAlert: $showsMissingScanAlert,
+            showsRetryCamera: $showsRetryCamera,
+            projectID: projectID,
+            viewModel: viewModel,
+            onScanUpdated: onScanUpdated
+        ))
         .disabled(viewModel.isPerformingAction)
     }
 
@@ -303,6 +312,8 @@ struct ScanDetailView: View {
                             let didRetry = await viewModel.retryUpload()
                             if didRetry {
                                 onScanUpdated(viewModel.scan)
+                            } else if viewModel.needsRescanForRetry {
+                                showsMissingScanAlert = true
                             }
                         }
                     }
@@ -350,6 +361,39 @@ private extension ScanDetailView {
                     dismiss()
                 }
             }
+        }
+    }
+}
+
+private struct RetryScanPresentationModifier: ViewModifier {
+    @Binding var showsMissingScanAlert: Bool
+    @Binding var showsRetryCamera: Bool
+    let projectID: String?
+    let viewModel: ScanDetailViewModel
+    let onScanUpdated: (RoomScanSummary) -> Void
+
+    func body(content: Content) -> some View {
+        content.alert(String(localized: "scanDetail.missingScan.title"), isPresented: $showsMissingScanAlert) {
+            Button(String(localized: "scanDetail.missingScan.scanAgain")) { showsRetryCamera = true }
+            Button(String(localized: "scanDetail.missingScan.cancel"), role: .cancel) {}
+        } message: {
+            Text(LocalizedStringKey("scanDetail.missingScan.message"))
+        }
+        .fullScreenCover(isPresented: $showsRetryCamera) {
+            CameraScanView(
+                sourceProjectID: projectID,
+                onFinish: { draft in
+                    Task {
+                        let didRetry = await viewModel.retryUpload(with: draft)
+                        showsRetryCamera = false
+                        guard didRetry else { return }
+                        onScanUpdated(viewModel.scan)
+                        LocalScanStorageService().clearDraftManifest()
+                        draft.deleteManagedFiles()
+                    }
+                },
+                onCancel: { showsRetryCamera = false }
+            )
         }
     }
 }

@@ -18,6 +18,7 @@ final class ScanDetailViewModel {
 
     private(set) var scan: RoomScanSummary
     private(set) var showsActionError = false
+    private(set) var needsRescanForRetry = false
     private(set) var isPerformingAction = false
     private(set) var didDeleteScan = false
     private(set) var detail: ScanDetail?
@@ -184,12 +185,45 @@ final class ScanDetailViewModel {
         isPerformingAction = true
         defer { isPerformingAction = false }
 
+        needsRescanForRetry = false
         do {
             scan = try await service.retryScanUpload(
                 projectID: projectID,
                 scanID: scan.id
             )
             detail = detail?.updating(syncStatus: scan.syncStatus)
+            showsActionError = false
+            return true
+        } catch ProjectsServiceError.notFound {
+            needsRescanForRetry = true
+            showsActionError = false
+            return false
+        } catch {
+            showsActionError = true
+            return false
+        }
+    }
+
+    @discardableResult
+    func retryUpload(with draft: RoomScanDraft) async -> Bool {
+        guard allowsOwnerActions else { return false }
+        guard let retryService = service as? any ScanAssetRetrying else {
+            showsActionError = true
+            return false
+        }
+
+        isPerformingAction = true
+        defer { isPerformingAction = false }
+
+        do {
+            scan = try await retryService.retryScanUpload(
+                projectID: projectID,
+                scanID: scan.id,
+                meshURL: draft.meshFileURL,
+                thumbnailURL: draft.thumbnailFileURL
+            )
+            detail = detail?.updating(syncStatus: scan.syncStatus)
+            needsRescanForRetry = false
             showsActionError = false
             return true
         } catch {
