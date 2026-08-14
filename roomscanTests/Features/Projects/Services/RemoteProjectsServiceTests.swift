@@ -80,6 +80,9 @@ struct RemoteProjectsServiceSaveScanTests {
             if endpoint.path == "/api/v1/upload-sessions/thumbnail-session/complete" {
                 return .success(Data("{}".utf8))
             }
+            if endpoint.path == "/api/v1/upload-sessions/model-session/fail" {
+                return .success(Data("{}".utf8))
+            }
             if endpoint.path == "/api/v1/scans/remote-scan-id" {
                 return .success(Data("{}".utf8))
             }
@@ -112,6 +115,89 @@ struct RemoteProjectsServiceSaveScanTests {
         #expect(!requests.contains { $0.path == "/api/v1/projects/project-1" })
         let cached = try await localStore.fetchProject(id: project.id)
         #expect(cached.roomScans.isEmpty)
+    }
+
+    @Test func retryScanUpload_createsAssetSessionsAndUploadsBothLocalAssets() async throws {
+        let files = try makeScanFiles()
+        defer { try? FileManager.default.removeItem(at: files.directory) }
+
+        let failedScan = RoomScanSummary(
+            id: "failed-scan",
+            name: "Retry me",
+            createdAt: files.draft.createdAt,
+            localModelURL: files.meshURL,
+            thumbnailName: "thumbnail.jpg",
+            syncStatus: .failed,
+            notes: []
+        )
+        let project = ProjectSummary(id: "project-1", name: "Project", roomScans: [failedScan])
+        let localStore = MockProjectsService(projects: [project], simulatedDelayNanoseconds: 0)
+        let recorder = SaveScanHTTPRecorder()
+        let httpClient = FakeHTTPClient { endpoint in
+            await recorder.record(endpoint)
+            switch endpoint.path {
+            case "/api/v1/scans/failed-scan/assets/upload-sessions":
+                guard let body = endpoint.body,
+                      let payload = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+                      let assetType = payload["assetType"] as? String
+                else {
+                    return .failure(.decodingError(underlying: "test", bodyPreview: ""))
+                }
+                let response = assetType == "MODEL"
+                    ? RemoteProjectsServiceFixtures.retryUploadSessionJSON(
+                        sessionID: "retry-model-session",
+                        uploadPath: "retry-model"
+                    )
+                    : RemoteProjectsServiceFixtures.retryUploadSessionJSON(
+                        sessionID: "retry-thumbnail-session",
+                        uploadPath: "retry-thumbnail"
+                    )
+                return .success(response)
+            case "/api/v1/upload-sessions/retry-model-session/complete",
+                 "/api/v1/upload-sessions/retry-thumbnail-session/complete":
+                return .success(Data("{}".utf8))
+            case "/api/v1/projects/project-1":
+                return .success(RemoteProjectsServiceFixtures.sampleProjectJSON(
+                    id: "project-1",
+                    name: "Project",
+                    description: nil,
+                    scansJSON: """
+                    [{
+                      "id": "failed-scan", "name": "Retry me", "description": null,
+                      "thumbnail": null, "noteCount": 0, "assetStatus": "READY",
+                      "syncStatus": "SYNCED", "createdAt": "2026-08-11T02:56:32.757Z"
+                    }]
+                    """,
+                    scanCount: 1
+                ))
+            default:
+                Issue.record("Unexpected HTTP endpoint: \(endpoint.path)")
+                return .failure(.networkError)
+            }
+        }
+        let uploadSession = FakeAssetUploadSession { _ in .success(Data()) }
+        let service = RemoteProjectsService(
+            httpClient: httpClient,
+            localStore: localStore,
+            uploadSession: uploadSession
+        )
+
+        let retried = try await service.retryScanUpload(projectID: "project-1", scanID: "failed-scan")
+
+        #expect(retried.syncStatus == .synced)
+        let requests = await recorder.requests
+        let sessionRequests = requests.filter { $0.path == "/api/v1/scans/failed-scan/assets/upload-sessions" }
+        #expect(sessionRequests.count == 2)
+        let assetTypes = Set(sessionRequests.compactMap { request -> String? in
+            guard let body = request.body,
+                  let payload = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+            else { return nil }
+            return payload["assetType"] as? String
+        })
+        #expect(assetTypes == Set(["MODEL", "THUMBNAIL"]))
+
+        let uploads = await uploadSession.requests
+        #expect(Set(uploads.map(\.path)) == Set(["/retry-model", "/retry-thumbnail"]))
     }
 
     private func makeScanFiles() throws -> ScanFiles {
@@ -565,6 +651,21 @@ private enum RemoteProjectsServiceFixtures {
                   "uploadUrl": "https://uploads.example.com/model"
                 }
               }
+            }
+            """.utf8
+        )
+    }
+
+    nonisolated static func retryUploadSessionJSON(sessionID: String, uploadPath: String) -> Data {
+        Data(
+            """
+            {
+              "uploadSessionId": "\(sessionID)",
+              "assetId": "asset-\(sessionID)",
+              "assetType": "MODEL",
+              "status": "PENDING",
+              "uploadUrl": "https://uploads.example.com/\(uploadPath)",
+              "uploadUrlExpiresAt": "2026-08-14T08:00:44.375Z"
             }
             """.utf8
         )

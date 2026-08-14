@@ -29,6 +29,16 @@ protocol ProjectsService: Sendable {
     func retryScanUpload(projectID: String, scanID: String) async throws -> RoomScanSummary
 }
 
+/// Supports retrying an existing remote scan with a newly captured pair of assets.
+protocol ScanAssetRetrying: Sendable {
+    func retryScanUpload(
+        projectID: String,
+        scanID: String,
+        meshURL: URL,
+        thumbnailURL: URL
+    ) async throws -> RoomScanSummary
+}
+
 /// Local cache used by `RemoteProjectsService` for project metadata and scans.
 protocol ProjectsLocalCache: ProjectsService {
     func cacheProject(_ project: ProjectSummary) async

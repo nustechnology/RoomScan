@@ -97,14 +97,15 @@ private struct ThumbnailView: View {
                 Image(uiImage: loadedImage)
                     .resizable()
                     .scaledToFill()
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
                 Image("ScanThumbnail")
                     .resizable()
                     .scaledToFill()
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
+        .frame(width: Self.thumbnailWidth, height: Self.thumbnailHeight)
+        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: 8))
         .accessibilityHidden(true)
         .task(id: thumbnailPath) {
             loadedImage = nil

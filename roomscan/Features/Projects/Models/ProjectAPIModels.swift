@@ -101,6 +101,37 @@ struct UploadCompletionAPIRequest: Encodable, Sendable {
     }
 }
 
+/// POST body for `/api/v1/upload-sessions/{uploadSessionId}/fail`.
+struct UploadFailureAPIRequest: Encodable, Sendable {
+    let reason: String
+}
+
+/// POST body for `/api/v1/scans/{scanId}/assets/upload-sessions`.
+struct CreateAssetUploadSessionAPIRequest: Encodable, Sendable {
+    let assetType: String
+    let contentType: String
+    let sizeBytes: Int
+    let checksum: String?
+    let modelVersion: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case assetType
+        case contentType
+        case sizeBytes
+        case checksum
+        case modelVersion
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(assetType, forKey: .assetType)
+        try container.encode(contentType, forKey: .contentType)
+        try container.encode(sizeBytes, forKey: .sizeBytes)
+        try container.encodeIfPresent(checksum, forKey: .checksum)
+        try container.encodeIfPresent(modelVersion, forKey: .modelVersion)
+    }
+}
+
 struct ProjectAPIResponse: Decodable, Sendable, Equatable {
     let id: String
     let name: String
