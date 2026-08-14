@@ -92,11 +92,13 @@ enum NoteAPIIntegration {
 }
 
 enum NoteAPIMapping {
-    static func toSpatialNote(_ dto: NoteDTO) -> SpatialNote? {
-        guard let color = NoteColor(apiValue: dto.color) else {
-            return nil
+    static func toSpatialNote(_ dto: NoteDTO) -> SpatialNote {
+        let color = NoteColor(apiValue: dto.color) ?? .default
+        #if DEBUG
+        if NoteColor(apiValue: dto.color) == nil {
+            print("[Notes] unknown color=\(dto.color); using default")
         }
-
+        #endif
         let parsedContent = splitContent(dto.content)
 
         return SpatialNote(
@@ -137,12 +139,9 @@ enum NoteAPIMapping {
             return (title, detail)
         }
 
-        if content.count <= NoteContentLimits.title {
-            return (content, content)
-        }
-
         let title = String(content.prefix(NoteContentLimits.title))
-        return (title, content)
+        let detail = String(content.dropFirst(NoteContentLimits.title))
+        return (title, detail)
     }
 }
 

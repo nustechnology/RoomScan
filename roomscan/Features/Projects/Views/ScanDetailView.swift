@@ -30,10 +30,6 @@ struct ScanDetailView: View {
     @State private var showsMissingScanAlert = false
     @State private var showsRetryCamera = false
 
-    private var canOpen3DModel: Bool {
-        viewModel.canOpen3DModel
-    }
-
     private var open3DModelButtonTitle: String { String(localized: "scanDetail.open3DModel") }
 
     var body: some View {
@@ -172,13 +168,13 @@ struct ScanDetailView: View {
             action: open3DModel,
             accessibilityIdentifier: "scanDetail.open3DModel"
         )
-        .disabled(!canOpen3DModel)
-        .opacity(canOpen3DModel ? 1 : 0.5)
+        .disabled(!viewModel.canOpen3DModel)
+        .opacity(viewModel.canOpen3DModel ? 1 : 0.5)
     }
 
     @ViewBuilder
     private var thumbnailCard: some View {
-        if canOpen3DModel {
+        if viewModel.canOpen3DModel {
             Button(action: open3DModel) {
                 thumbnailContent
             }

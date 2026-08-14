@@ -203,22 +203,7 @@ struct LiveHTTPClient: HTTPClient {
             throw HTTPClientError.networkError
         }
 
-        guard (200...299).contains(httpResponse.statusCode) else {
-            let apiError = try? decoder.decode(APIErrorResponse.self, from: data)
-            throw HTTPClientError.serverError(
-                statusCode: httpResponse.statusCode,
-                apiError: apiError
-            )
-        }
-
-        do {
-            let decodeData = data.isEmpty ? Data("{}".utf8) : data
-            return try decoder.decode(T.self, from: decodeData)
-        } catch {
-            let bodyPreview = Self.bodyPreview(from: data)
-            let underlying = String(describing: error)
-            throw HTTPClientError.decodingError(underlying: underlying, bodyPreview: bodyPreview)
-        }
+        return (data, httpResponse)
     }
 
     private static func bodyPreview(from data: Data, limit: Int = 2_048) -> String {

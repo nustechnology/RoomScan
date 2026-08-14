@@ -6,9 +6,16 @@
 import Foundation
 import simd
 
+private struct NotesPage {
+    let notes: [SpatialNote]
+    let itemCount: Int
+    let hasMore: Bool
+}
+
 /// Network-backed notes service for the 3D viewer.
 final class RemoteNotesService: NotesService, @unchecked Sendable {
     private let httpClient: any HTTPClient
+    private static let maximumPageCount = 100
 
     init(httpClient: any HTTPClient) {
         self.httpClient = httpClient
@@ -16,9 +23,8 @@ final class RemoteNotesService: NotesService, @unchecked Sendable {
 
     func fetchNotes(scanID: String) async throws -> [SpatialNote] {
         var allNotes: [SpatialNote] = []
-        var page = 1
-
-        while true {
+        for page in 1...Self.maximumPageCount {
+            try Task.checkCancellation()
             let response = try await fetchNotesPage(
                 scanID: scanID,
                 page: page,
@@ -27,10 +33,14 @@ final class RemoteNotesService: NotesService, @unchecked Sendable {
             )
             allNotes.append(contentsOf: response.notes)
 
-            guard response.hasMore else { break }
-            page += 1
+            guard response.itemCount > 0, response.hasMore else {
+                return allNotes
+            }
         }
 
+        #if DEBUG
+        print("[Notes] pagination limit reached scanID=\(scanID) limit=\(Self.maximumPageCount)")
+        #endif
         return allNotes
     }
 
@@ -47,7 +57,7 @@ final class RemoteNotesService: NotesService, @unchecked Sendable {
         page: Int,
         limit: Int,
         sort: NotesAPISort
-    ) async throws -> (notes: [SpatialNote], hasMore: Bool) {
+    ) async throws -> NotesPage {
         let endpoint = APIEndpoint(
             path: "/api/v1/scans/\(scanID)/notes",
             method: .get,
@@ -60,9 +70,9 @@ final class RemoteNotesService: NotesService, @unchecked Sendable {
 
         do {
             let response: NotesListAPIResponse = try await httpClient.request(endpoint)
-            let notes = response.items.compactMap(NoteAPIMapping.toSpatialNote)
+            let notes = response.items.map(NoteAPIMapping.toSpatialNote)
             let hasMore = response.pagination.page < response.pagination.totalPages
-            return (notes, hasMore)
+            return NotesPage(notes: notes, itemCount: response.items.count, hasMore: hasMore)
         } catch let error as HTTPClientError {
             throw mapHTTPClientError(error)
         } catch {
@@ -165,10 +175,7 @@ final class RemoteNotesService: NotesService, @unchecked Sendable {
     private func requestNote(endpoint: APIEndpoint) async throws -> SpatialNote {
         do {
             let dto: NoteDTO = try await httpClient.request(endpoint)
-            guard let note = NoteAPIMapping.toSpatialNote(dto) else {
-                throw NotesServiceError.invalidContent
-            }
-            return note
+            return NoteAPIMapping.toSpatialNote(dto)
         } catch let error as HTTPClientError {
             #if DEBUG
             logRequestFailure(error, endpoint: endpoint)

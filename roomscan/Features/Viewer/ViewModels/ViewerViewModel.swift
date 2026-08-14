@@ -120,6 +120,7 @@ final class ViewerViewModel {
     private let modelLoadingService: any ModelLoadingService
     private let modelDownloadService: (any ScanDetailService)?
     private var scanModelVersion: String?
+    private let noteDetailRequest = NoteDetailRequest()
 
     init(
         input: ViewerInput,
@@ -278,19 +279,6 @@ final class ViewerViewModel {
         placementDraftPosition = nil
     }
 
-    func selectNote(id: String?) {
-        selectedNoteID = id
-        guard let id else { return }
-
-        if let note = notes.first(where: { $0.id == id }) {
-            cameraCommand = .focus(note.position)
-        }
-
-        Task {
-            await refreshNoteDetail(noteID: id)
-        }
-    }
-
     func handleCanvasTap(position: SIMD3<Float>) {
         switch placementMode {
         case .idle:
@@ -357,6 +345,24 @@ final class ViewerViewModel {
 }
 
 extension ViewerViewModel {
+    func selectNote(id: String?) {
+        noteDetailRequest.task?.cancel()
+        selectedNoteID = id
+        guard let id else { return }
+
+        if let note = notes.first(where: { $0.id == id }) {
+            cameraCommand = .focus(note.position)
+        }
+
+        let notesService = notesService
+        noteDetailRequest.task = Task { [weak self, notesService] in
+            guard let note = try? await notesService.fetchNote(noteID: id), !Task.isCancelled else {
+                return
+            }
+            self?.applyFetchedNote(note)
+        }
+    }
+
     func setViewMode(_ mode: ViewerMode) {
         viewMode = mode
     }
@@ -519,13 +525,6 @@ extension ViewerViewModel {
         } catch {
             operationErrorMessage = String(localized: "viewer.note.move.error")
         }
-    }
-
-    func refreshNoteDetail(noteID: String) async {
-        do {
-            let note = try await notesService.fetchNote(noteID: noteID)
-            applyFetchedNote(note)
-        } catch {}
     }
 
     func openEditor(noteID: String) async {
