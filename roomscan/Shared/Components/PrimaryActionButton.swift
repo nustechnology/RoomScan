@@ -16,6 +16,7 @@ struct PrimaryActionButton: View {
     var borderWidth: CGFloat = 1
     var cornerRadius: CGFloat = 18
     var accessibilityIdentifier: String?
+    var isLoading = false
 
     var body: some View {
         Button(
@@ -26,7 +27,10 @@ struct PrimaryActionButton: View {
                         .fill(color)
 
                     Group {
-                        if let systemImageName {
+                        if isLoading {
+                            ProgressView()
+                                .tint(foregroundColor)
+                        } else if let systemImageName {
                             Label(title, systemImage: systemImageName)
                         } else {
                             Text(title)

@@ -200,17 +200,25 @@ struct LiveHTTPClient: HTTPClient {
         }
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            #if DEBUG
-            print(
-                """
-                [HTTP] invalid response type method=\(endpoint.method.rawValue) path=\(endpoint.path)
-                """
-            )
-            #endif
             throw HTTPClientError.networkError
         }
 
-        return (data, httpResponse)
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let apiError = try? decoder.decode(APIErrorResponse.self, from: data)
+            throw HTTPClientError.serverError(
+                statusCode: httpResponse.statusCode,
+                apiError: apiError
+            )
+        }
+
+        do {
+            let decodeData = data.isEmpty ? Data("{}".utf8) : data
+            return try decoder.decode(T.self, from: decodeData)
+        } catch {
+            let bodyPreview = Self.bodyPreview(from: data)
+            let underlying = String(describing: error)
+            throw HTTPClientError.decodingError(underlying: underlying, bodyPreview: bodyPreview)
+        }
     }
 
     private static func bodyPreview(from data: Data, limit: Int = 2_048) -> String {

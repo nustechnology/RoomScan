@@ -25,6 +25,23 @@ struct ViewerViewModelTests {
         #expect(viewModel.viewMode == .threeD)
     }
 
+    @Test func loadShowsNotesLoadingWhileFetchingNotes() async {
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-loading", scanName: "Living Room"),
+            notesService: DelayedNotesService(delayNanoseconds: 80_000_000),
+            modelLoadingService: TestModelLoadingService()
+        )
+
+        let loadTask = Task { await viewModel.load() }
+        for _ in 0..<10 where !viewModel.isLoadingNotes {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        #expect(viewModel.isLoadingNotes)
+        await loadTask.value
+        #expect(!viewModel.isLoadingNotes)
+    }
+
     @Test func renameScanUpdatesTitle() {
         let viewModel = ViewerViewModel(
             input: ViewerInput(scanID: "scan-1", scanName: "Living Room"),
@@ -115,6 +132,79 @@ struct ViewerViewModelTests {
         #expect(viewModel.notes.last?.title == "Outlet")
         #expect(viewModel.notes.last?.color == .green)
         #expect(viewModel.editorMode == nil)
+    }
+
+    @Test func saveCreateUsesScanModelVersionWhenThereAreNoExistingNotes() async {
+        let notesService = FailingNotesService(seedCount: 0)
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(
+                scanID: "scan-first-note",
+                scanName: "Kitchen",
+                modelVersion: "7"
+            ),
+            notesService: notesService,
+            modelLoadingService: TestModelLoadingService()
+        )
+        await viewModel.load()
+        viewModel.beginAddNote()
+        viewModel.handleCanvasTap(position: SIMD3(1, 1, 1))
+        viewModel.confirmPlacement()
+
+        let didSave = await viewModel.saveEditor(
+            title: "Outlet",
+            description: "Needs cover plate",
+            color: .green
+        )
+
+        #expect(didSave)
+        #expect(viewModel.notes.count == 1)
+        #expect(viewModel.notes.first?.modelVersion == "7")
+    }
+
+    @Test func saveCreateLoadsScanModelVersionWhenViewerOpenedBeforeDetail() async {
+        let notesService = FailingNotesService(seedCount: 0)
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-first-note", scanName: "Kitchen"),
+            notesService: notesService,
+            modelLoadingService: TestModelLoadingService(),
+            modelDownloadService: ScanDetailVersionStub()
+        )
+        await viewModel.load()
+        viewModel.beginAddNote()
+        viewModel.handleCanvasTap(position: SIMD3(1, 1, 1))
+        viewModel.confirmPlacement()
+
+        let didSave = await viewModel.saveEditor(
+            title: "Outlet",
+            description: "Needs cover plate",
+            color: .green
+        )
+
+        #expect(didSave)
+        #expect(viewModel.notes.first?.modelVersion == "1")
+    }
+
+    @Test func saveCreatePrefersScanDetailVersionOverExistingNotes() async {
+        let notesService = FailingNotesService(seedCount: 1)
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-current-version", scanName: "Kitchen"),
+            notesService: notesService,
+            modelLoadingService: TestModelLoadingService(),
+            modelDownloadService: ScanDetailVersionStub()
+        )
+        await viewModel.load()
+        viewModel.beginAddNote()
+        viewModel.handleCanvasTap(position: SIMD3(1, 1, 1))
+        viewModel.confirmPlacement()
+
+        let didSave = await viewModel.saveEditor(
+            title: "Outlet",
+            description: "Needs cover plate",
+            color: .green
+        )
+
+        #expect(didSave)
+        #expect(viewModel.notes.last?.modelVersion == "1")
     }
 
     @Test func selectNoteFocusesCamera() async throws {
@@ -220,8 +310,8 @@ struct ViewerViewModelTests {
         notesService.releaseCreate()
         let first = await firstTask.value
         #expect(first == true)
-        #expect(viewModel.notes.count == 1)
-        #expect(viewModel.notes.first?.title == "First")
+        #expect(viewModel.notes.count == 2)
+        #expect(viewModel.notes.contains(where: { $0.title == "First" }))
     }
 
     @Test func deleteFailureClearsPendingNoteAndSurfacesError() async throws {
@@ -361,6 +451,7 @@ struct NoteEditorViewModelTests {
             detail: "Check power",
             color: .blue,
             position: .zero,
+                orientation: .zero,
             createdAt: Date(),
             updatedAt: Date(),
             modelVersion: "sample-1"
@@ -419,6 +510,38 @@ private final class TestModelLoadingService: ModelLoadingService {
     }
 }
 
+private struct ScanDetailVersionStub: ScanDetailService {
+    func fetchScanDetail(id: String) async throws -> ScanDetail {
+        ScanDetail(
+            id: id,
+            projectID: "project-1",
+            name: "Kitchen",
+            description: nil,
+            thumbnail: nil,
+            creatorID: "user-1",
+            creatorEmail: nil,
+            noteCount: 0,
+            assetStatus: "UPLOADED",
+            syncStatus: .synced,
+            modelVersion: 1,
+            createdAt: .now,
+            updatedAt: .now,
+            permissions: ScanDetailPermissions(
+                role: "OWNER",
+                canView: true,
+                canEdit: true,
+                canDelete: true
+            )
+        )
+    }
+
+    func updateScanDetail(id: String, name: String, description: String?) async throws -> ScanDetail {
+        try await fetchScanDetail(id: id)
+    }
+
+    func deleteScanDetail(id: String) async throws {}
+}
+
 @MainActor
 private final class FailingNotesService: NotesService {
     enum Operation {
@@ -442,6 +565,7 @@ private final class FailingNotesService: NotesService {
                 detail: "Detail \(index)",
                 color: .yellow,
                 position: SIMD3(Float(index), 1, 0),
+                orientation: .zero,
                 createdAt: now,
                 updatedAt: now,
                 modelVersion: modelVersion
@@ -453,26 +577,28 @@ private final class FailingNotesService: NotesService {
         notes
     }
 
-    func createNote(
-        scanID: String,
-        title: String,
-        description: String,
-        color: NoteColor,
-        position: SIMD3<Float>
-    ) async throws -> SpatialNote {
+    func fetchNote(noteID: String) async throws -> SpatialNote {
+        guard let note = notes.first(where: { $0.id == noteID }) else {
+            throw NotesServiceError.noteNotFound
+        }
+        return note
+    }
+
+    func createNote(scanID: String, input: CreateNoteInput) async throws -> SpatialNote {
         if failingOperations.contains(.create) {
             throw NotesServiceError.invalidContent
         }
         let now = Date()
         let note = SpatialNote(
             id: UUID().uuidString,
-            title: title,
-            detail: description,
-            color: color,
-            position: position,
+            title: input.title,
+            detail: input.description,
+            color: input.color,
+            position: input.position,
+            orientation: input.orientation,
             createdAt: now,
             updatedAt: now,
-            modelVersion: modelVersion
+            modelVersion: input.modelVersion
         )
         notes.append(note)
         return note
@@ -498,18 +624,16 @@ private final class FailingNotesService: NotesService {
         return notes[index]
     }
 
-    func moveNote(
-        scanID: String,
-        noteID: String,
-        position: SIMD3<Float>
-    ) async throws -> SpatialNote {
+    func moveNote(noteID: String, input: MoveNoteInput) async throws -> SpatialNote {
         if failingOperations.contains(.move) {
             throw NotesServiceError.noteNotFound
         }
         guard let index = notes.firstIndex(where: { $0.id == noteID }) else {
             throw NotesServiceError.noteNotFound
         }
-        notes[index].position = position
+        notes[index].position = input.position
+        notes[index].orientation = input.orientation
+        notes[index].modelVersion = input.modelVersion
         notes[index].updatedAt = Date()
         return notes[index]
     }
@@ -524,11 +648,28 @@ private final class FailingNotesService: NotesService {
 
 @MainActor
 private final class GatedNotesService: NotesService {
-    private var notes: [SpatialNote] = []
+    private var notes: [SpatialNote]
     private var createStartedContinuation: CheckedContinuation<Void, Never>?
     private var createReleaseContinuation: CheckedContinuation<Void, Never>?
     private var isWaitingForRelease = false
     private let modelVersion = "sample-1"
+
+    init() {
+        let now = Date()
+        notes = [
+            SpatialNote(
+                id: "gated-seed",
+                title: "Seed",
+                detail: "Seed detail",
+                color: .yellow,
+                position: .zero,
+                orientation: .zero,
+                createdAt: now,
+                updatedAt: now,
+                modelVersion: modelVersion
+            )
+        ]
+    }
 
     func waitUntilCreateStarted() async {
         if isWaitingForRelease { return }
@@ -546,13 +687,14 @@ private final class GatedNotesService: NotesService {
         notes
     }
 
-    func createNote(
-        scanID: String,
-        title: String,
-        description: String,
-        color: NoteColor,
-        position: SIMD3<Float>
-    ) async throws -> SpatialNote {
+    func fetchNote(noteID: String) async throws -> SpatialNote {
+        guard let note = notes.first(where: { $0.id == noteID }) else {
+            throw NotesServiceError.noteNotFound
+        }
+        return note
+    }
+
+    func createNote(scanID: String, input: CreateNoteInput) async throws -> SpatialNote {
         isWaitingForRelease = true
         createStartedContinuation?.resume()
         createStartedContinuation = nil
@@ -564,13 +706,14 @@ private final class GatedNotesService: NotesService {
         let now = Date()
         let note = SpatialNote(
             id: UUID().uuidString,
-            title: title,
-            detail: description,
-            color: color,
-            position: position,
+            title: input.title,
+            detail: input.description,
+            color: input.color,
+            position: input.position,
+            orientation: input.orientation,
             createdAt: now,
             updatedAt: now,
-            modelVersion: modelVersion
+            modelVersion: input.modelVersion
         )
         notes.append(note)
         return note
@@ -586,11 +729,7 @@ private final class GatedNotesService: NotesService {
         throw NotesServiceError.noteNotFound
     }
 
-    func moveNote(
-        scanID: String,
-        noteID: String,
-        position: SIMD3<Float>
-    ) async throws -> SpatialNote {
+    func moveNote(noteID: String, input: MoveNoteInput) async throws -> SpatialNote {
         throw NotesServiceError.noteNotFound
     }
 
@@ -616,6 +755,7 @@ private final class DelayedNotesService: NotesService {
                 detail: "Seed detail",
                 color: .blue,
                 position: .zero,
+                orientation: .zero,
                 createdAt: now,
                 updatedAt: now,
                 modelVersion: modelVersion
@@ -624,27 +764,30 @@ private final class DelayedNotesService: NotesService {
     }
 
     func fetchNotes(scanID: String) async throws -> [SpatialNote] {
-        notes
+        try await Task.sleep(nanoseconds: delayNanoseconds)
+        return notes
     }
 
-    func createNote(
-        scanID: String,
-        title: String,
-        description: String,
-        color: NoteColor,
-        position: SIMD3<Float>
-    ) async throws -> SpatialNote {
+    func fetchNote(noteID: String) async throws -> SpatialNote {
+        guard let note = notes.first(where: { $0.id == noteID }) else {
+            throw NotesServiceError.noteNotFound
+        }
+        return note
+    }
+
+    func createNote(scanID: String, input: CreateNoteInput) async throws -> SpatialNote {
         try await Task.sleep(nanoseconds: delayNanoseconds)
         let now = Date()
         let note = SpatialNote(
             id: UUID().uuidString,
-            title: title,
-            detail: description,
-            color: color,
-            position: position,
+            title: input.title,
+            detail: input.description,
+            color: input.color,
+            position: input.position,
+            orientation: input.orientation,
             createdAt: now,
             updatedAt: now,
-            modelVersion: modelVersion
+            modelVersion: input.modelVersion
         )
         notes.append(note)
         return note
@@ -667,17 +810,15 @@ private final class DelayedNotesService: NotesService {
         return notes[index]
     }
 
-    func moveNote(
-        scanID: String,
-        noteID: String,
-        position: SIMD3<Float>
-    ) async throws -> SpatialNote {
+    func moveNote(noteID: String, input: MoveNoteInput) async throws -> SpatialNote {
         moveCallCount += 1
         try await Task.sleep(nanoseconds: delayNanoseconds)
         guard let index = notes.firstIndex(where: { $0.id == noteID }) else {
             throw NotesServiceError.noteNotFound
         }
-        notes[index].position = position
+        notes[index].position = input.position
+        notes[index].orientation = input.orientation
+        notes[index].modelVersion = input.modelVersion
         return notes[index]
     }
 

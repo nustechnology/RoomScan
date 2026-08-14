@@ -147,6 +147,8 @@ struct ScanDetailView: View {
         .overlay {
             if let loadingAction {
                 loadingOverlay(for: loadingAction)
+            } else if viewModel.isLoadingDetail {
+                scanDetailLoadingOverlay
             }
         }
         .task {
@@ -159,7 +161,7 @@ struct ScanDetailView: View {
             viewModel: viewModel,
             onScanUpdated: onScanUpdated
         ))
-        .disabled(viewModel.isPerformingAction)
+        .disabled(viewModel.isPerformingAction || viewModel.isLoadingDetail)
     }
 
     private var open3DModelButton: some View {
@@ -250,6 +252,7 @@ struct ScanDetailView: View {
             projectName: projectName,
             scanID: viewModel.scan.id,
             scanName: viewModel.scan.name,
+            modelVersion: viewModel.viewerModelVersion,
             modelURL: viewModel.scan.localModelURL
         )
     }
@@ -326,6 +329,19 @@ struct ScanDetailView: View {
 }
 
 private extension ScanDetailView {
+    var scanDetailLoadingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.12)
+                .ignoresSafeArea()
+
+            ProgressView()
+                .controlSize(.large)
+                .padding(AppSpacing.extraLarge)
+                .background(AppColors.background, in: RoundedRectangle(cornerRadius: AppCornerRadius.large))
+                .accessibilityIdentifier("scanDetail.loading")
+        }
+    }
+
     private func loadingOverlay(for action: ConfirmationAction) -> some View {
         ZStack {
             Color.black.opacity(0.2)

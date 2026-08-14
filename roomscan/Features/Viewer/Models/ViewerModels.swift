@@ -16,6 +16,7 @@ nonisolated struct ViewerInput: Hashable, Identifiable, Sendable {
     let projectName: String?
     let scanID: String
     let scanName: String
+    let modelVersion: String?
     /// When nil, model loading fails and the viewer shows its error state.
     let modelURL: URL?
 
@@ -24,12 +25,14 @@ nonisolated struct ViewerInput: Hashable, Identifiable, Sendable {
         projectName: String? = nil,
         scanID: String,
         scanName: String,
+        modelVersion: String? = nil,
         modelURL: URL? = nil
     ) {
         self.projectID = projectID
         self.projectName = projectName
         self.scanID = scanID
         self.scanName = scanName
+        self.modelVersion = modelVersion
         self.modelURL = modelURL
     }
 }
@@ -118,6 +121,7 @@ struct SpatialNote: Identifiable, Equatable, Sendable {
     var detail: String
     var color: NoteColor
     var position: SIMD3<Float>
+    var orientation: SIMD3<Float>
     var createdAt: Date
     var updatedAt: Date
     var modelVersion: String

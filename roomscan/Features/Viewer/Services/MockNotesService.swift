@@ -23,15 +23,19 @@ final class MockNotesService: NotesService {
         return notesByScanID[scanID] ?? []
     }
 
-    func createNote(
-        scanID: String,
-        title: String,
-        description: String,
-        color: NoteColor,
-        position: SIMD3<Float>
-    ) async throws -> SpatialNote {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
+    func fetchNote(noteID: String) async throws -> SpatialNote {
+        for scanID in notesByScanID.keys {
+            let notes = try await fetchNotes(scanID: scanID)
+            if let note = notes.first(where: { $0.id == noteID }) {
+                return note
+            }
+        }
+        throw NotesServiceError.noteNotFound
+    }
+
+    func createNote(scanID: String, input: CreateNoteInput) async throws -> SpatialNote {
+        let trimmedTitle = input.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDescription = input.description.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty, !trimmedDescription.isEmpty else {
             throw NotesServiceError.invalidContent
         }
@@ -42,11 +46,12 @@ final class MockNotesService: NotesService {
             id: UUID().uuidString,
             title: String(trimmedTitle.prefix(NoteContentLimits.title)),
             detail: String(trimmedDescription.prefix(NoteContentLimits.description)),
-            color: color,
-            position: position,
+            color: input.color,
+            position: input.position,
+            orientation: input.orientation,
             createdAt: now,
             updatedAt: now,
-            modelVersion: modelVersion
+            modelVersion: input.modelVersion
         )
         notes.append(note)
         notesByScanID[scanID] = notes
@@ -79,20 +84,18 @@ final class MockNotesService: NotesService {
         return notes[index]
     }
 
-    func moveNote(
-        scanID: String,
-        noteID: String,
-        position: SIMD3<Float>
-    ) async throws -> SpatialNote {
-        var notes = try await fetchNotes(scanID: scanID)
-        guard let index = notes.firstIndex(where: { $0.id == noteID }) else {
-            throw NotesServiceError.noteNotFound
+    func moveNote(noteID: String, input: MoveNoteInput) async throws -> SpatialNote {
+        for (scanID, notes) in notesByScanID {
+            guard let index = notes.firstIndex(where: { $0.id == noteID }) else { continue }
+            var updatedNotes = notes
+            updatedNotes[index].position = input.position
+            updatedNotes[index].orientation = input.orientation
+            updatedNotes[index].modelVersion = input.modelVersion
+            updatedNotes[index].updatedAt = Date()
+            notesByScanID[scanID] = updatedNotes
+            return updatedNotes[index]
         }
-
-        notes[index].position = position
-        notes[index].updatedAt = Date()
-        notesByScanID[scanID] = notes
-        return notes[index]
+        throw NotesServiceError.noteNotFound
     }
 
     func deleteNote(scanID: String, noteID: String) async throws {
@@ -118,6 +121,7 @@ final class MockNotesService: NotesService {
                 detail: "Needs waterproofing before repainting",
                 color: .red,
                 position: SIMD3(1.2, 1.4, -0.8),
+                orientation: .zero,
                 createdAt: baseDate.addingTimeInterval(-3_600),
                 updatedAt: baseDate.addingTimeInterval(-3_600),
                 modelVersion: modelVersion
@@ -128,6 +132,7 @@ final class MockNotesService: NotesService {
                 detail: "Confirm power before mounting bracket",
                 color: .blue,
                 position: SIMD3(-1.0, 0.9, 1.5),
+                orientation: .zero,
                 createdAt: baseDate.addingTimeInterval(-7_200),
                 updatedAt: baseDate.addingTimeInterval(-7_200),
                 modelVersion: modelVersion
@@ -138,6 +143,7 @@ final class MockNotesService: NotesService {
                 detail: "Keep 80cm walkway in front of sofa",
                 color: .green,
                 position: SIMD3(0.2, 0.35, 0.4),
+                orientation: .zero,
                 createdAt: baseDate.addingTimeInterval(-10_800),
                 updatedAt: baseDate.addingTimeInterval(-10_800),
                 modelVersion: modelVersion
