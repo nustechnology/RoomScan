@@ -64,7 +64,7 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
             #if DEBUG
             logHTTPClientError("fetchProjects", error)
             #endif
-            throw mapHTTPClientError(error)
+            throw mapHTTPClientError(error, operation: .fetchProjects)
         } catch {
             #if DEBUG
             print("[RemoteProjectsService] fetchProjects failed: unexpected \(error)")
@@ -92,7 +92,7 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
             #if DEBUG
             logHTTPClientError("fetchProject", error)
             #endif
-            throw mapHTTPClientError(error)
+            throw mapHTTPClientError(error, operation: .fetchProject)
         } catch {
             #if DEBUG
             print("[RemoteProjectsService] fetchProject failed: unexpected \(error)")
@@ -154,7 +154,7 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
             #if DEBUG
             logHTTPClientError("updateProject", error)
             #endif
-            throw mapHTTPClientError(error)
+            throw mapHTTPClientError(error, operation: .updateProject)
         } catch {
             #if DEBUG
             print("[RemoteProjectsService] updateProject failed: unexpected \(error)")
@@ -185,7 +185,7 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
             #if DEBUG
             logHTTPClientError("deleteProject", error)
             #endif
-            throw mapHTTPClientError(error)
+            throw mapHTTPClientError(error, operation: .deleteProject)
         } catch let error as ProjectsServiceError {
             // Local cache miss after successful remote delete should not fail the call.
             if case .projectNotFound = error {
@@ -253,7 +253,7 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
             #if DEBUG
             logHTTPClientError("createProject", error)
             #endif
-            throw mapHTTPClientError(error)
+            throw mapHTTPClientError(error, operation: .createProject)
         } catch {
             #if DEBUG
             print("[RemoteProjectsService] createProject failed: unexpected \(error)")
@@ -279,8 +279,39 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
             // turn a successful remote deletion into a UI failure.
             try? await localStore.deleteScan(projectID: projectID, scanID: scanID)
         } catch let error as HTTPClientError {
-            throw mapHTTPClientError(error)
+            throw mapHTTPClientError(error, operation: .deleteScan)
         }
     }
 
+    func mapHTTPClientError(
+        _ error: HTTPClientError,
+        operation: RemoteProjectsHTTPErrorMapper.Operation
+    ) -> ProjectsServiceError {
+        RemoteProjectsHTTPErrorMapper.map(error, operation: operation)
+    }
+
+    #if DEBUG
+    private func logHTTPClientError(_ operation: String, _ error: HTTPClientError) {
+        switch error {
+        case .invalidURL:
+            print("[RemoteProjectsService] \(operation) failed: invalidURL")
+        case .networkError:
+            print("[RemoteProjectsService] \(operation) failed: networkError")
+        case let .serverError(statusCode, apiError):
+            print(
+                """
+                [RemoteProjectsService] \(operation) failed: serverError \
+                status=\(statusCode) apiError=\(String(describing: apiError))
+                """
+            )
+        case let .decodingError(underlying, bodyPreview):
+            print(
+                """
+                [RemoteProjectsService] \(operation) failed: decodingError \
+                underlying=\(underlying) body=\(bodyPreview)
+                """
+            )
+        }
+    }
+    #endif
 }

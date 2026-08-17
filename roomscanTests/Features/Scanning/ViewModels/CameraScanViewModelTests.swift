@@ -15,7 +15,7 @@ final class CameraScanViewModelTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
         mockCaptureService = MockRoomCaptureService(simulateStructureDelay: 0)
-        viewModel = CameraScanViewModel(captureService: mockCaptureService)
+        viewModel = makeViewModel()
     }
 
     override func tearDown() async throws {
@@ -94,9 +94,8 @@ final class CameraScanViewModelTests: XCTestCase {
     func testFinishScan_persistsSourceProjectForRecovery() async {
         let storageService = LocalScanStorageService()
         storageService.clearDraftManifest()
-        let contextualViewModel = CameraScanViewModel(
+        let contextualViewModel = makeViewModel(
             sourceProjectID: "project-2",
-            captureService: mockCaptureService,
             storageService: storageService
         )
         contextualViewModel.startScanning()
@@ -121,7 +120,7 @@ final class CameraScanViewModelTests: XCTestCase {
 
     func testResumeScanning_restartsStructureTimerWhenMinimalStructureNotYetDetected() async {
         let delayedService = MockRoomCaptureService(simulateStructureDelay: 0.1)
-        let delayedViewModel = CameraScanViewModel(captureService: delayedService)
+        let delayedViewModel = makeViewModel(captureService: delayedService)
 
         delayedViewModel.startScanning()
         XCTAssertFalse(delayedViewModel.hasMinimalStructure)
@@ -136,6 +135,18 @@ final class CameraScanViewModelTests: XCTestCase {
         await waitUntil { delayedViewModel.hasMinimalStructure }
 
         delayedViewModel.stopScanning()
+    }
+
+    private func makeViewModel(
+        sourceProjectID: String? = nil,
+        captureService: RoomCaptureService? = nil,
+        storageService: ScanStorageService = LocalScanStorageService()
+    ) -> CameraScanViewModel {
+        CameraScanViewModel(
+            sourceProjectID: sourceProjectID,
+            captureService: captureService ?? mockCaptureService,
+            storageService: storageService
+        )
     }
 
     private func waitUntil(

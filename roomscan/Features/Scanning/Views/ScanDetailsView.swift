@@ -75,9 +75,6 @@ struct ScanCompletionView: View {
             .navigationTitle(String(localized: "scandetails.title"))
             .navigationBarTitleDisplayMode(.inline)
         }
-        .onAppear {
-            print("[RoomScan DETAILS] ScanCompletionView appeared for scan: \(scan.id)")
-        }
     }
 
     private func statusColor(_ status: RoomScanSyncStatus) -> Color {

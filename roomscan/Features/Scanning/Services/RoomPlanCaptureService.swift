@@ -67,7 +67,6 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
     func attachCaptureSession(_ session: RoomCaptureSession) {
         if let previousSession = roomCaptureSession, previousSession !== session,
            isCaptureSessionRunning {
-            print("[RoomScan Log] Stopping replaced RoomCaptureSession.")
             previousSession.stop()
             isCaptureSessionRunning = false
         }
@@ -81,12 +80,10 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
             ScanTelemetry.shared.recordSessionRunCalled()
             isSessionPendingStart = false
             isCaptureSessionRunning = true
-            print("[RoomScan Log] Attached RoomCaptureSession.run() called successfully.")
         }
     }
 
     func startSession() {
-        print("[RoomScan Log] Starting RoomCaptureSession...")
         isScanning = true
         hasMinimalStructure = false
         isStorageFull = false
@@ -105,7 +102,6 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
             ScanTelemetry.shared.recordSessionRunCalled()
             isSessionPendingStart = false
             isCaptureSessionRunning = true
-            print("[RoomScan Log] RoomCaptureSession.run() called successfully.")
         }
     }
 
@@ -115,7 +111,6 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
         arSession.pause()
         isPaused = true
         isScanning = false
-        print("[RoomScan Log] ARSession paused while scanning is suspended.")
     }
 
     func resumeSession() {
@@ -123,19 +118,16 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
         // Resuming must restart the ARSession that `pauseSession` paused. Re-running the
         // RoomCaptureSession leaves the AR session paused and also discards the in-progress scan.
         guard let configuration = pausedARConfiguration ?? arSession.configuration else {
-            print("[RoomScan Log-ERROR] Cannot resume: ARSession has no configuration.")
             return
         }
         arSession.run(configuration)
         pausedARConfiguration = nil
         isPaused = false
         isScanning = true
-        print("[RoomScan Log] ARSession resumed.")
     }
 
     func stopSession() {
         guard isCaptureSessionRunning || isSessionPendingStart else { return }
-        print("[RoomScan Log] Stopping RoomCaptureSession...")
         isScanning = false
         if isCaptureSessionRunning {
             roomCaptureSession?.stop()
@@ -147,11 +139,9 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
     }
 
     func finishScan() async throws -> RoomScanDraft {
-        print("[RoomScan STEP 3.1] Stopping session in RoomPlanCaptureService...")
         stopSession()
 
-        print("[RoomScan STEP 3.2] Awaiting final RoomPlan capture data...")
-        for _ in 0..<20 where finalCapturedRoomData == nil && captureEndError == nil {
+        for _ in 0..<100 where finalCapturedRoomData == nil && captureEndError == nil {
             try await Task.sleep(nanoseconds: 50_000_000)
         }
 
@@ -166,26 +156,33 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
         let meshURL = draftDirectory.appendingPathComponent("mesh.usdz")
         let thumbnailURL = draftDirectory.appendingPathComponent("thumbnail.jpg")
 
-        print("[RoomScan STEP 3.3] Exporting CapturedRoom USDZ mesh...")
-        logCapturedRoom(capturedRoom)
         let roomToExport = capturedRoom
         let exportURL = meshURL
         try await Task.detached(priority: .userInitiated) {
-            try roomToExport.export(to: exportURL)
+            // `.model` substitutes object bounding boxes with catalog meshes. Scan-time
+            // RoomCaptureView still draws parametric boxes; that overlay is unchanged.
+            if #available(iOS 17.0, *) {
+                let modelProvider = try RoomPlanModelCatalog.makeProvider()
+                try roomToExport.export(
+                    to: exportURL,
+                    modelProvider: modelProvider,
+                    exportOptions: .model
+                )
+            } else {
+                try roomToExport.export(to: exportURL, exportOptions: .mesh)
+            }
         }.value
 
         let meshSize = (try? FileManager.default.attributesOfItem(atPath: meshURL.path)[.size] as? Int64) ?? 0
         guard meshSize > 0 else {
             throw RoomPlanCaptureError.invalidExport
         }
-        print("[RoomScan STEP 3.4] Room mesh exported successfully to: \(meshURL.path) (\(meshSize) bytes)")
 
         do {
             try await Task.detached(priority: .utility) {
                 try Self.generateThumbnail(from: meshURL, destination: thumbnailURL)
             }.value
         } catch {
-            print("[RoomScan STEP 3.5-WARNING] Thumbnail generation failed: \(error.localizedDescription)")
             try generateFallbackThumbnail(destination: thumbnailURL)
         }
 
@@ -193,7 +190,6 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
         do {
             try storageService.saveDraftManifest(draft)
         } catch {
-            print("[RoomScan STEP 3.6-WARNING] Failed to save draft manifest: \(error.localizedDescription)")
             ScanTelemetry.shared.recordDraftManifestSaveFailed(error)
         }
         return draft
@@ -213,7 +209,7 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
                 ScanTelemetry.shared.recordFirstFrameReceived()
             }
             self.currentCapturedRoom = room
-            let hasStructure = !room.walls.isEmpty || !room.floors.isEmpty
+            let hasStructure = !room.walls.isEmpty && !room.floors.isEmpty
             if hasStructure && !self.hasMinimalStructure {
                 self.hasMinimalStructure = true
             }
@@ -303,43 +299,49 @@ private extension RoomPlanCaptureService {
         }.value
     }
 
-    func logCapturedRoom(_ room: CapturedRoom) {
-        print("-------------------- [CAPTURED ROOM DATA] --------------------")
-        print("  - Walls count: \(room.walls.count)")
-        print("  - Floors count: \(room.floors.count)")
-        print("  - Doors count: \(room.doors.count)")
-        print("  - Windows count: \(room.windows.count)")
-        print("  - Openings count: \(room.openings.count)")
-        print("  - Objects count: \(room.objects.count)")
-        print("--------------------------------------------------------------")
-    }
-
     func roomForExport() async throws -> CapturedRoom {
-        if let finalCapturedRoomData {
-            let processedRoom = try await RoomBuilder(options: [.beautifyObjects])
-                .capturedRoom(from: finalCapturedRoomData)
-            if hasRenderableContent(processedRoom) {
-                print("[RoomScan STEP 3.2] Using processed final CapturedRoomData.")
-                return processedRoom
+        let processedRoom = await processedRoomFromFinalData()
+
+        let source = CapturedRoomExportSelection.preferredSource(
+            processed: processedRoom.map(contentSummary(of:)),
+            live: currentCapturedRoom.map(contentSummary(of:))
+        )
+
+        switch source {
+        case .processed:
+            guard let processedRoom else {
+                throw RoomPlanCaptureError.missingCapturedRoom
             }
-            print("[RoomScan STEP 3.2-ERROR] Processed final room contains no renderable structure.")
-        }
-
-        if let currentCapturedRoom, hasRenderableContent(currentCapturedRoom) {
-            print("[RoomScan STEP 3.2] Using realtime CapturedRoom with detected structure.")
+            return processedRoom
+        case .live:
+            guard let currentCapturedRoom else {
+                throw RoomPlanCaptureError.missingCapturedRoom
+            }
             return currentCapturedRoom
+        case nil:
+            throw RoomPlanCaptureError.missingCapturedRoom
         }
-
-        throw RoomPlanCaptureError.missingCapturedRoom
     }
 
-    func hasRenderableContent(_ room: CapturedRoom) -> Bool {
-        !room.walls.isEmpty ||
-            !room.floors.isEmpty ||
-            !room.doors.isEmpty ||
-            !room.windows.isEmpty ||
-            !room.openings.isEmpty ||
-            !room.objects.isEmpty
+    func processedRoomFromFinalData() async -> CapturedRoom? {
+        guard let finalCapturedRoomData else { return nil }
+        do {
+            return try await RoomBuilder(options: [])
+                .capturedRoom(from: finalCapturedRoomData)
+        } catch {
+            return nil
+        }
+    }
+
+    func contentSummary(of room: CapturedRoom) -> CapturedRoomContentSummary {
+        CapturedRoomContentSummary(
+            wallCount: room.walls.count,
+            floorCount: room.floors.count,
+            doorCount: room.doors.count,
+            windowCount: room.windows.count,
+            openingCount: room.openings.count,
+            objectCount: room.objects.count
+        )
     }
 
     func generateFallbackThumbnail(destination: URL) throws {

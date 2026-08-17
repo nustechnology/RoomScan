@@ -138,6 +138,46 @@ struct LiveHTTPClient: HTTPClient {
     func request<T: Decodable>(_ endpoint: APIEndpoint) async throws -> T {
         let request = endpoint.urlRequest(baseURL: baseURL)
 
+        let (data, httpResponse) = try await perform(request, endpoint: endpoint)
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let apiError = try? decoder.decode(APIErrorResponse.self, from: data)
+            #if DEBUG
+            print(
+                """
+                [HTTP] server error method=\(endpoint.method.rawValue) path=\(endpoint.path) \
+                status=\(httpResponse.statusCode) apiError=\(String(describing: apiError))
+                """
+            )
+            #endif
+            throw HTTPClientError.serverError(
+                statusCode: httpResponse.statusCode,
+                apiError: apiError
+            )
+        }
+
+        do {
+            let decodeData = data.isEmpty ? Data("{}".utf8) : data
+            return try decoder.decode(T.self, from: decodeData)
+        } catch {
+            let bodyPreview = Self.bodyPreview(from: data)
+            let underlying = String(describing: error)
+            #if DEBUG
+            print(
+                """
+                [HTTP] decode failed method=\(endpoint.method.rawValue) path=\(endpoint.path) \
+                status=\(httpResponse.statusCode) error=\(underlying)
+                """
+            )
+            #endif
+            throw HTTPClientError.decodingError(underlying: underlying, bodyPreview: bodyPreview)
+        }
+    }
+
+    private func perform(
+        _ request: URLRequest,
+        endpoint: APIEndpoint
+    ) async throws -> (Data, HTTPURLResponse) {
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await urlSession.data(for: request)
@@ -170,40 +210,7 @@ struct LiveHTTPClient: HTTPClient {
             throw HTTPClientError.networkError
         }
 
-        guard (200...299).contains(httpResponse.statusCode) else {
-            let apiError = try? decoder.decode(APIErrorResponse.self, from: data)
-            let bodyPreview = Self.bodyPreview(from: data)
-            #if DEBUG
-            print(
-                """
-                [HTTP] server error method=\(endpoint.method.rawValue) path=\(endpoint.path) \
-                status=\(httpResponse.statusCode) apiError=\(String(describing: apiError)) \
-                body=\(bodyPreview)
-                """
-            )
-            #endif
-            throw HTTPClientError.serverError(
-                statusCode: httpResponse.statusCode,
-                apiError: apiError
-            )
-        }
-
-        do {
-            let decodeData = data.isEmpty ? Data("{}".utf8) : data
-            return try decoder.decode(T.self, from: decodeData)
-        } catch {
-            let bodyPreview = Self.bodyPreview(from: data)
-            let underlying = String(describing: error)
-            #if DEBUG
-            print(
-                """
-                [HTTP] decode failed method=\(endpoint.method.rawValue) path=\(endpoint.path) \
-                status=\(httpResponse.statusCode) error=\(underlying) body=\(bodyPreview)
-                """
-            )
-            #endif
-            throw HTTPClientError.decodingError(underlying: underlying, bodyPreview: bodyPreview)
-        }
+        return (data, httpResponse)
     }
 
     private static func bodyPreview(from data: Data, limit: Int = 2_048) -> String {

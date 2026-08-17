@@ -117,10 +117,7 @@ final class CameraScanViewModel: ObservableObject {
     }
 
     func finishScan() async -> RoomScanDraft? {
-        print("[RoomScan STEP 2] CameraScanViewModel.finishScan() entered")
         guard hasMinimalStructure, !isProcessingFinish else {
-            print("[RoomScan STEP 2-CANCEL] guard failed: hasMinimalStructure=\(hasMinimalStructure), "
-                + "isProcessingFinish=\(isProcessingFinish)")
             return nil
         }
         isProcessingFinish = true
@@ -130,33 +127,18 @@ final class CameraScanViewModel: ObservableObject {
         }
 
         do {
-            print("[RoomScan STEP 3] Calling captureService.finishScan()...")
             var draft = try await captureService.finishScan()
-            print("[RoomScan STEP 4] captureService.finishScan() succeeded. Draft ID: \(draft.id)")
             draft.projectID = sourceProjectID
 
             let meshSize = (try? FileManager.default.attributesOfItem(atPath: draft.meshFileURL.path)[.size] as? Int64) ?? 0
-            let thumbSize = (try? FileManager.default.attributesOfItem(atPath: draft.thumbnailFileURL.path)[.size] as? Int64) ?? 0
             guard meshSize > 0 else {
                 throw CocoaError(.fileReadCorruptFile)
             }
 
             try storageService.saveDraftManifest(draft)
             self.capturedDraft = draft
-
-            print("""
-            ==================== [ROOMSCAN FINISHED DRAFT DATA] ====================
-            ID: \(draft.id)
-            Created At: \(draft.createdAt)
-            Project ID: \(draft.projectID ?? "None (Standalone)")
-            Name: \(draft.name.isEmpty ? "(unnamed)" : draft.name)
-            Mesh File URL: \(draft.meshFileURL.path) (\(meshSize) bytes)
-            Thumbnail File URL: \(draft.thumbnailFileURL.path) (\(thumbSize) bytes)
-            ========================================================================
-            """)
             return draft
         } catch {
-            print("[RoomScan STEP 3-ERROR] captureService.finishScan() failed with error: \(error.localizedDescription)")
             self.errorMessage = error.localizedDescription
             return nil
         }

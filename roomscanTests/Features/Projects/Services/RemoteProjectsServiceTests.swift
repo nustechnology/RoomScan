@@ -117,6 +117,94 @@ struct RemoteProjectsServiceSaveScanTests {
         #expect(cached.roomScans.isEmpty)
     }
 
+    @Test func saveScan_reportsUploadFailureWhenCompletionRequestFails() async throws {
+        let project = ProjectSummary(id: "project-1", name: "Project")
+        let localStore = MockProjectsService(projects: [project], simulatedDelayNanoseconds: 0)
+        let recorder = SaveScanHTTPRecorder()
+        let httpClient = FakeHTTPClient { endpoint in
+            await recorder.record(endpoint)
+            switch endpoint.path {
+            case "/api/v1/projects/project-1/scans":
+                return .success(RemoteProjectsServiceFixtures.createScanJSON())
+            case "/api/v1/upload-sessions/thumbnail-session/complete":
+                return .success(Data("{}".utf8))
+            case "/api/v1/upload-sessions/model-session/complete":
+                return .failure(.serverError(statusCode: 500, apiError: nil))
+            case "/api/v1/upload-sessions/model-session/fail":
+                return .success(Data("{}".utf8))
+            case "/api/v1/scans/remote-scan-id":
+                return .success(Data("{}".utf8))
+            default:
+                Issue.record("Unexpected endpoint: \(endpoint.path)")
+                return .failure(.networkError)
+            }
+        }
+        let uploadSession = FakeAssetUploadSession { _ in .success(Data()) }
+        let service = RemoteProjectsService(
+            httpClient: httpClient,
+            localStore: localStore,
+            uploadSession: uploadSession
+        )
+        let files = try makeScanFiles()
+        defer { try? FileManager.default.removeItem(at: files.directory) }
+
+        await #expect(throws: ProjectsServiceError.network) {
+            _ = try await service.saveScan(
+                draft: files.draft,
+                name: "Remote Scan",
+                projectID: project.id,
+                meshURL: files.meshURL
+            )
+        }
+
+        let requests = await recorder.requests
+        #expect(requests.contains { $0.path == "/api/v1/upload-sessions/model-session/fail" })
+        #expect(!requests.contains { $0.path == "/api/v1/projects/project-1" })
+    }
+
+    @Test func saveScan_rejectsEmptyLocalAssetsWithoutCreatingRemoteScan() async throws {
+        let project = ProjectSummary(id: "project-1", name: "Project")
+        let recorder = SaveScanHTTPRecorder()
+        let httpClient = FakeHTTPClient { endpoint in
+            await recorder.record(endpoint)
+            Issue.record("HTTP should not be called for empty local assets: \(endpoint.path)")
+            return .failure(.networkError)
+        }
+        let service = RemoteProjectsService(
+            httpClient: httpClient,
+            localStore: MockProjectsService(projects: [project], simulatedDelayNanoseconds: 0),
+            uploadSession: FakeAssetUploadSession { _ in .success(Data()) }
+        )
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RemoteProjectsServiceEmptyAssets_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let meshURL = directory.appendingPathComponent("mesh.usdz")
+        let thumbnailURL = directory.appendingPathComponent("thumbnail.jpg")
+        try Data("thumbnail bytes".utf8).write(to: thumbnailURL)
+        try Data().write(to: meshURL)
+
+        let draft = RoomScanDraft(
+            id: "local-draft-id",
+            meshFileURL: meshURL,
+            thumbnailFileURL: thumbnailURL
+        )
+
+        await #expect(throws: ProjectsServiceError.network) {
+            _ = try await service.saveScan(
+                draft: draft,
+                name: "Remote Scan",
+                projectID: project.id,
+                meshURL: meshURL
+            )
+        }
+
+        let requests = await recorder.requests
+        #expect(requests.isEmpty)
+    }
+
     @Test func retryScanUpload_createsAssetSessionsAndUploadsBothLocalAssets() async throws {
         let files = try makeScanFiles()
         defer { try? FileManager.default.removeItem(at: files.directory) }
@@ -198,6 +286,59 @@ struct RemoteProjectsServiceSaveScanTests {
 
         let uploads = await uploadSession.requests
         #expect(Set(uploads.map(\.path)) == Set(["/retry-model", "/retry-thumbnail"]))
+    }
+
+    @Test func createScan_mapsMissingProjectToProjectNotFound() async throws {
+        let project = ProjectSummary(id: "project-1", name: "Project")
+        let httpClient = FakeHTTPClient { endpoint in
+            #expect(endpoint.path == "/api/v1/projects/project-1/scans")
+            return .failure(.serverError(statusCode: 404, apiError: nil))
+        }
+        let service = RemoteProjectsService(
+            httpClient: httpClient,
+            localStore: MockProjectsService(projects: [project], simulatedDelayNanoseconds: 0)
+        )
+        let files = try makeScanFiles()
+        defer { try? FileManager.default.removeItem(at: files.directory) }
+
+        await #expect(throws: ProjectsServiceError.projectNotFound) {
+            _ = try await service.saveScan(
+                draft: files.draft,
+                name: "Kitchen",
+                projectID: project.id,
+                meshURL: files.meshURL
+            )
+        }
+    }
+
+    @Test func createScan_mapsValidationToInvalidScanName() async throws {
+        let project = ProjectSummary(id: "project-1", name: "Project")
+        let httpClient = FakeHTTPClient { _ in
+            .failure(
+                .serverError(
+                    statusCode: 400,
+                    apiError: APIErrorResponse(
+                        error: APIErrorBody(code: "VALIDATION", message: "Invalid", details: nil),
+                        requestId: "req-1"
+                    )
+                )
+            )
+        }
+        let service = RemoteProjectsService(
+            httpClient: httpClient,
+            localStore: MockProjectsService(projects: [project], simulatedDelayNanoseconds: 0)
+        )
+        let files = try makeScanFiles()
+        defer { try? FileManager.default.removeItem(at: files.directory) }
+
+        await #expect(throws: ProjectsServiceError.invalidScanName) {
+            _ = try await service.saveScan(
+                draft: files.draft,
+                name: "Kitchen",
+                projectID: project.id,
+                meshURL: files.meshURL
+            )
+        }
     }
 
     private func makeScanFiles() throws -> ScanFiles {
@@ -531,6 +672,28 @@ struct RemoteProjectsServiceFetchTests {
             _ = try await service.fetchProject(id: "missing")
         }
     }
+
+    @Test func fetchProjects_mapsValidationToNetwork() async {
+        let httpClient = FakeHTTPClient { _ in
+            .failure(
+                .serverError(
+                    statusCode: 400,
+                    apiError: APIErrorResponse(
+                        error: APIErrorBody(code: "VALIDATION", message: "Invalid", details: nil),
+                        requestId: "req-1"
+                    )
+                )
+            )
+        }
+        let service = RemoteProjectsService(
+            httpClient: httpClient,
+            localStore: MockProjectsService(projects: [], simulatedDelayNanoseconds: 0)
+        )
+
+        await #expect(throws: ProjectsServiceError.network) {
+            _ = try await service.fetchProjects(page: 1, pageSize: 10)
+        }
+    }
 }
 
 struct RemoteProjectsServiceMutationTests {
@@ -631,6 +794,22 @@ struct RemoteProjectsServiceMutationTests {
 
         await #expect(throws: ProjectsServiceError.projectNotFound) {
             try await service.deleteProject(id: "missing")
+        }
+    }
+
+    @Test func deleteScan_mapsNotFound() async {
+        let httpClient = FakeHTTPClient { endpoint in
+            #expect(endpoint.path == "/api/v1/scans/missing-scan")
+            #expect(endpoint.method == .delete)
+            return .failure(.serverError(statusCode: 404, apiError: nil))
+        }
+        let service = RemoteProjectsService(
+            httpClient: httpClient,
+            localStore: MockProjectsService(projects: [], simulatedDelayNanoseconds: 0)
+        )
+
+        await #expect(throws: ProjectsServiceError.notFound) {
+            try await service.deleteScan(projectID: "project-1", scanID: "missing-scan")
         }
     }
 }

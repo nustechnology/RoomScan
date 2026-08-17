@@ -87,6 +87,21 @@ struct CameraScanView: View {
                             Spacer()
                         }
                     }
+
+                    // Keep-scanning hint until walls and floor are captured
+                    if viewModel.isScanning, !viewModel.hasMinimalStructure, !viewModel.isPaused {
+                        HStack {
+                            Spacer()
+                            Text(String(localized: "scanning.keep_scanning_hint"))
+                                .font(.caption.weight(.medium))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(Color.black.opacity(0.55))
+                                .cornerRadius(12)
+                            Spacer()
+                        }
+                    }
                 }
                 .padding(.top, 16)
 
@@ -163,13 +178,9 @@ struct CameraScanView: View {
 
                 // Finish Button
                 Button {
-                    print("[RoomScan STEP 1] Finish button tapped in CameraScanView")
                     Task {
                         if let draft = await viewModel.finishScan() {
-                            print("[RoomScan STEP 5] finishScan completed, calling onFinish(draft)...")
                             onFinish(draft)
-                        } else {
-                            print("[RoomScan STEP 5-ERROR] finishScan returned nil!")
                         }
                     }
                 } label: {
