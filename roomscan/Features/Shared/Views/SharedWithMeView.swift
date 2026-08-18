@@ -78,6 +78,15 @@ struct SharedWithMeView: View {
                     .accessibilityIdentifier("shared.toast")
             }
         }
+        .overlay {
+            if viewModel.isRemovingItem {
+                ProgressView()
+                    .controlSize(.large)
+                    .padding(24)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    .accessibilityIdentifier("shared.remove.loading")
+            }
+        }
         .animation(.default, value: viewModel.toastMessage)
         .onChange(of: viewModel.toastMessage) { _, message in
             toastTask?.cancel()
@@ -139,7 +148,9 @@ struct SharedWithMeView: View {
                 onRetry: { await viewModel.retrySelectedTab() },
                 onRefresh: { await viewModel.refreshSelectedTab() },
                 onTap: handleProjectTap,
-                onRemove: { viewModel.requestRemove(scope: .project, id: $0) }
+                onRemove: { id in
+                    viewModel.requestRemove(scope: .project, id: id)
+                }
             )
         case .scans:
             SharedScansContentView(
@@ -148,7 +159,9 @@ struct SharedWithMeView: View {
                 onRetry: { await viewModel.retrySelectedTab() },
                 onRefresh: { await viewModel.refreshSelectedTab() },
                 onTap: handleScanTap,
-                onRemove: { viewModel.requestRemove(scope: .scan, id: $0) }
+                onRemove: { id in
+                    viewModel.requestRemove(scope: .scan, id: id)
+                }
             )
         }
     }
@@ -193,7 +206,7 @@ struct SharedWithMeView: View {
     private var alertBinding: Binding<Bool> {
         Binding(
             get: { viewModel.pendingAlert != nil },
-            set: { if !$0 { viewModel.dismissAlert() } }
+            set: { _ in }
         )
     }
 
