@@ -98,6 +98,24 @@ struct SharedWithMeViewModelTests {
         #expect(viewModel.pendingAlert == nil)
     }
 
+    @Test func removalRequestIsIgnoredWhileAnotherRemovalIsRunning() async {
+        let service = RemovalBlockingSharedService(
+            base: MockSharedService(simulatedDelayNanoseconds: 100_000_000)
+        )
+        let viewModel = SharedWithMeViewModel(service: service)
+        await viewModel.loadInitialContent()
+        viewModel.requestRemove(scope: .project, id: "shared-project-active")
+
+        let removalTask = Task { await viewModel.confirmPendingAlertAction() }
+        await service.waitForRemovalToStartForTesting()
+        #expect(viewModel.isRemovingItem)
+
+        viewModel.requestRemove(scope: .scan, id: "shared-scan-active")
+
+        #expect(viewModel.pendingAlert == nil)
+        await removalTask.value
+    }
+
     @Test func removeFailurePreservesProjectAndShowsErrorToast() async {
         let service = MockSharedService(simulatedDelayNanoseconds: 0)
         let viewModel = SharedWithMeViewModel(service: service)
@@ -269,6 +287,47 @@ struct SharedWithMeViewModelTests {
 
         #expect(viewModel.scans.contains(where: { $0.id == scan.id }))
         #expect(viewModel.scansViewState == .loaded)
+    }
+}
+
+private actor RemovalBlockingSharedService: SharedService {
+    private let base: MockSharedService
+    private var hasStartedRemoval = false
+    private var removalStartContinuations: [CheckedContinuation<Void, Never>] = []
+
+    init(base: MockSharedService) {
+        self.base = base
+    }
+
+    func waitForRemovalToStartForTesting() async {
+        guard !hasStartedRemoval else { return }
+        await withCheckedContinuation { continuation in
+            removalStartContinuations.append(continuation)
+        }
+    }
+
+    func fetchSharedProjects() async throws -> [SharedProjectItem] {
+        try await base.fetchSharedProjects()
+    }
+
+    func fetchSharedScans() async throws -> [SharedScanItem] {
+        try await base.fetchSharedScans()
+    }
+
+    func removeSharedItem(id: String, scope: SharedItemScope) async throws {
+        hasStartedRemoval = true
+        let continuations = removalStartContinuations
+        removalStartContinuations.removeAll()
+        continuations.forEach { $0.resume() }
+        try await base.removeSharedItem(id: id, scope: scope)
+    }
+
+    func ingestSharedProject(_ project: SharedProjectItem) async throws {
+        try await base.ingestSharedProject(project)
+    }
+
+    func ingestSharedScan(_ scan: SharedScanItem) async throws {
+        try await base.ingestSharedScan(scan)
     }
 }
 

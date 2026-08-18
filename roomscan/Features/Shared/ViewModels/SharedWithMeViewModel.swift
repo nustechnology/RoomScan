@@ -39,6 +39,7 @@ final class SharedWithMeViewModel {
     private(set) var scans: [SharedScanItem] = []
     private(set) var toastMessage: String?
     private(set) var pendingAlert: PendingAlert?
+    private(set) var isRemovingItem = false
 
     init(service: any SharedService) {
         self.service = service
@@ -105,6 +106,7 @@ final class SharedWithMeViewModel {
     }
 
     func requestRemove(scope: SharedItemScope, id: String) {
+        guard !isRemovingItem else { return }
         pendingAlert = .confirmRemove(scope: scope, id: id)
     }
 
@@ -113,7 +115,7 @@ final class SharedWithMeViewModel {
     }
 
     func confirmPendingAlertAction() async {
-        guard let pendingAlert else { return }
+        guard !isRemovingItem, let pendingAlert else { return }
         let scope: SharedItemScope
         let id: String
 
@@ -185,6 +187,10 @@ final class SharedWithMeViewModel {
     }
 
     private func removeItem(id: String, scope: SharedItemScope) async {
+        guard !isRemovingItem else { return }
+        isRemovingItem = true
+        defer { isRemovingItem = false }
+
         do {
             try await service.removeSharedItem(id: id, scope: scope)
             switch scope {
