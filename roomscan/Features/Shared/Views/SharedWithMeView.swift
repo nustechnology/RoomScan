@@ -67,6 +67,7 @@ struct SharedWithMeView: View {
             Button(String(localized: "shared.remove.action"), role: .destructive) {
                 Task { await viewModel.confirmPendingAlertAction() }
             }
+            .disabled(viewModel.isRemovingItem)
         } message: {
             Text(alertMessage)
         }
@@ -76,6 +77,15 @@ struct SharedWithMeView: View {
                     .padding()
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .accessibilityIdentifier("shared.toast")
+            }
+        }
+        .overlay {
+            if viewModel.isRemovingItem {
+                ProgressView()
+                    .controlSize(.large)
+                    .padding(24)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    .accessibilityIdentifier("shared.remove.loading")
             }
         }
         .animation(.default, value: viewModel.toastMessage)
@@ -136,6 +146,7 @@ struct SharedWithMeView: View {
             SharedProjectsContentView(
                 viewState: viewModel.projectsViewState,
                 projects: viewModel.projects,
+                isRemovingItem: viewModel.isRemovingItem,
                 onRetry: { await viewModel.retrySelectedTab() },
                 onRefresh: { await viewModel.refreshSelectedTab() },
                 onTap: handleProjectTap,
@@ -145,6 +156,7 @@ struct SharedWithMeView: View {
             SharedScansContentView(
                 viewState: viewModel.scansViewState,
                 scans: viewModel.scans,
+                isRemovingItem: viewModel.isRemovingItem,
                 onRetry: { await viewModel.retrySelectedTab() },
                 onRefresh: { await viewModel.refreshSelectedTab() },
                 onTap: handleScanTap,
@@ -193,7 +205,7 @@ struct SharedWithMeView: View {
     private var alertBinding: Binding<Bool> {
         Binding(
             get: { viewModel.pendingAlert != nil },
-            set: { if !$0 { viewModel.dismissAlert() } }
+            set: { _ in }
         )
     }
 
@@ -233,6 +245,7 @@ struct SharedWithMeView: View {
 private struct SharedProjectsContentView: View {
     let viewState: SharedWithMeViewModel.ViewState
     let projects: [SharedProjectItem]
+    let isRemovingItem: Bool
     let onRetry: () async -> Void
     let onRefresh: () async -> Void
     let onTap: (SharedProjectItem) -> Void
@@ -284,6 +297,7 @@ private struct SharedProjectsContentView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .disabled(isRemovingItem)
             .refreshable { await onRefresh() }
             .accessibilityIdentifier("shared.projects.list")
         }
@@ -293,6 +307,7 @@ private struct SharedProjectsContentView: View {
 private struct SharedScansContentView: View {
     let viewState: SharedWithMeViewModel.ViewState
     let scans: [SharedScanItem]
+    let isRemovingItem: Bool
     let onRetry: () async -> Void
     let onRefresh: () async -> Void
     let onTap: (SharedScanItem) -> Void
@@ -344,6 +359,7 @@ private struct SharedScansContentView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .disabled(isRemovingItem)
             .refreshable { await onRefresh() }
             .accessibilityIdentifier("shared.scans.list")
         }

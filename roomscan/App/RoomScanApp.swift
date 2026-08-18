@@ -24,7 +24,7 @@ struct RoomScanApp: App {
     @State private var projectsService: any ProjectsService
     @State private var notesService: any NotesService
     @State private var shareService: MockShareService
-    @State private var sharedService: MockSharedService
+    @State private var sharedService: any SharedService
     private let scanDetailService: (any ScanDetailService)?
 
     init() {
@@ -70,7 +70,10 @@ struct RoomScanApp: App {
         _projectsService = State(initialValue: resolvedProjectsService)
         _notesService = State(initialValue: resolvedNotesService)
         _shareService = State(initialValue: MockShareService.makeForCurrentProcess())
-        _sharedService = State(initialValue: MockSharedService.makeForCurrentProcess())
+        _sharedService = State(initialValue: isUITesting
+            ? MockSharedService.makeForCurrentProcess()
+            : RemoteSharedService(httpClient: authenticatedClient)
+        )
     }
 
     var body: some Scene {
