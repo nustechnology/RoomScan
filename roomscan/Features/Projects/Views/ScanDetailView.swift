@@ -30,10 +30,6 @@ struct ScanDetailView: View {
     @State private var showsMissingScanAlert = false
     @State private var showsRetryCamera = false
 
-    private var canOpen3DModel: Bool {
-        viewModel.canOpen3DModel
-    }
-
     private var open3DModelButtonTitle: String { String(localized: "scanDetail.open3DModel") }
 
     var body: some View {
@@ -147,6 +143,8 @@ struct ScanDetailView: View {
         .overlay {
             if let loadingAction {
                 loadingOverlay(for: loadingAction)
+            } else if viewModel.isLoadingDetail {
+                scanDetailLoadingOverlay
             }
         }
         .task {
@@ -159,7 +157,7 @@ struct ScanDetailView: View {
             viewModel: viewModel,
             onScanUpdated: onScanUpdated
         ))
-        .disabled(viewModel.isPerformingAction)
+        .disabled(viewModel.isPerformingAction || viewModel.isLoadingDetail)
     }
 
     private var open3DModelButton: some View {
@@ -170,13 +168,13 @@ struct ScanDetailView: View {
             action: open3DModel,
             accessibilityIdentifier: "scanDetail.open3DModel"
         )
-        .disabled(!canOpen3DModel)
-        .opacity(canOpen3DModel ? 1 : 0.5)
+        .disabled(!viewModel.canOpen3DModel)
+        .opacity(viewModel.canOpen3DModel ? 1 : 0.5)
     }
 
     @ViewBuilder
     private var thumbnailCard: some View {
-        if canOpen3DModel {
+        if viewModel.canOpen3DModel {
             Button(action: open3DModel) {
                 thumbnailContent
             }
@@ -250,6 +248,7 @@ struct ScanDetailView: View {
             projectName: projectName,
             scanID: viewModel.scan.id,
             scanName: viewModel.scan.name,
+            modelVersion: viewModel.viewerModelVersion,
             modelURL: viewModel.scan.localModelURL
         )
     }
@@ -326,6 +325,19 @@ struct ScanDetailView: View {
 }
 
 private extension ScanDetailView {
+    var scanDetailLoadingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.12)
+                .ignoresSafeArea()
+
+            ProgressView()
+                .controlSize(.large)
+                .padding(AppSpacing.extraLarge)
+                .background(AppColors.background, in: RoundedRectangle(cornerRadius: AppCornerRadius.large))
+                .accessibilityIdentifier("scanDetail.loading")
+        }
+    }
+
     private func loadingOverlay(for action: ConfirmationAction) -> some View {
         ZStack {
             Color.black.opacity(0.2)

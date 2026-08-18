@@ -92,7 +92,8 @@ struct ViewerView: View {
                         NotesListSection(
                             notes: viewModel.notes,
                             selectedNoteID: viewModel.selectedNoteID,
-                            isAddEnabled: viewModel.isModelReady && viewModel.allowsOwnerActions,
+                            isLoading: viewModel.isLoadingNotes,
+                            isAddEnabled: viewModel.isModelReady && viewModel.allowsOwnerActions && !viewModel.isLoadingNotes,
                             showsOwnerActions: viewModel.allowsOwnerActions,
                             onAddNote: { viewModel.beginAddNote() },
                             onSelectNote: { viewModel.selectNote(id: $0.id) },
@@ -191,6 +192,11 @@ struct ViewerView: View {
             }
         }
         .overlay { alertHosts }
+        .overlay {
+            if viewModel.isBusy && viewModel.editorMode == nil {
+                NoteOperationLoadingOverlay()
+            }
+        }
         .animation(.easeInOut(duration: 0.25), value: viewModel.isFullscreen)
         .task {
             await viewModel.load()
@@ -239,6 +245,7 @@ struct ViewerView: View {
             )
         }
         .accessibilityIdentifier("viewer.screen")
+        .disabled(viewModel.isBusy && viewModel.editorMode == nil)
     }
 }
 
@@ -451,6 +458,22 @@ private struct ViewerCanvasErrorState: View {
         }
         .multilineTextAlignment(.center)
         .padding(AppSpacing.extraLarge)
+    }
+}
+
+private struct NoteOperationLoadingOverlay: View {
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.18)
+                .ignoresSafeArea()
+
+            ProgressView()
+                .controlSize(.large)
+                .tint(AppColors.brandBlueBottom)
+                .padding(AppSpacing.extraLarge)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppCornerRadius.large))
+        }
+        .accessibilityIdentifier("viewer.note.operation.loading")
     }
 }
 

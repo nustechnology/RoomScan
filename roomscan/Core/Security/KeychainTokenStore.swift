@@ -55,6 +55,7 @@ struct LiveKeychainTokenStore: KeychainTokenStore {
         guard status == errSecSuccess else {
             throw KeychainError.saveFailed(status)
         }
+
     }
 
     func getStoredAuthData() throws -> StoredAuthData? {
@@ -82,7 +83,8 @@ struct LiveKeychainTokenStore: KeychainTokenStore {
         }
 
         do {
-            return try JSONDecoder().decode(StoredAuthData.self, from: data)
+            let storedData = try JSONDecoder().decode(StoredAuthData.self, from: data)
+            return storedData
         } catch {
             throw KeychainError.unexpectedData
         }

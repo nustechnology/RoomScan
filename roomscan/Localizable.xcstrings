@@ -4113,6 +4113,17 @@
         }
       }
     },
+    "viewer.notes.load.error" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't load notes. Please try again."
+          }
+        }
+      }
+    },
     "viewer.note.save.error" : {
       "extractionState" : "manual",
       "localizations" : {

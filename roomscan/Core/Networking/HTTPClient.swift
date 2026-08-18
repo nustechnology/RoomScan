@@ -200,13 +200,6 @@ struct LiveHTTPClient: HTTPClient {
         }
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            #if DEBUG
-            print(
-                """
-                [HTTP] invalid response type method=\(endpoint.method.rawValue) path=\(endpoint.path)
-                """
-            )
-            #endif
             throw HTTPClientError.networkError
         }
 

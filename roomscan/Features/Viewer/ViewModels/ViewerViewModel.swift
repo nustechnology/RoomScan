@@ -24,6 +24,7 @@ final class ViewerViewModel {
     private(set) var loadState: LoadState = .idle
     private(set) var modelSource: ModelSource?
     private(set) var notes: [SpatialNote] = []
+    private(set) var isLoadingNotes = false
     private(set) var selectedNoteID: String?
     private(set) var viewMode: ViewerMode = .threeD
     private(set) var isFullscreen = false
@@ -93,6 +94,7 @@ final class ViewerViewModel {
                 detail: "",
                 color: .default,
                 position: placementDraftPosition,
+                orientation: .zero,
                 createdAt: .now,
                 updatedAt: .now,
                 modelVersion: "draft"
@@ -117,6 +119,8 @@ final class ViewerViewModel {
     private let notesService: any NotesService
     private let modelLoadingService: any ModelLoadingService
     private let modelDownloadService: (any ScanDetailService)?
+    private var scanModelVersion: String?
+    private let noteDetailRequest = NoteDetailRequest()
 
     init(
         input: ViewerInput,
@@ -131,6 +135,7 @@ final class ViewerViewModel {
         self.notesService = notesService
         self.modelLoadingService = modelLoadingService
         self.modelDownloadService = modelDownloadService
+        self.scanModelVersion = input.modelVersion
     }
 
     convenience init(
@@ -156,7 +161,6 @@ final class ViewerViewModel {
         do {
             let modelURL = try await resolveModelURL(forceDownload: isRetry)
             let source = try await modelLoadingService.resolveSource(modelURL: modelURL)
-            notes = try await notesService.fetchNotes(scanID: input.scanID)
             modelSource = source
             if source == .sampleRoom {
                 loadState = .loaded(source)
@@ -165,10 +169,21 @@ final class ViewerViewModel {
             modelSource = nil
             await keepRetryLoadingVisibleIfNeeded(isRetry: isRetry, startedAt: startedAt)
             loadState = .failed(error)
+            return
         } catch {
             modelSource = nil
             await keepRetryLoadingVisibleIfNeeded(isRetry: isRetry, startedAt: startedAt)
             loadState = .failed(.loadFailed)
+            return
+        }
+
+        isLoadingNotes = true
+        defer { isLoadingNotes = false }
+        do {
+            notes = try await notesService.fetchNotes(scanID: input.scanID)
+        } catch {
+            notes = []
+            operationErrorMessage = String(localized: "viewer.notes.load.error")
         }
     }
 
@@ -221,22 +236,6 @@ final class ViewerViewModel {
         }
     }
 
-    func setViewMode(_ mode: ViewerMode) {
-        viewMode = mode
-    }
-
-    func toggleFullscreen() {
-        isFullscreen.toggle()
-    }
-
-    func renameScan(to title: String) -> Bool {
-        guard allowsOwnerActions else { return false }
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty else { return false }
-        scanTitle = trimmedTitle
-        return true
-    }
-
     func toggleNotesVisibility() {
         areNotesVisible.toggle()
         if !areNotesVisible {
@@ -278,12 +277,6 @@ final class ViewerViewModel {
         guard !isBusy else { return }
         placementMode = .idle
         placementDraftPosition = nil
-    }
-
-    func selectNote(id: String?) {
-        selectedNoteID = id
-        guard let id, let note = notes.first(where: { $0.id == id }) else { return }
-        cameraCommand = .focus(note.position)
     }
 
     func handleCanvasTap(position: SIMD3<Float>) {
@@ -336,7 +329,9 @@ final class ViewerViewModel {
 
     func openEditor(for note: SpatialNote) {
         guard allowsOwnerActions else { return }
-        editorMode = .edit(note)
+        Task {
+            await openEditor(noteID: note.id)
+        }
     }
 
     func requestDelete(_ note: SpatialNote) {
@@ -350,44 +345,131 @@ final class ViewerViewModel {
 }
 
 extension ViewerViewModel {
-    func saveEditor(title: String, description: String, color: NoteColor) async -> Bool {
+    func selectNote(id: String?) {
+        noteDetailRequest.task?.cancel()
+        selectedNoteID = id
+        guard let id else { return }
+
+        if let note = notes.first(where: { $0.id == id }) {
+            cameraCommand = .focus(note.position)
+        }
+
+        let notesService = notesService
+        noteDetailRequest.task = Task { [weak self, notesService] in
+            guard let note = try? await notesService.fetchNote(noteID: id), !Task.isCancelled else {
+                return
+            }
+            self?.applyFetchedNote(note)
+        }
+    }
+
+    func setViewMode(_ mode: ViewerMode) {
+        viewMode = mode
+    }
+
+    func toggleFullscreen() {
+        isFullscreen.toggle()
+    }
+
+    func renameScan(to title: String) -> Bool {
         guard allowsOwnerActions else { return false }
-        guard let editorMode, !isBusy else { return false }
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return false }
+        scanTitle = trimmedTitle
+        return true
+    }
+
+    func saveEditor(title: String, description: String, color: NoteColor) async -> Bool {
+        guard allowsOwnerActions else {
+            logNote("save skipped reason=owner-actions-not-allowed scanID=\(input.scanID)")
+            return false
+        }
+        guard let editorMode else {
+            logNote("save skipped reason=editor-not-present scanID=\(input.scanID)")
+            return false
+        }
+        guard !isBusy else {
+            logNote("save skipped reason=operation-in-progress scanID=\(input.scanID)")
+            return false
+        }
         isBusy = true
         defer { isBusy = false }
-
         do {
             switch editorMode {
             case .create(let position):
-                let note = try await notesService.createNote(
-                    scanID: input.scanID,
+                guard try await saveNewNote(
                     title: title,
                     description: description,
                     color: color,
                     position: position
-                )
-                notes.append(note)
-                selectedNoteID = note.id
-                cameraCommand = .focus(note.position)
+                ) else {
+                    operationErrorMessage = String(localized: "viewer.note.save.error")
+                    return false
+                }
             case .edit(let existing):
-                let updated = try await notesService.updateNote(
-                    scanID: input.scanID,
-                    noteID: existing.id,
+                try await saveExistingNote(
+                    existing,
                     title: title,
                     description: description,
                     color: color
                 )
-                if let index = notes.firstIndex(where: { $0.id == updated.id }) {
-                    notes[index] = updated
-                }
-                selectedNoteID = updated.id
             }
             self.editorMode = nil
             return true
         } catch {
+            logNote("save failed scanID=\(input.scanID) category=operation")
             operationErrorMessage = String(localized: "viewer.note.save.error")
             return false
         }
+    }
+    private func saveNewNote(
+        title: String,
+        description: String,
+        color: NoteColor,
+        position: SIMD3<Float>
+    ) async throws -> Bool {
+        guard let modelVersion = await resolveModelVersion() else {
+            logNote("create skipped reason=model-version-unavailable scanID=\(input.scanID)")
+            return false
+        }
+        logNote("create started scanID=\(input.scanID) modelVersion=\(modelVersion)")
+        let note = try await notesService.createNote(
+            scanID: input.scanID,
+            input: CreateNoteInput(
+                title: title,
+                description: description,
+                color: color,
+                position: position,
+                orientation: .zero,
+                modelVersion: modelVersion
+            )
+        )
+        notes.append(note)
+        selectedNoteID = note.id
+        cameraCommand = .focus(note.position)
+        logNote("create succeeded scanID=\(input.scanID) noteID=\(note.id)")
+        return true
+    }
+
+    private func saveExistingNote(
+        _ existing: SpatialNote,
+        title: String,
+        description: String,
+        color: NoteColor
+    ) async throws {
+        logNote("update started scanID=\(input.scanID) noteID=\(existing.id)")
+        let updated = try await notesService.updateNote(
+            scanID: input.scanID,
+            noteID: existing.id,
+            title: title,
+            description: description,
+            color: color
+        )
+        if let index = notes.firstIndex(where: { $0.id == updated.id }) {
+            notes[index] = updated
+        }
+        selectedNoteID = updated.id
+        logNote("update succeeded scanID=\(input.scanID) noteID=\(updated.id)")
     }
 
     func confirmDelete(_ note: SpatialNote) async {
@@ -423,10 +505,17 @@ extension ViewerViewModel {
         }
 
         do {
+            guard let existing = notes.first(where: { $0.id == noteID }) else {
+                operationErrorMessage = String(localized: "viewer.note.move.error")
+                return
+            }
             let updated = try await notesService.moveNote(
-                scanID: input.scanID,
                 noteID: noteID,
-                position: position
+                input: MoveNoteInput(
+                    position: position,
+                    orientation: existing.orientation,
+                    modelVersion: existing.modelVersion
+                )
             )
             if let index = notes.firstIndex(where: { $0.id == updated.id }) {
                 notes[index] = updated
@@ -436,6 +525,69 @@ extension ViewerViewModel {
         } catch {
             operationErrorMessage = String(localized: "viewer.note.move.error")
         }
+    }
+
+    func openEditor(noteID: String) async {
+        guard allowsOwnerActions, !isBusy else { return }
+        isBusy = true
+        defer { isBusy = false }
+
+        do {
+            let note = try await notesService.fetchNote(noteID: noteID)
+            applyFetchedNote(note)
+            editorMode = .edit(note)
+            selectedNoteID = noteID
+        } catch {
+            operationErrorMessage = String(localized: "viewer.notes.load.error")
+        }
+    }
+
+    func applyFetchedNote(_ note: SpatialNote) {
+        if let index = notes.firstIndex(where: { $0.id == note.id }) {
+            notes[index] = note
+        }
+        if selectedNoteID == note.id {
+            cameraCommand = .focus(note.position)
+        }
+    }
+
+    /// The scan detail is authoritative; local note metadata is only used offline.
+    private func resolveModelVersion() async -> String? {
+        if let scanModelVersion, !scanModelVersion.isEmpty {
+            return scanModelVersion
+        }
+
+        if let modelDownloadService {
+            do {
+                let detail = try await modelDownloadService.fetchScanDetail(id: input.scanID)
+                let modelVersion = String(detail.modelVersion)
+                scanModelVersion = modelVersion
+                logNote("model version loaded scanID=\(input.scanID) modelVersion=\(modelVersion)")
+                return modelVersion
+            } catch {
+                logNote(
+                    "model version unavailable scanID=\(input.scanID) " +
+                    "category=\(modelVersionLoadFailureCategory(error))"
+                )
+                return nil
+            }
+        }
+
+        return notes.first(where: { !$0.modelVersion.isEmpty })?.modelVersion
+    }
+
+    private func modelVersionLoadFailureCategory(_ error: Error) -> String {
+        guard let error = error as? HTTPClientError else { return "unexpected" }
+        if case .serverError(let statusCode, _) = error { return "server-\(statusCode)" }
+        if case .networkError = error { return "network" }
+        if case .invalidURL = error { return "invalid-url" }
+        return "decoding"
+    }
+
+    private func logNote(_ message: String) {
+        #if DEBUG
+        print("[Notes] \(message)")
+        #endif
     }
 }
 

@@ -23,7 +23,7 @@ Read the relevant documents before contributing or implementing new features. AI
    ./scripts/install-git-hooks.sh
    ```
 
-3. Use an Xcode version that supports the configured iOS 26.2 deployment target.
+3. Use an Xcode version that supports the configured iOS 26.2 deployment target and an iOS 26.5 simulator runtime.
 4. Build and run the `roomscan` scheme.
 
 RoomPlan furniture preview uses Apple's sample `RoomPlanCatalog.bundle` (WWDC23 *Providing custom models for captured rooms and structure exports*, MIT). License: `roomscan/Resources/RoomPlanCatalog.LICENSE.txt`.
@@ -44,7 +44,7 @@ The shared pre-commit hook runs:
 
 ```sh
 git diff --check
-xcodebuild test -project roomscan.xcodeproj -scheme roomscan -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.2' -only-testing:roomscanTests -derivedDataPath .derivedData CODE_SIGNING_ALLOWED=NO
+xcodebuild test -project roomscan.xcodeproj -scheme roomscan -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' -only-testing:roomscanTests -derivedDataPath .derivedData CODE_SIGNING_ALLOWED=NO
 ```
 
 Run `./scripts/install-git-hooks.sh` once after cloning the repository to enable the hook locally.

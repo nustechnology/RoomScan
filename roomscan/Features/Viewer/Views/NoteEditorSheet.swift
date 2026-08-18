@@ -6,7 +6,13 @@
 import SwiftUI
 
 struct NoteEditorSheet: View {
+    private enum Field: Hashable {
+        case title
+        case description
+    }
+
     @State private var viewModel: NoteEditorViewModel
+    @FocusState private var focusedField: Field?
     // `@MainActor` required: without it, Approachable Concurrency miscompiles async
     // closure ABI and the first String arg becomes the isolation token (crash in createNote).
     let onSave: @MainActor (String, String, NoteColor) async -> Bool
@@ -41,12 +47,19 @@ struct NoteEditorSheet: View {
                 .padding(.horizontal, AppSpacing.extraLarge)
                 .padding(.top, AppSpacing.extraLarge)
                 .padding(.bottom, AppSpacing.extraLarge)
+                .background {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { focusedField = nil }
+                }
             }
+            .scrollDismissesKeyboard(.interactively)
 
             actions
         }
         .background(AppColors.background)
         .interactiveDismissDisabled(viewModel.isSaving)
+        .disabled(viewModel.isSaving)
     }
 
     private var header: some View {
@@ -101,6 +114,7 @@ struct NoteEditorSheet: View {
                     .stroke(Color(uiColor: .systemGray4), lineWidth: 1.5)
             }
             .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large))
+            .focused($focusedField, equals: .title)
             .accessibilityIdentifier("viewer.note.editor.title")
 
             characterCountText("\(viewModel.titleCharacterCount)/\(NoteEditorViewModel.titleLimit)")
@@ -133,6 +147,7 @@ struct NoteEditorSheet: View {
                     .stroke(Color(uiColor: .systemGray4), lineWidth: 1.5)
             }
             .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large))
+            .focused($focusedField, equals: .description)
             .accessibilityIdentifier("viewer.note.editor.description")
 
             characterCountText(
@@ -189,7 +204,8 @@ struct NoteEditorSheet: View {
                     ? AppColors.brandBlueBottom
                     : Color(uiColor: .systemGray3),
                 action: save,
-                accessibilityIdentifier: "viewer.note.editor.save"
+                accessibilityIdentifier: "viewer.note.editor.save",
+                isLoading: viewModel.isSaving
             )
             .disabled(!viewModel.canSave || viewModel.isSaving)
 

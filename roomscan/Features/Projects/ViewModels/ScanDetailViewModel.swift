@@ -116,6 +116,10 @@ final class ScanDetailViewModel {
         scanDetailService
     }
 
+    var viewerModelVersion: String? {
+        detail.map { String($0.modelVersion) }
+    }
+
     func beginRename() {
         guard allowsOwnerActions else { return }
         renameDraft = scan.name

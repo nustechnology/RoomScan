@@ -373,6 +373,14 @@ struct ScanDetailAssetAvailabilityTests {
         #expect(availableViewModel.canOpen3DModel)
     }
 
+    @Test func viewerModelVersionMatchesScanDetailVersion() async {
+        let viewModel = makeViewModel(assetStatus: "UPLOADED")
+
+        await viewModel.loadDetail()
+
+        #expect(viewModel.viewerModelVersion == "1")
+    }
+
     private func makeViewModel(assetStatus: String) -> ScanDetailViewModel {
         ScanDetailViewModel(
             projectID: "project-1",

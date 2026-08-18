@@ -8,6 +8,7 @@ import SwiftUI
 struct NotesListSection: View {
     let notes: [SpatialNote]
     let selectedNoteID: String?
+    let isLoading: Bool
     let isAddEnabled: Bool
     let showsOwnerActions: Bool
     let onAddNote: () -> Void
@@ -39,8 +40,8 @@ struct NotesListSection: View {
                         .background(AppColors.brandBlueBottom.opacity(0.12), in: Capsule())
                     }
                     .buttonStyle(.plain)
-                    .disabled(!isAddEnabled)
-                    .opacity(isAddEnabled ? 1 : 0.45)
+                    .disabled(!isAddEnabled || isLoading)
+                    .opacity(isAddEnabled && !isLoading ? 1 : 0.45)
                     .accessibilityIdentifier("viewer.notes.add")
                 }
             }
@@ -48,7 +49,14 @@ struct NotesListSection: View {
             .padding(.top, AppSpacing.large)
             .padding(.bottom, AppSpacing.medium)
 
-            if notes.isEmpty {
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, AppSpacing.large)
+                    .padding(.bottom, AppSpacing.large)
+                    .accessibilityIdentifier("viewer.notes.loading")
+            } else if notes.isEmpty {
                 Text("viewer.notes.empty")
                     .appTypography(AppTypography.bodyMedium)
                     .foregroundStyle(AppColors.secondaryText)
@@ -80,6 +88,7 @@ struct NotesListSection: View {
                 .padding(.bottom, AppSpacing.small)
             }
         }
+        .disabled(isLoading)
         .background(AppColors.background)
         .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
         .overlay {
