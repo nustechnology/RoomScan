@@ -134,6 +134,35 @@ final class ScanningUITests: XCTestCase {
     }
 
     @MainActor
+    func testNewProjectDetail_addScanPresentsScanReadiness() throws {
+        let app = launchApp(arguments: ["-UITesting", "-UITestSignedIn"])
+
+        let createButton = app.buttons["projects.create"]
+        XCTAssertTrue(createButton.waitForExistence(timeout: 5))
+        createButton.tap()
+
+        let nameField = app.textFields["projects.newProject.name"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 5))
+        nameField.tap()
+        nameField.typeText("Scan Project")
+
+        let saveButton = app.buttons["projects.newProject.save"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 5))
+        let saveEnabledPredicate = NSPredicate(format: "isEnabled == true")
+        expectation(for: saveEnabledPredicate, evaluatedWith: saveButton, handler: nil)
+        waitForExpectations(timeout: 5)
+        saveButton.tap()
+        let addScanButton = app.buttons["projects.detail.addScan"]
+        XCTAssertTrue(addScanButton.waitForExistence(timeout: 5))
+        addScanButton.tap()
+        XCTAssertTrue(app.buttons["scancheck.startScan"].waitForExistence(timeout: 5))
+        let cancelButton = app.buttons["scancheck.cancelButton"]
+        XCTAssertTrue(cancelButton.waitForExistence(timeout: 5))
+        cancelButton.tap()
+        XCTAssertTrue(app.scrollViews["projects.list"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     private func launchApp(arguments: [String]) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = arguments
