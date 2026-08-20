@@ -28,6 +28,10 @@ struct HomeView: View {
     @State private var showsNewProject = false
     @State private var pendingCreatedProject: ProjectSummary?
     @State private var selectedCreatedProject: ProjectSummary?
+    // Separate from ProjectsView's pending scan state: this request originates
+    // from the project-creation cover and is published when HomeView's cover dismisses.
+    @State private var scanRequestAfterProjectCreation: String?
+    @State private var requestedScanSourceProjectID: String?
     @State private var isShowingProjectsDetail = false
     @State private var activeInvitation: PendingInvitation?
     @State private var acceptedProject: ProjectSummary?
@@ -139,22 +143,13 @@ struct HomeView: View {
                 )
             }
         )
-        .fullScreenCover(item: $selectedCreatedProject) { project in
-            ProjectDetailView(
-                project: project,
-                projectsService: projectsService,
-                scanDetailService: scanDetailService,
-                notesService: notesService,
-                shareService: shareService,
-                currentUserID: session.user.id,
-                onScanUpdated: { updatedScan in
-                    projectsViewModel.applyUpdatedScan(projectID: project.id, scan: updatedScan)
-                },
-                onScanDeleted: { scanID in
-                    projectsViewModel.applyDeletedScan(projectID: project.id, scanID: scanID)
-                }
-            )
-        }
+        .fullScreenCover(
+            item: $selectedCreatedProject,
+            onDismiss: publishPendingProjectScanRequest,
+            content: { project in
+                createdProjectDetailCover(for: project)
+            }
+        )
         .fullScreenCover(item: $activeInvitation) { invitation in
             InvitationView(
                 viewModel: InvitationViewModel(
@@ -223,7 +218,8 @@ struct HomeView: View {
                 shareService: shareService,
                 currentUserID: session.user.id,
                 showsNavigationTitle: false,
-                isShowingDetail: $isShowingProjectsDetail
+                isShowingDetail: $isShowingProjectsDetail,
+                requestedScanSourceProjectID: $requestedScanSourceProjectID
             )
         case .share:
             SharedWithMeView(
@@ -323,6 +319,33 @@ struct HomeView: View {
 }
 
 private extension HomeView {
+    func publishPendingProjectScanRequest() {
+        guard let scanRequestAfterProjectCreation else { return }
+        requestedScanSourceProjectID = scanRequestAfterProjectCreation
+        self.scanRequestAfterProjectCreation = nil
+    }
+
+    func createdProjectDetailCover(for project: ProjectSummary) -> some View {
+        ProjectDetailView(
+            project: project,
+            projectsService: projectsService,
+            scanDetailService: scanDetailService,
+            notesService: notesService,
+            shareService: shareService,
+            currentUserID: session.user.id,
+            onScanUpdated: { updatedScan in
+                projectsViewModel.applyUpdatedScan(projectID: project.id, scan: updatedScan)
+            },
+            onScanDeleted: { scanID in
+                projectsViewModel.applyDeletedScan(projectID: project.id, scanID: scanID)
+            },
+            onAddScan: { projectID in
+                scanRequestAfterProjectCreation = projectID
+                selectedCreatedProject = nil
+            }
+        )
+    }
+
     /// Covers Home header, tab content, and bottom nav while a project delete is in flight.
     var projectDeleteLoadingOverlay: some View {
         ZStack {

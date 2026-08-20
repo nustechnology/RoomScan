@@ -17,6 +17,7 @@ struct ProjectsView: View {
     var currentUserID: String
     var showsNavigationTitle = true
     @Binding var isShowingDetail: Bool
+    @Binding var requestedScanSourceProjectID: String?
 
     @State private var projectToEdit: ProjectSummary?
     @State private var projectPendingDelete: ProjectSummary?
@@ -40,7 +41,8 @@ struct ProjectsView: View {
         shareService: any ShareService,
         currentUserID: String,
         showsNavigationTitle: Bool = true,
-        isShowingDetail: Binding<Bool> = .constant(false)
+        isShowingDetail: Binding<Bool> = .constant(false),
+        requestedScanSourceProjectID: Binding<String?> = .constant(nil)
     ) {
         _viewModel = State(initialValue: viewModel)
         self.projectsService = projectsService
@@ -50,6 +52,7 @@ struct ProjectsView: View {
         self.currentUserID = currentUserID
         self.showsNavigationTitle = showsNavigationTitle
         _isShowingDetail = isShowingDetail
+        _requestedScanSourceProjectID = requestedScanSourceProjectID
     }
 
     var body: some View {
@@ -84,6 +87,19 @@ struct ProjectsView: View {
                 pendingSavedScanForDetails: $pendingSavedScanForDetails,
                 storageService: storageService
             ))
+            .onChange(of: requestedScanSourceProjectID) { _, projectID in
+                handleRequestedScanSource(projectID)
+            }
+            .onAppear {
+                handleRequestedScanSource(requestedScanSourceProjectID)
+            }
+    }
+
+    private func handleRequestedScanSource(_ projectID: String?) {
+        guard let projectID else { return }
+        scanningSourceProjectID = projectID
+        requestedScanSourceProjectID = nil
+        showsScanFlow = true
     }
 
     private var toastOverlay: some View {
