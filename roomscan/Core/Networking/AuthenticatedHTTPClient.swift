@@ -54,7 +54,7 @@ struct AuthenticatedHTTPClient: HTTPClient {
                     }
                     throw error
                 }
-                throw mapRefreshFailure(authError)
+                throw mapRefreshFailure(authError, originalError: error)
             }
 
             let retriedEndpoint = endpoint.addingHeader(
@@ -90,14 +90,22 @@ struct AuthenticatedHTTPClient: HTTPClient {
         }
     }
 
-    private func mapRefreshFailure(_ error: AuthenticationError) -> HTTPClientError {
+    private func mapRefreshFailure(
+        _ error: AuthenticationError,
+        originalError: HTTPClientError
+    ) -> HTTPClientError {
         switch error {
         case .networkError:
             return .networkError
         case .invalidCredential:
             return .serverError(statusCode: 401, apiError: nil)
+        case .serverRejected(let statusCode):
+            return .serverError(statusCode: statusCode, apiError: nil)
         case .unknown, .unavailable, .appleSystemError, .cancelled:
-            return .decodingError(underlying: String(describing: error), bodyPreview: "")
+            // Refresh failed for a reason with no HTTP equivalent (keychain access, a
+            // malformed refresh payload). The caller's request still failed for its own
+            // reason, so report that rather than inventing a category.
+            return originalError
         }
     }
 }

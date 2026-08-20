@@ -49,14 +49,10 @@ actor AccessTokenRefreshCoordinator {
                 body: body
             )
 
-            let response: RefreshTokenAPIResponse
-            do {
-                response = try await httpClient.request(endpoint)
-            } catch let error as HTTPClientError {
-                throw Self.mapRefreshError(error)
-            } catch {
-                throw AuthenticationError.networkError
-            }
+            let response: RefreshTokenAPIResponse = try await Self.requestWithRetry(
+                httpClient: httpClient,
+                endpoint: endpoint
+            )
 
             let updatedData = StoredAuthData(
                 accessToken: response.accessToken,
@@ -86,6 +82,41 @@ actor AccessTokenRefreshCoordinator {
         }
     }
 
+    // Retries on transient network errors with exponential backoff: 1s → 2s → 4s.
+    // Non-retryable errors (invalid credential, decoding, etc.) are surfaced immediately.
+    private static func requestWithRetry(
+        httpClient: any HTTPClient,
+        endpoint: APIEndpoint,
+        maxAttempts: Int = 3
+    ) async throws -> RefreshTokenAPIResponse {
+        let retryDelays: [UInt64] = [1_000_000_000, 2_000_000_000, 4_000_000_000]
+
+        var lastError: AuthenticationError = .networkError
+        for attempt in 0..<maxAttempts {
+            try Task.checkCancellation()
+            do {
+                return try await httpClient.request(endpoint)
+            } catch let error as HTTPClientError {
+                let mapped = mapRefreshError(error)
+                guard isRetryable(mapped) else {
+                    throw mapped
+                }
+                lastError = mapped
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                lastError = .networkError
+            }
+
+            let nextAttempt = attempt + 1
+            if nextAttempt < maxAttempts {
+                try await Task.sleep(nanoseconds: retryDelays[attempt])
+            }
+        }
+
+        throw lastError
+    }
+
     private static func mapRefreshError(_ error: HTTPClientError) -> AuthenticationError {
         switch error {
         case .networkError:
@@ -105,10 +136,24 @@ actor AccessTokenRefreshCoordinator {
                 }
             }
 
-            return .networkError
+            return .serverRejected(statusCode: statusCode)
 
         case .invalidURL, .decodingError:
             return .unknown
+        }
+    }
+
+    // Whether another attempt could plausibly succeed. This is deliberately a separate
+    // question from `mapRefreshError`: a rejected refresh is reported to the caller the
+    // same way whether or not it was worth retrying.
+    private static func isRetryable(_ error: AuthenticationError) -> Bool {
+        switch error {
+        case .networkError:
+            return true
+        case .serverRejected(let statusCode):
+            return statusCode == 408 || statusCode == 429 || (500...599).contains(statusCode)
+        case .invalidCredential, .unavailable, .unknown, .appleSystemError, .cancelled:
+            return false
         }
     }
 }

@@ -295,6 +295,17 @@
         }
       }
     },
+    "auth.error.serverRejected" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The server rejected the request. Please try again."
+          }
+        }
+      }
+    },
     "auth.error.unavailable" : {
       "extractionState" : "manual",
       "localizations" : {
