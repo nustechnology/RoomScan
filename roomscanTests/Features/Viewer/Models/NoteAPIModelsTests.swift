@@ -23,7 +23,8 @@ struct NoteAPIModelsTests {
             NoteDTO(
                 id: "note-1",
                 scanId: "scan-1",
-                content: "Title\nDetail",
+                title: "Title",
+                content: "Detail",
                 color: "MAGENTA",
                 position: NotePositionDTO(SIMD3(1, 2, 3)),
                 orientation: NotePositionDTO(.zero),
@@ -40,6 +41,33 @@ struct NoteAPIModelsTests {
         #expect(note.detail == "Detail")
     }
 
+    @Test func currentFormatPreservesMultilineDescription() throws {
+        let description = "Left wall, near window\nWidens after rain"
+        let dto = try LiveHTTPClient.makeAPIDecoder().decode(
+            NoteDTO.self,
+            from: Data(currentFormatNoteJSON.utf8)
+        )
+
+        #expect(dto.title == "Crack")
+        #expect(dto.content == description)
+
+        let note = NoteAPIMapping.toSpatialNote(dto)
+
+        #expect(note.title == "Crack")
+        #expect(note.detail == description)
+    }
+
+    @Test func legacyFormatIsSplitDuringDecoding() throws {
+        let json = """
+        {"id":"note-1","scanId":"scan-1","content":"Title\\nDescription","color":"YELLOW","position":{"x":0,"y":0,"z":0},"orientation":{"x":0,"y":0,"z":0},"modelVersion":"1","creator":{"id":"user-1"},"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z","permissions":{"role":"OWNER","canView":true,"canEdit":true,"canDelete":true}}
+        """
+
+        let note = try LiveHTTPClient.makeAPIDecoder().decode(NoteDTO.self, from: Data(json.utf8))
+
+        #expect(note.title == "Title")
+        #expect(note.content == "Description")
+    }
+
     @Test func fetchNotesStopsWhenAnEmptyPageClaimsMorePages() async throws {
         let client = SequencedHTTPClient(responses: [notesPage(items: [noteJSON]), notesPage(items: [])])
         let service = RemoteNotesService(httpClient: client)
@@ -52,7 +80,13 @@ struct NoteAPIModelsTests {
 
     private var noteJSON: String {
         """
-        {"id":"note-1","scanId":"scan-1","content":"Title\\nDetail","color":"YELLOW","position":{"x":0,"y":0,"z":0},"orientation":{"x":0,"y":0,"z":0},"modelVersion":"1","creator":{"id":"user-1"},"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z","permissions":{"role":"OWNER","canView":true,"canEdit":true,"canDelete":true}}
+        {"id":"note-1","scanId":"scan-1","title":"Title","content":"Detail","color":"YELLOW","position":{"x":0,"y":0,"z":0},"orientation":{"x":0,"y":0,"z":0},"modelVersion":"1","creator":{"id":"user-1"},"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z","permissions":{"role":"OWNER","canView":true,"canEdit":true,"canDelete":true}}
+        """
+    }
+
+    private var currentFormatNoteJSON: String {
+        """
+        {"id":"note-1","scanId":"scan-1","title":"Crack","content":"Left wall, near window\\nWidens after rain","color":"YELLOW","position":{"x":0,"y":0,"z":0},"orientation":{"x":0,"y":0,"z":0},"modelVersion":"1","creator":{"id":"user-1"},"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z","permissions":{"role":"OWNER","canView":true,"canEdit":true,"canDelete":true}}
         """
     }
 

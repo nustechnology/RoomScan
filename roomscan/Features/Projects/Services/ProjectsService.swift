@@ -18,7 +18,7 @@ enum ProjectsServiceFactory {
 protocol ProjectsService: Sendable {
     func fetchProjects(page: Int, pageSize: Int) async throws -> ProjectPage
     func fetchProject(id: String) async throws -> ProjectSummary
-    func updateProject(id: String, name: String, description: String) async throws -> ProjectSummary
+    func updateProject(id: String, name: String, description: String, revision: Int) async throws -> ProjectSummary
     func deleteProject(id: String) async throws
     func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary]
     func createProject(name: String, projectDescription: String) async throws -> ProjectSummary
@@ -27,6 +27,12 @@ protocol ProjectsService: Sendable {
     func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary
     func deleteScan(projectID: String, scanID: String) async throws
     func retryScanUpload(projectID: String, scanID: String) async throws -> RoomScanSummary
+}
+
+extension ProjectsService {
+    func updateProject(id: String, name: String, description: String) async throws -> ProjectSummary {
+        try await updateProject(id: id, name: name, description: description, revision: 1)
+    }
 }
 
 /// Supports retrying an existing remote scan with a newly captured pair of assets.

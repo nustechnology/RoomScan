@@ -36,7 +36,9 @@ struct NotePermissionsDTO: Decodable, Sendable, Equatable {
 
 struct NoteDTO: Decodable, Sendable, Equatable {
     let id: String
+    let revision: Int?
     let scanId: String
+    let title: String
     let content: String
     let color: String
     let position: NotePositionDTO
@@ -46,6 +48,76 @@ struct NoteDTO: Decodable, Sendable, Equatable {
     let createdAt: Date
     let updatedAt: Date
     let permissions: NotePermissionsDTO
+
+    private enum CodingKeys: String, CodingKey {
+        case id, revision, scanId, title, content, color, position, orientation
+        case modelVersion, creator, createdAt, updatedAt, permissions
+    }
+
+    init(
+        id: String,
+        revision: Int? = nil,
+        scanId: String,
+        title: String,
+        content: String,
+        color: String,
+        position: NotePositionDTO,
+        orientation: NotePositionDTO,
+        modelVersion: String,
+        creator: NoteCreatorDTO,
+        createdAt: Date,
+        updatedAt: Date,
+        permissions: NotePermissionsDTO
+    ) {
+        self.id = id
+        self.revision = revision
+        self.scanId = scanId
+        self.title = title
+        self.content = content
+        self.color = color
+        self.position = position
+        self.orientation = orientation
+        self.modelVersion = modelVersion
+        self.creator = creator
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.permissions = permissions
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        let decodedRevision: Int?
+        if let value = try? container.decode(Int.self, forKey: .revision) {
+            decodedRevision = value
+        } else if let value = try? container.decode(String.self, forKey: .revision) {
+            decodedRevision = Int(value)
+        } else {
+            decodedRevision = nil
+        }
+        revision = decodedRevision
+        scanId = try container.decode(String.self, forKey: .scanId)
+        let decodedContent = try container.decode(String.self, forKey: .content)
+        if let decodedTitle = try container.decodeIfPresent(String.self, forKey: .title) {
+            // The current API stores title and description separately. Preserve the
+            // description verbatim, including any newlines entered by the user.
+            title = decodedTitle
+            content = decodedContent
+        } else {
+            // Older responses stored "Title\nDescription" in content.
+            let parsedContent = NoteAPIMapping.splitContent(decodedContent)
+            title = parsedContent.title
+            content = parsedContent.detail
+        }
+        color = try container.decode(String.self, forKey: .color)
+        position = try container.decode(NotePositionDTO.self, forKey: .position)
+        orientation = try container.decode(NotePositionDTO.self, forKey: .orientation)
+        modelVersion = try container.decode(String.self, forKey: .modelVersion)
+        creator = try container.decode(NoteCreatorDTO.self, forKey: .creator)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        permissions = try container.decode(NotePermissionsDTO.self, forKey: .permissions)
+    }
 }
 
 struct NotesListAPIResponse: Decodable, Sendable {
@@ -68,6 +140,7 @@ enum NotesAPISort: String, Sendable {
 }
 
 struct CreateNoteAPIRequest: Encodable, Sendable {
+    let title: String
     let content: String
     let color: String
     let position: NotePositionDTO
@@ -76,6 +149,7 @@ struct CreateNoteAPIRequest: Encodable, Sendable {
 }
 
 struct UpdateNoteAPIRequest: Encodable, Sendable {
+    let title: String
     let content: String
     let color: String
 }
@@ -99,12 +173,10 @@ enum NoteAPIMapping {
             print("[Notes] unknown color=\(dto.color); using default")
         }
         #endif
-        let parsedContent = splitContent(dto.content)
-
         return SpatialNote(
             id: dto.id,
-            title: parsedContent.title,
-            detail: parsedContent.detail,
+            title: dto.title,
+            detail: dto.content,
             color: color,
             position: dto.position.simdValue,
             orientation: dto.orientation.simdValue,

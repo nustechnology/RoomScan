@@ -177,7 +177,7 @@ private actor FailingProjectsService: ProjectsService {
     func fetchProject(id: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }
     func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] { throw ProjectsServiceError.network }
     func createProject(name: String, projectDescription: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }
-    func updateProject(id: String, name: String, description: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }
+    func updateProject(id: String, name: String, description: String, revision: Int) async throws -> ProjectSummary { throw ProjectsServiceError.network }
     func deleteProject(id: String) async throws { throw ProjectsServiceError.network }
     func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool { false }
     func saveScan(draft: RoomScanDraft, name: String, projectID: String, meshURL: URL) async throws

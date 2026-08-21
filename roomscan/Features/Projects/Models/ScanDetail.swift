@@ -66,6 +66,7 @@ struct ScanDetailUpdateRequest: Encodable, Sendable {
 
 struct ScanDetailAPIResponse: Decodable, Sendable {
     let id: String
+    let revision: Int?
     let projectId: String
     let name: String
     let description: String?
@@ -89,6 +90,30 @@ struct ScanDetailAPIResponse: Decodable, Sendable {
         let canView: Bool
         let canEdit: Bool
         let canDelete: Bool
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, revision, projectId, name, description, thumbnail, creator
+        case noteCount, assetStatus, syncStatus, modelVersion, createdAt, updatedAt
+        case permissions
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        revision = try container.decodeFlexibleIntIfPresent(forKey: .revision)
+        projectId = try container.decode(String.self, forKey: .projectId)
+        name = try container.decode(String.self, forKey: .name)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        thumbnail = try container.decodeIfPresent(String.self, forKey: .thumbnail)
+        creator = try container.decode(Creator.self, forKey: .creator)
+        noteCount = try container.decode(Int.self, forKey: .noteCount)
+        assetStatus = try container.decode(String.self, forKey: .assetStatus)
+        syncStatus = try container.decode(String.self, forKey: .syncStatus)
+        modelVersion = try container.decode(Int.self, forKey: .modelVersion)
+        createdAt = try container.decode(String.self, forKey: .createdAt)
+        updatedAt = try container.decode(String.self, forKey: .updatedAt)
+        permissions = try container.decode(Permissions.self, forKey: .permissions)
     }
 
     func toScanDetail() throws -> ScanDetail {

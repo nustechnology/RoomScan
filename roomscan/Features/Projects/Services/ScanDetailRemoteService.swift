@@ -21,6 +21,7 @@ extension ScanDetailService {
 struct ScanDetailRemoteService: ScanDetailService {
     private let httpClient: any HTTPClient
     private let urlSession: URLSession
+    private let revisionStore = APIRevisionStore.shared
 
     /// The caller must inject the app-level authenticated client so session
     /// invalidation is consistently propagated to `AppState`.
@@ -33,6 +34,7 @@ struct ScanDetailRemoteService: ScanDetailService {
         let response: ScanDetailAPIResponse = try await httpClient.request(
             APIEndpoint(path: "/api/v1/scans/\(id)")
         )
+        await revisionStore.update(response.revision.map(String.init), for: id)
         return try response.toScanDetail()
     }
 
@@ -40,15 +42,24 @@ struct ScanDetailRemoteService: ScanDetailService {
         let requestBody = ScanDetailUpdateRequest(name: name, description: description)
         let body = try JSONEncoder().encode(requestBody)
         let response: ScanDetailAPIResponse = try await httpClient.request(
-            APIEndpoint(path: "/api/v1/scans/\(id)", method: .patch, body: body)
+            APIEndpoint(
+                path: "/api/v1/scans/\(id)", method: .patch, body: body,
+                revision: await revisionStore.currentRevision(for: id)
+            )
         )
+        await revisionStore.update(response.revision.map(String.init), for: id)
         return try response.toScanDetail()
     }
 
     func deleteScanDetail(id: String) async throws {
+        let revision = await revisionStore.currentRevision(for: id)
         let _: EmptyResponse = try await httpClient.request(
-            APIEndpoint(path: "/api/v1/scans/\(id)", method: .delete)
+            APIEndpoint(
+                path: "/api/v1/scans/\(id)", method: .delete,
+                revision: revision
+            )
         )
+        await revisionStore.advance(for: id)
     }
 
     func downloadModel(scanID: String, to destinationURL: URL) async throws {

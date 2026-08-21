@@ -149,6 +149,18 @@ final class ReviewScanViewModel: ObservableObject {
         defer { isSaving = false }
 
         do {
+            let requestChanged = draft.createScanRequestName != trimmedName
+                || draft.createScanRequestProjectID != projectID
+            // Bind the key to the exact request identity. A changed name or
+            // project must never reuse a key persisted for another request.
+            if draft.createScanIdempotencyKey == nil || requestChanged {
+                draft.createScanIdempotencyKey = UUID().uuidString
+                draft.createScanRequestName = trimmedName
+                draft.createScanRequestProjectID = projectID
+                draft.name = trimmedName
+                draft.projectID = projectID
+                try storageService.saveDraftManifest(draft)
+            }
             let storedFiles = try storageService.persistSavedScan(draft: draft, scanID: draft.id)
 
             let saved = try await projectsService.saveScan(
@@ -165,6 +177,12 @@ final class ReviewScanViewModel: ObservableObject {
             self.scanNameError = String(localized: "review.error.duplicate_name")
             return nil
         } catch {
+            // A failed upload is cleaned up by the remote service; invalidate
+            // the key so a later retry creates a fresh remote scan.
+            draft.createScanIdempotencyKey = nil
+            draft.createScanRequestName = nil
+            draft.createScanRequestProjectID = nil
+            try? storageService.saveDraftManifest(draft)
             storageService.deleteScanFiles(scanID: draft.id)
             saveErrorMessage = String(localized: "review.error.save_failed")
             return nil

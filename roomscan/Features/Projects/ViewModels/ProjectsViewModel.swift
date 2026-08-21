@@ -119,9 +119,9 @@ struct VisibleProject: Identifiable, Equatable {
     }
 
     @discardableResult
-    func updateProject(id: ProjectSummary.ID, name: String, description: String) async -> Bool {
+    func updateProject(id: ProjectSummary.ID, name: String, description: String, revision: Int) async -> Bool {
         do {
-            let updated = try await service.updateProject(id: id, name: name, description: description)
+            let updated = try await service.updateProject(id: id, name: name, description: description, revision: revision)
             requestGeneration += 1
             if let index = projects.firstIndex(where: { $0.id == id }) {
                 projects[index] = updated

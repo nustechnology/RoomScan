@@ -17,6 +17,7 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
     let httpClient: any HTTPClient
     let localStore: any ProjectsLocalCache
     let uploadSession: any AssetUploadSession
+    let revisionStore = APIRevisionStore.shared
 
     init(
         httpClient: any HTTPClient,
@@ -45,12 +46,19 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
 
         do {
             let response: ProjectsListAPIResponse = try await httpClient.request(endpoint)
+            for project in response.items {
+                await revisionStore.update(project.revision.map(String.init), for: project.id)
+                for scan in project.scans ?? [] {
+                    await revisionStore.update(scan.revision.map(String.init), for: scan.id)
+                }
+            }
             var projects: [ProjectSummary] = []
             projects.reserveCapacity(response.items.count)
             for item in response.items {
                 let existingScans = (try? await localStore.fetchProject(id: item.id))?.roomScans ?? []
                 let project = ProjectAPIMapping.toProjectSummary(
                     item,
+                    revision: Int(await revisionStore.currentRevision(for: item.id)),
                     preservingRoomScans: existingScans
                 )
                 await localStore.cacheProject(project)
@@ -81,9 +89,14 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
 
         do {
             let response: ProjectAPIResponse = try await httpClient.request(endpoint)
+            await revisionStore.update(response.revision.map(String.init), for: id)
+            for scan in response.scans ?? [] {
+                await revisionStore.update(scan.revision.map(String.init), for: scan.id)
+            }
             let existingScans = (try? await localStore.fetchProject(id: id))?.roomScans ?? []
             let project = ProjectAPIMapping.toProjectSummary(
                 response,
+                revision: Int(await revisionStore.currentRevision(for: id)),
                 preservingRoomScans: existingScans
             )
             await localStore.cacheProject(project)
@@ -101,7 +114,7 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
         }
     }
 
-    func updateProject(id: String, name: String, description: String) async throws -> ProjectSummary {
+    func updateProject(id: String, name: String, description: String, revision: Int = 1) async throws -> ProjectSummary {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (1...50).contains(trimmedName.count) else {
@@ -128,7 +141,8 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
         let endpoint = APIEndpoint(
             path: "/api/v1/projects/\(id)",
             method: .patch,
-            body: body
+            body: body,
+            revision: String(revision)
         )
 
         #if DEBUG
@@ -143,9 +157,11 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
 
         do {
             let response: ProjectAPIResponse = try await httpClient.request(endpoint)
+            await revisionStore.update(response.revision.map(String.init), for: id)
             let existingScans = (try? await localStore.fetchProject(id: id))?.roomScans ?? []
             let project = ProjectAPIMapping.toProjectSummary(
                 response,
+                revision: Int(await revisionStore.currentRevision(for: id)),
                 preservingRoomScans: existingScans
             )
             await localStore.cacheProject(project)
@@ -164,9 +180,11 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
     }
 
     func deleteProject(id: String) async throws {
+        let revision = await revisionStore.currentRevision(for: id)
         let endpoint = APIEndpoint(
             path: "/api/v1/projects/\(id)",
-            method: .delete
+            method: .delete,
+            revision: revision
         )
 
         #if DEBUG
@@ -180,6 +198,7 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
 
         do {
             let _: EmptyAPIResponse = try await httpClient.request(endpoint)
+            await revisionStore.advance(for: id)
             try await localStore.deleteProject(id: id)
         } catch let error as HTTPClientError {
             #if DEBUG
@@ -231,7 +250,8 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
         let endpoint = APIEndpoint(
             path: "/api/v1/projects",
             method: .post,
-            body: body
+            body: body,
+            idempotencyKey: UUID().uuidString
         )
 
         #if DEBUG
@@ -246,7 +266,11 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
 
         do {
             let response: ProjectAPIResponse = try await httpClient.request(endpoint)
-            let project = ProjectAPIMapping.toProjectSummary(response)
+            await revisionStore.update(response.revision.map(String.init), for: response.id)
+            let project = ProjectAPIMapping.toProjectSummary(
+                response,
+                revision: Int(await revisionStore.currentRevision(for: response.id))
+            )
             await localStore.cacheProject(project)
             return project
         } catch let error as HTTPClientError {
@@ -260,34 +284,6 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
             #endif
             throw ProjectsServiceError.network
         }
-    }
-
-    func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool {
-        try await localStore.isScanNameDuplicate(name: name, projectID: projectID)
-    }
-
-    func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary {
-        try await localStore.renameScan(projectID: projectID, scanID: scanID, name: name)
-    }
-
-    func deleteScan(projectID: String, scanID: String) async throws {
-        do {
-            let _: EmptyAPIResponse = try await httpClient.request(
-                APIEndpoint(path: "/api/v1/scans/\(scanID)", method: .delete)
-            )
-            // The server is the source of truth. A stale local cache must not
-            // turn a successful remote deletion into a UI failure.
-            try? await localStore.deleteScan(projectID: projectID, scanID: scanID)
-        } catch let error as HTTPClientError {
-            throw mapHTTPClientError(error, operation: .deleteScan)
-        }
-    }
-
-    func mapHTTPClientError(
-        _ error: HTTPClientError,
-        operation: RemoteProjectsHTTPErrorMapper.Operation
-    ) -> ProjectsServiceError {
-        RemoteProjectsHTTPErrorMapper.map(error, operation: operation)
     }
 
     #if DEBUG

@@ -34,6 +34,7 @@ nonisolated enum ProjectScansContentState: Equatable, Sendable {
 /// tests can construct and compare this Sendable value freely.
 nonisolated struct ProjectSummary: Identifiable, Codable, Equatable, Sendable {
     let id: String
+    let revision: Int
     let name: String
     let ownerName: String
     let createdAt: Date
@@ -45,6 +46,7 @@ nonisolated struct ProjectSummary: Identifiable, Codable, Equatable, Sendable {
 
     nonisolated init(
         id: String,
+        revision: Int = 1,
         name: String,
         ownerName: String = "You",
         createdAt: Date = Date(),
@@ -55,6 +57,7 @@ nonisolated struct ProjectSummary: Identifiable, Codable, Equatable, Sendable {
         scanCount: Int? = nil
     ) {
         self.id = id
+        self.revision = revision
         self.name = name
         self.ownerName = ownerName
         self.createdAt = createdAt
@@ -72,6 +75,7 @@ nonisolated struct ProjectSummary: Identifiable, Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id
+        case revision
         case name
         case ownerName
         case createdAt
@@ -85,6 +89,7 @@ nonisolated struct ProjectSummary: Identifiable, Codable, Equatable, Sendable {
     nonisolated init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
+        revision = try container.decodeIfPresent(Int.self, forKey: .revision) ?? 1
         name = try container.decode(String.self, forKey: .name)
         ownerName = try container.decode(String.self, forKey: .ownerName)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
@@ -102,6 +107,7 @@ nonisolated struct ProjectSummary: Identifiable, Codable, Equatable, Sendable {
     ) -> ProjectSummary {
         ProjectSummary(
             id: id,
+            revision: revision,
             name: name,
             ownerName: ownerName,
             createdAt: createdAt,
@@ -126,6 +132,7 @@ nonisolated struct ProjectSummary: Identifiable, Codable, Equatable, Sendable {
         )
         return ProjectSummary(
             id: incoming.id,
+            revision: incoming.revision,
             name: incoming.name,
             ownerName: incoming.ownerName,
             createdAt: incoming.createdAt,
