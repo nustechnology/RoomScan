@@ -390,7 +390,8 @@ struct ProjectsViewModelTests {
         let didUpdate = await viewModel.updateProject(
             id: "project-3",
             name: "Renamed Project",
-            description: "Updated description"
+            description: "Updated description",
+            revision: 1
         )
 
         #expect(didUpdate)
@@ -456,7 +457,8 @@ struct ProjectsViewModelTests {
         let didUpdate = await viewModel.updateProject(
             id: "project-1",
             name: "Renamed",
-            description: "Updated"
+            description: "Updated",
+            revision: 1
         )
 
         #expect(!didUpdate)
@@ -621,7 +623,7 @@ private actor TestProjectsService: ProjectsService {
         return project
     }
 
-    func updateProject(id: String, name: String, description: String) async throws -> ProjectSummary {
+    func updateProject(id: String, name: String, description: String, revision: Int = 1) async throws -> ProjectSummary {
         if updateFails {
             throw ProjectsServiceError.network
         }
@@ -775,9 +777,9 @@ private actor TestProjectsService: ProjectsService {
 
     func saveScan(draft: RoomScanDraft, name: String, projectID: String, meshURL: URL) async throws -> RoomScanSummary {
         RoomScanSummary(
-            id: draft.id,
+            id: await draft.id,
             name: name,
-            createdAt: draft.createdAt,
+            createdAt: await draft.createdAt,
             localModelURL: meshURL,
             thumbnailName: "thumbnail-0",
             syncStatus: .pending,

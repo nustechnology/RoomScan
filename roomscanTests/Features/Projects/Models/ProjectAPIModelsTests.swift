@@ -8,6 +8,19 @@ import Foundation
 import Testing
 
 struct ProjectAPIModelsTests {
+    @Test func decodeProjectScanRevision_acceptsIntegerAndNumericString() throws {
+        let integerJSON = """
+        {"id":"scan-1","revision":7,"name":"Kitchen","noteCount":0,"createdAt":"2026-08-10T03:53:54.365Z"}
+        """.data(using: .utf8)!
+        let stringJSON = """
+        {"id":"scan-1","revision":"8","name":"Kitchen","noteCount":0,"createdAt":"2026-08-10T03:53:54.365Z"}
+        """.data(using: .utf8)!
+
+        let decoder = LiveHTTPClient.makeAPIDecoder()
+        #expect(try decoder.decode(ProjectScanDTO.self, from: integerJSON).revision == 7)
+        #expect(try decoder.decode(ProjectScanDTO.self, from: stringJSON).revision == 8)
+    }
+
     @Test func encodeCreateProjectRequest_mapsDescriptionKeyAndNull() throws {
         let emptyDescription = CreateProjectAPIRequest(name: "Villa", projectDescription: nil)
         let emptyData = try JSONEncoder().encode(emptyDescription)

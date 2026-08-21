@@ -134,6 +134,7 @@ struct CreateAssetUploadSessionAPIRequest: Encodable, Sendable {
 
 struct ProjectAPIResponse: Decodable, Sendable, Equatable {
     let id: String
+    let revision: Int?
     let name: String
     let description: String?
     let owner: ProjectOwnerDTO
@@ -145,11 +146,50 @@ struct ProjectAPIResponse: Decodable, Sendable, Equatable {
     let createdAt: Date
     let updatedAt: Date
     let permissions: ProjectPermissionsDTO
+
+    private enum CodingKeys: String, CodingKey {
+        case id, revision, name, description, owner, scanCount, scans, sharedCount
+        case thumbnail, syncStatus, createdAt, updatedAt, permissions
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        revision = try container.decodeFlexibleIntIfPresent(forKey: .revision)
+        name = try container.decode(String.self, forKey: .name)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        owner = try container.decode(ProjectOwnerDTO.self, forKey: .owner)
+        scanCount = try container.decode(Int.self, forKey: .scanCount)
+        scans = try container.decodeIfPresent([ProjectScanDTO].self, forKey: .scans)
+        sharedCount = try container.decode(Int.self, forKey: .sharedCount)
+        thumbnail = try container.decodeIfPresent(String.self, forKey: .thumbnail)
+        syncStatus = try container.decodeIfPresent(String.self, forKey: .syncStatus)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        permissions = try container.decode(ProjectPermissionsDTO.self, forKey: .permissions)
+    }
+}
+
+extension KeyedDecodingContainer {
+    func decodeFlexibleIntIfPresent(forKey key: Key) throws -> Int? {
+        guard contains(key), try !decodeNil(forKey: key) else { return nil }
+        if let value = try? decode(Int.self, forKey: key) { return value }
+        let stringValue = try decode(String.self, forKey: key)
+        guard let value = Int(stringValue) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: key,
+                in: self,
+                debugDescription: "Revision must be a valid integer"
+            )
+        }
+        return value
+    }
 }
 
 /// Nested scan summary on project create/list/detail/update responses.
 struct ProjectScanDTO: Decodable, Sendable, Equatable {
     let id: String
+    let revision: Int?
     let name: String
     let description: String?
     let thumbnail: String?
@@ -157,6 +197,24 @@ struct ProjectScanDTO: Decodable, Sendable, Equatable {
     let assetStatus: String?
     let syncStatus: String?
     let createdAt: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case id, revision, name, description, thumbnail, noteCount
+        case assetStatus, syncStatus, createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        revision = try container.decodeFlexibleIntIfPresent(forKey: .revision)
+        name = try container.decode(String.self, forKey: .name)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        thumbnail = try container.decodeIfPresent(String.self, forKey: .thumbnail)
+        noteCount = try container.decode(Int.self, forKey: .noteCount)
+        assetStatus = try container.decodeIfPresent(String.self, forKey: .assetStatus)
+        syncStatus = try container.decodeIfPresent(String.self, forKey: .syncStatus)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+    }
 }
 
 struct ProjectOwnerDTO: Decodable, Sendable, Equatable {
@@ -176,12 +234,14 @@ struct ProjectPermissionsDTO: Decodable, Sendable, Equatable {
 enum ProjectAPIMapping {
     nonisolated static func toProjectSummary(
         _ response: ProjectAPIResponse,
+        revision: Int? = nil,
         preservingRoomScans localScans: [RoomScanSummary] = []
     ) -> ProjectSummary {
         let apiScans = (response.scans ?? []).map(toRoomScanSummary)
         let roomScans = mergeRoomScans(apiScans: apiScans, localScans: localScans)
         return ProjectSummary(
             id: response.id,
+            revision: revision ?? response.revision ?? 1,
             name: response.name,
             ownerName: response.owner.email.flatMap { $0.isEmpty ? nil : $0 } ?? "You",
             createdAt: response.createdAt,

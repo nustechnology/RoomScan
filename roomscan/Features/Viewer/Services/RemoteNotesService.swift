@@ -15,6 +15,7 @@ private struct NotesPage {
 /// Network-backed notes service for the 3D viewer.
 final class RemoteNotesService: NotesService, @unchecked Sendable {
     private let httpClient: any HTTPClient
+    private let revisionStore = APIRevisionStore.shared
     private static let maximumPageCount = 100
 
     init(httpClient: any HTTPClient) {
@@ -49,7 +50,15 @@ final class RemoteNotesService: NotesService, @unchecked Sendable {
             path: "/api/v1/notes/\(noteID)",
             method: .get
         )
-        return try await requestNote(endpoint: endpoint)
+        do {
+            let dto: NoteDTO = try await httpClient.request(endpoint)
+            await revisionStore.update(dto.revision.map(String.init), for: dto.id)
+            return NoteAPIMapping.toSpatialNote(dto)
+        } catch let error as HTTPClientError {
+            throw mapHTTPClientError(error)
+        } catch {
+            throw NotesServiceError.noteNotFound
+        }
     }
 
     private func fetchNotesPage(
@@ -71,6 +80,9 @@ final class RemoteNotesService: NotesService, @unchecked Sendable {
         do {
             let response: NotesListAPIResponse = try await httpClient.request(endpoint)
             let notes = response.items.map(NoteAPIMapping.toSpatialNote)
+            for note in response.items {
+                await revisionStore.update(note.revision.map(String.init), for: note.id)
+            }
             let hasMore = response.pagination.page < response.pagination.totalPages
             return NotesPage(notes: notes, itemCount: response.items.count, hasMore: hasMore)
         } catch let error as HTTPClientError {
@@ -81,6 +93,9 @@ final class RemoteNotesService: NotesService, @unchecked Sendable {
     }
 
     func createNote(scanID: String, input: CreateNoteInput) async throws -> SpatialNote {
+        // One key belongs to this user operation and must remain stable if the
+        // request is retried after the server has already committed it.
+        let idempotencyKey = UUID().uuidString
         let trimmedTitle = input.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedDescription = input.description.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty, !trimmedDescription.isEmpty else {
@@ -93,7 +108,8 @@ final class RemoteNotesService: NotesService, @unchecked Sendable {
         }
 
         let body = CreateNoteAPIRequest(
-            content: content,
+            title: trimmedTitle,
+            content: trimmedDescription,
             color: input.color.apiValue,
             position: NotePositionDTO(input.position),
             orientation: NotePositionDTO(input.orientation),
@@ -105,10 +121,11 @@ final class RemoteNotesService: NotesService, @unchecked Sendable {
         let endpoint = APIEndpoint(
             path: "/api/v1/scans/\(scanID)/notes",
             method: .post,
-            body: try JSONEncoder.apiEncoder.encode(body)
+            body: try JSONEncoder.apiEncoder.encode(body),
+            idempotencyKey: idempotencyKey
         )
 
-        return try await requestNote(endpoint: endpoint)
+        return try await requestNote(endpoint: endpoint, resourceID: nil)
     }
 
     func updateNote(
@@ -130,16 +147,18 @@ final class RemoteNotesService: NotesService, @unchecked Sendable {
         }
 
         let body = UpdateNoteAPIRequest(
-            content: content,
+            title: trimmedTitle,
+            content: trimmedDescription,
             color: color.apiValue
         )
         let endpoint = APIEndpoint(
             path: "/api/v1/notes/\(noteID)",
             method: .patch,
-            body: try JSONEncoder.apiEncoder.encode(body)
+            body: try JSONEncoder.apiEncoder.encode(body),
+            revision: await revisionStore.currentRevision(for: noteID)
         )
 
-        return try await requestNote(endpoint: endpoint)
+        return try await requestNote(endpoint: endpoint, resourceID: noteID)
     }
 
     func moveNote(noteID: String, input: MoveNoteInput) async throws -> SpatialNote {
@@ -151,20 +170,23 @@ final class RemoteNotesService: NotesService, @unchecked Sendable {
         let endpoint = APIEndpoint(
             path: "/api/v1/notes/\(noteID)/position",
             method: .patch,
-            body: try JSONEncoder.apiEncoder.encode(body)
+            body: try JSONEncoder.apiEncoder.encode(body),
+            revision: await revisionStore.currentRevision(for: noteID)
         )
 
-        return try await requestNote(endpoint: endpoint)
+        return try await requestNote(endpoint: endpoint, resourceID: noteID)
     }
 
     func deleteNote(scanID: String, noteID: String) async throws {
         let endpoint = APIEndpoint(
             path: "/api/v1/notes/\(noteID)",
-            method: .delete
+            method: .delete,
+            revision: await revisionStore.currentRevision(for: noteID)
         )
 
         do {
             let _: EmptyAPIResponse = try await httpClient.request(endpoint)
+            await revisionStore.advance(for: noteID)
         } catch let error as HTTPClientError {
             throw mapHTTPClientError(error)
         } catch {
@@ -172,9 +194,10 @@ final class RemoteNotesService: NotesService, @unchecked Sendable {
         }
     }
 
-    private func requestNote(endpoint: APIEndpoint) async throws -> SpatialNote {
+    private func requestNote(endpoint: APIEndpoint, resourceID: String?) async throws -> SpatialNote {
         do {
             let dto: NoteDTO = try await httpClient.request(endpoint)
+            await revisionStore.update(dto.revision.map(String.init), for: resourceID ?? dto.id)
             return NoteAPIMapping.toSpatialNote(dto)
         } catch let error as HTTPClientError {
             #if DEBUG

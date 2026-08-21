@@ -89,7 +89,7 @@ final class LocalProjectsService: ProjectsLocalCache, @unchecked Sendable {
         projects.sorted { $0.updatedAt > $1.updatedAt }
     }
 
-    func updateProject(id: String, name: String, description: String) async throws -> ProjectSummary {
+    func updateProject(id: String, name: String, description: String, revision: Int = 1) async throws -> ProjectSummary {
         guard let index = projects.firstIndex(where: { $0.id == id }) else {
             throw ProjectsServiceError.projectNotFound
         }

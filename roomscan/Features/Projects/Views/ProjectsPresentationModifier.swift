@@ -239,7 +239,7 @@ struct ProjectsPresentationModifier: ViewModifier {
     }
 
     private func editProjectCover(for project: ProjectSummary) -> some View {
-        NewProjectView(
+        return NewProjectView(
             mode: .edit,
             initialName: project.name,
             initialDescription: project.description,
@@ -247,7 +247,8 @@ struct ProjectsPresentationModifier: ViewModifier {
                 let didUpdate = await viewModel.updateProject(
                     id: project.id,
                     name: form.name,
-                    description: form.projectDescription
+                    description: form.projectDescription,
+                    revision: project.revision
                 )
                 if didUpdate {
                     projectToEdit = nil

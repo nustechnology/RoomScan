@@ -22,7 +22,8 @@ extension RemoteProjectsService {
         let response = try await createScan(
             name: trimmedName,
             projectID: projectID,
-            assets: assets
+            assets: assets,
+            idempotencyKey: draft.createScanIdempotencyKey ?? draft.id
         )
         do {
             try await uploadScanAssets(response.uploads, assets: assets)
@@ -171,7 +172,8 @@ private extension RemoteProjectsService {
                 APIEndpoint(
                     path: "/api/v1/scans/\(scanID)/assets/upload-sessions",
                     method: .post,
-                    body: body
+                    body: body,
+                    idempotencyKey: UUID().uuidString
                 )
             )
         } catch let error as HTTPClientError {
@@ -184,7 +186,8 @@ private extension RemoteProjectsService {
     func createScan(
         name: String,
         projectID: String,
-        assets: (thumbnail: Data, mesh: Data)
+        assets: (thumbnail: Data, mesh: Data),
+        idempotencyKey: String
     ) async throws -> CreateScanAPIResponse {
         let request = CreateScanAPIRequest(
             name: name,
@@ -199,7 +202,12 @@ private extension RemoteProjectsService {
         do {
             let body = try JSONEncoder().encode(request)
             return try await httpClient.request(
-                APIEndpoint(path: "/api/v1/projects/\(projectID)/scans", method: .post, body: body)
+                APIEndpoint(
+                    path: "/api/v1/projects/\(projectID)/scans",
+                    method: .post,
+                    body: body,
+                    idempotencyKey: idempotencyKey
+                )
             )
         } catch let error as HTTPClientError {
             throw mapHTTPClientError(error, operation: .createScan)
@@ -257,7 +265,12 @@ private extension RemoteProjectsService {
             )
             let body = try JSONEncoder().encode(completion)
             let _: EmptyAPIResponse = try await httpClient.request(
-                APIEndpoint(path: "/api/v1/upload-sessions/\(target.uploadSessionId)/complete", method: .post, body: body)
+                APIEndpoint(
+                    path: "/api/v1/upload-sessions/\(target.uploadSessionId)/complete",
+                    method: .post,
+                    body: body,
+                    idempotencyKey: UUID().uuidString
+                )
             )
         } catch is CancellationError {
             throw CancellationError()
@@ -277,7 +290,12 @@ private extension RemoteProjectsService {
             reason: "Client-side asset upload failed"
         )) else { return }
         let _: EmptyAPIResponse? = try? await httpClient.request(
-            APIEndpoint(path: "/api/v1/upload-sessions/\(target.uploadSessionId)/fail", method: .post, body: body)
+            APIEndpoint(
+                path: "/api/v1/upload-sessions/\(target.uploadSessionId)/fail",
+                method: .post,
+                body: body,
+                idempotencyKey: UUID().uuidString
+            )
         )
     }
 

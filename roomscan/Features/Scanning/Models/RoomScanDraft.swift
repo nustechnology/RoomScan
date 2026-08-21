@@ -12,6 +12,10 @@ struct RoomScanDraft: Identifiable, Equatable, Sendable {
     let thumbnailFileURL: URL
     var name: String
     var projectID: String?
+    /// Stable for the lifetime of this draft so re-entering Save Scan is idempotent.
+    var createScanIdempotencyKey: String?
+    var createScanRequestName: String?
+    var createScanRequestProjectID: String?
 
     init(
         id: String = UUID().uuidString,
@@ -19,7 +23,10 @@ struct RoomScanDraft: Identifiable, Equatable, Sendable {
         meshFileURL: URL,
         thumbnailFileURL: URL,
         name: String = "",
-        projectID: String? = nil
+        projectID: String? = nil,
+        createScanIdempotencyKey: String? = nil,
+        createScanRequestName: String? = nil,
+        createScanRequestProjectID: String? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -27,6 +34,9 @@ struct RoomScanDraft: Identifiable, Equatable, Sendable {
         self.thumbnailFileURL = thumbnailFileURL
         self.name = name
         self.projectID = projectID
+        self.createScanIdempotencyKey = createScanIdempotencyKey
+        self.createScanRequestName = createScanRequestName
+        self.createScanRequestProjectID = createScanRequestProjectID
     }
 
     /// Removes only files created inside the app's writable storage. Development

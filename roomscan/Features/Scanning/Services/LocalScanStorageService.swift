@@ -13,6 +13,49 @@ struct DraftManifest: Codable, Equatable, Sendable {
     let thumbnailPath: String
     let name: String
     let projectID: String?
+    let createScanIdempotencyKey: String?
+    var createScanRequestName: String?
+    var createScanRequestProjectID: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, createdAt, meshPath, thumbnailPath, name, projectID
+        case createScanIdempotencyKey, createScanRequestName, createScanRequestProjectID
+    }
+
+    init(
+        id: String,
+        createdAt: Date,
+        meshPath: String,
+        thumbnailPath: String,
+        name: String,
+        projectID: String?,
+        createScanIdempotencyKey: String?,
+        createScanRequestName: String?,
+        createScanRequestProjectID: String?
+    ) {
+        self.id = id
+        self.createdAt = createdAt
+        self.meshPath = meshPath
+        self.thumbnailPath = thumbnailPath
+        self.name = name
+        self.projectID = projectID
+        self.createScanIdempotencyKey = createScanIdempotencyKey
+        self.createScanRequestName = createScanRequestName
+        self.createScanRequestProjectID = createScanRequestProjectID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        meshPath = try container.decode(String.self, forKey: .meshPath)
+        thumbnailPath = try container.decode(String.self, forKey: .thumbnailPath)
+        name = try container.decode(String.self, forKey: .name)
+        projectID = try container.decodeIfPresent(String.self, forKey: .projectID)
+        createScanIdempotencyKey = try container.decodeIfPresent(String.self, forKey: .createScanIdempotencyKey)
+        createScanRequestName = try container.decodeIfPresent(String.self, forKey: .createScanRequestName)
+        createScanRequestProjectID = try container.decodeIfPresent(String.self, forKey: .createScanRequestProjectID)
+    }
 }
 
 protocol ScanStorageService: Sendable {
@@ -87,7 +130,10 @@ final class LocalScanStorageService: ScanStorageService, @unchecked Sendable {
             meshPath: relativePath(for: draft.meshFileURL, relativeTo: applicationSupportDirectory),
             thumbnailPath: relativePath(for: draft.thumbnailFileURL, relativeTo: applicationSupportDirectory),
             name: draft.name,
-            projectID: draft.projectID
+            projectID: draft.projectID,
+            createScanIdempotencyKey: draft.createScanIdempotencyKey,
+            createScanRequestName: draft.createScanRequestName,
+            createScanRequestProjectID: draft.createScanRequestProjectID
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -114,7 +160,10 @@ final class LocalScanStorageService: ScanStorageService, @unchecked Sendable {
                 meshFileURL: meshURL,
                 thumbnailFileURL: thumbURL,
                 name: manifest.name,
-                projectID: manifest.projectID
+                projectID: manifest.projectID,
+                createScanIdempotencyKey: manifest.createScanIdempotencyKey,
+                createScanRequestName: manifest.createScanRequestName,
+                createScanRequestProjectID: manifest.createScanRequestProjectID
             )
         } catch {
             return nil

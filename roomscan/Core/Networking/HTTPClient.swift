@@ -5,6 +5,59 @@
 
 import Foundation
 
+struct APIRevision: Decodable, Sendable, Equatable {
+    static let initial = "1"
+    let value: Int
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let string = try? container.decode(String.self) {
+            guard let intValue = Int(string) else {
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Invalid revision"
+                )
+            }
+            value = intValue
+        } else {
+            value = try container.decode(Int.self)
+        }
+    }
+}
+
+actor APIRevisionStore {
+    static let shared = APIRevisionStore()
+    private static let storageKey = "api.revisions"
+    private var revisions: [String: String]
+
+    init() {
+        revisions = UserDefaults.standard.dictionary(forKey: Self.storageKey) as? [String: String] ?? [:]
+    }
+
+    private func persist() {
+        UserDefaults.standard.set(revisions, forKey: Self.storageKey)
+    }
+
+    func currentRevision(for resourceID: String) -> String {
+        revisions[resourceID] ?? APIRevision.initial
+    }
+
+    func advance(for resourceID: String) {
+        let nextValue = (Int(revisions[resourceID] ?? APIRevision.initial) ?? 1) + 1
+        revisions[resourceID] = String(nextValue)
+        persist()
+    }
+
+    func update(_ revision: String?, for resourceID: String) {
+        guard let revision, let incoming = Int(revision) else { return }
+        if let current = revisions[resourceID].flatMap(Int.init), current >= incoming {
+            return
+        }
+        revisions[resourceID] = String(incoming)
+        persist()
+    }
+}
+
 // MARK: - HTTP Method
 
 enum HTTPMethod: String, Sendable {
@@ -29,13 +82,29 @@ struct APIEndpoint: Sendable {
         method: HTTPMethod = .get,
         headers: [String: String] = [:],
         body: Data? = nil,
-        queryItems: [URLQueryItem] = []
+        queryItems: [URLQueryItem] = [],
+        idempotencyKey: String? = nil,
+        revision: String? = nil
     ) {
         self.path = path
         self.method = method
-        self.headers = headers
+        var requestHeaders = headers
+        if method == .post, let idempotencyKey {
+            requestHeaders["Idempotency-Key"] = idempotencyKey
+        }
+        if method == .patch || method == .delete, let revision {
+            requestHeaders["If-Match"] = Self.ifMatchValue(for: revision)
+        }
+        self.headers = requestHeaders
         self.body = body
         self.queryItems = queryItems
+    }
+
+    private static func ifMatchValue(for revision: String) -> String {
+        if revision == "*" || (revision.hasPrefix("\"") && revision.hasSuffix("\"")) {
+            return revision
+        }
+        return "\"\(revision)\""
     }
 
     func urlRequest(baseURL: URL) -> URLRequest {
@@ -126,7 +195,7 @@ struct LiveHTTPClient: HTTPClient {
     private let decoder: JSONDecoder
 
     init(
-        baseURL: URL = URL(string: "https://roomscan-be.onrender.com")!,
+        baseURL: URL = URL(string: "https://roomscan.nustechnology.com")!,
         urlSession: URLSession = .shared,
         decoder: JSONDecoder = LiveHTTPClient.makeAPIDecoder()
     ) {
