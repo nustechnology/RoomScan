@@ -117,6 +117,16 @@ actor LocalInvitationService: InvitationService {
             throw InvitationServiceError.network
         }
 
+        try throwIfTokenOverride(token: token, currentUserEmail: currentUserEmail)
+    }
+
+    private func throwIfTokenOverride(token: String, currentUserEmail: String?) throws {
+        if token.hasPrefix("accepted-") {
+            throw InvitationServiceError.alreadyAccepted
+        }
+        if token.hasPrefix("declined-") {
+            throw InvitationServiceError.declined
+        }
         if token.hasPrefix("expired-") {
             throw InvitationServiceError.expired
         }
@@ -149,6 +159,7 @@ actor LocalInvitationService: InvitationService {
                 title: "Empty Shared Project",
                 ownerName: "Nguyen Minh Anh",
                 invitedEmail: nil,
+                existingAccessDestination: nil,
                 itemCount: 0,
                 showsThumbnail: false,
                 project: ProjectSummary(
@@ -183,6 +194,7 @@ actor LocalInvitationService: InvitationService {
             title: project.name,
             ownerName: project.ownerName,
             invitedEmail: token.hasPrefix("mismatch-") ? "viewer@example.com" : nil,
+            existingAccessDestination: nil,
             itemCount: scans.count,
             showsThumbnail: true,
             project: project,
@@ -215,6 +227,7 @@ actor LocalInvitationService: InvitationService {
             title: scan.name,
             ownerName: "Nguyen Minh Anh",
             invitedEmail: token.hasPrefix("mismatch-") ? "viewer@example.com" : nil,
+            existingAccessDestination: nil,
             itemCount: scan.notes.count,
             showsThumbnail: true,
             project: nil,

@@ -30,6 +30,8 @@ struct InvitationDetails: Equatable, Sendable, Identifiable {
     let ownerName: String
     /// Email the invitation was issued to; nil means any authenticated user may accept.
     let invitedEmail: String?
+    /// Destination that can be opened directly when the current user already has access.
+    let existingAccessDestination: AcceptedInvitationDestination?
     let itemCount: Int
     let showsThumbnail: Bool
     let project: ProjectSummary?
@@ -136,6 +138,8 @@ struct AcceptedInvitationCollection: Equatable, Sendable {
 }
 
 enum InvitationServiceError: Error, Equatable, Sendable {
+    case alreadyAccepted
+    case declined
     case expired
     case unavailable
     case accessDenied
@@ -144,36 +148,71 @@ enum InvitationServiceError: Error, Equatable, Sendable {
 }
 
 enum InvitationDeepLinkParser {
+    nonisolated static let universalLinkHost = "roomscan.nustechnology.com"
+
     nonisolated static func parse(_ url: URL) -> PendingInvitation? {
-        let pathComponents = url.pathComponents.filter { $0 != "/" }
-
-        if url.scheme == "roomscan" {
-            // roomscan://invite/project/{token}
-            guard url.user == nil,
-                  url.password == nil,
-                  url.port == nil,
-                  url.host == "invite",
-                  pathComponents.count == 2,
-                  let scope = InvitationScope(rawValue: pathComponents[0])
-            else {
-                return nil
-            }
-            return PendingInvitation(scope: scope, token: pathComponents[1])
-        }
-
-        // https://roomscan.app/invite/project/{token}
-        guard url.scheme == "https",
-              url.user == nil,
+        guard url.user == nil,
               url.password == nil,
-              url.port == nil,
-              let host = url.host,
-              host == "roomscan.app" || host == "www.roomscan.app",
-              pathComponents.count == 3,
-              pathComponents[0] == "invite",
-              let scope = InvitationScope(rawValue: pathComponents[1])
+              url.port == nil
         else {
             return nil
         }
-        return PendingInvitation(scope: scope, token: pathComponents[2])
+
+        let pathComponents = url.pathComponents.filter { $0 != "/" }
+
+        if url.scheme == "roomscan" {
+            // roomscan://invitations/{token}
+            guard url.host == "invitations",
+                  pathComponents.count == 1,
+                  let token = InvitationTokenValidator.sanitized(pathComponents[0]),
+                  let scope = invitationScope(from: url)
+            else {
+                return nil
+            }
+            return PendingInvitation(scope: scope, token: token)
+        }
+
+        // https://roomscan.nustechnology.com/invitations/{token}?scope={project|scan}
+        guard url.scheme == "https",
+              url.host == universalLinkHost,
+              pathComponents.count == 2,
+              pathComponents[0] == "invitations",
+              let token = InvitationTokenValidator.sanitized(pathComponents[1]),
+              let scope = invitationScope(from: url)
+        else {
+            return nil
+        }
+        return PendingInvitation(scope: scope, token: token)
+    }
+
+    private nonisolated static func invitationScope(from url: URL) -> InvitationScope? {
+        let rawScope = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name == "scope" })?
+            .value?
+            .lowercased()
+        guard let rawScope else { return .project }
+        return InvitationScope(rawValue: rawScope)
+    }
+}
+
+nonisolated enum InvitationTokenValidator {
+    nonisolated static func sanitized(_ raw: String) -> String? {
+        let token = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty,
+              token.unicodeScalars.allSatisfy(isBase64URLCharacter)
+        else {
+            return nil
+        }
+        return token
+    }
+
+    private nonisolated static func isBase64URLCharacter(_ scalar: UnicodeScalar) -> Bool {
+        switch scalar.value {
+        case 45, 48...57, 65...90, 95, 97...122:
+            true
+        default:
+            false
+        }
     }
 }

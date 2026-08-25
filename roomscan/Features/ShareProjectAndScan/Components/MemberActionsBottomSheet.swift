@@ -7,6 +7,7 @@ import SwiftUI
 
 struct MemberActionsBottomSheet: View {
     let member: InvitedMember
+    let performingAction: ShareMemberAction?
     let onResendInvitation: () -> Void
     let onCancelInvitation: () -> Void
     let onRemoveAccess: () -> Void
@@ -36,6 +37,7 @@ struct MemberActionsBottomSheet: View {
 
                 VStack(spacing: AppSpacing.medium) {
                     ForEach(actions) { action in
+                        let isLoading = action.kind != nil && action.kind == performingAction
                         PrimaryActionButton(
                             title: action.title,
                             systemImageName: nil,
@@ -45,8 +47,12 @@ struct MemberActionsBottomSheet: View {
                             borderColor: action.isDestructive ? AppColors.error : Color(uiColor: .systemGray4),
                             borderWidth: 1.5,
                             cornerRadius: AppCornerRadius.large,
+                            isLoading: isLoading,
                             accessibilityIdentifier: action.accessibilityIdentifier
                         )
+                        .accessibilityLabel(isLoading ? action.loadingTitle : action.title)
+                        .opacity(isBusy && !isLoading ? 0.6 : 1)
+                        .allowsHitTesting(!isBusy)
                     }
                 }
                 }
@@ -62,6 +68,11 @@ struct MemberActionsBottomSheet: View {
         .presentationBackground(AppColors.background)
         .presentationDetents(member.status == .accepted ? [.fraction(0.36)] : [.fraction(0.44)])
         .presentationDragIndicator(.visible)
+        .interactiveDismissDisabled(isBusy)
+    }
+
+    private var isBusy: Bool {
+        performingAction != nil
     }
 
     private var titleText: String {
@@ -82,13 +93,17 @@ struct MemberActionsBottomSheet: View {
         case .accepted:
             return [
                 MemberAction(
+                    kind: .removeAccess,
                     title: String(localized: "share.member.removeAccess"),
+                    loadingTitle: String(localized: "share.member.removeAccess.loading"),
                     isDestructive: true,
                     accessibilityIdentifier: "share.member.removeAccess",
                     handler: onRemoveAccess
                 ),
                 MemberAction(
+                    kind: nil,
                     title: String(localized: "share.member.cancel"),
+                    loadingTitle: String(localized: "share.member.cancel"),
                     isDestructive: false,
                     accessibilityIdentifier: "share.member.cancel",
                     handler: onCancel
@@ -97,19 +112,25 @@ struct MemberActionsBottomSheet: View {
         case .pending:
             return [
                 MemberAction(
+                    kind: .resendInvitation,
                     title: String(localized: "share.member.resendInvitation"),
+                    loadingTitle: String(localized: "share.member.resendInvitation.loading"),
                     isDestructive: false,
                     accessibilityIdentifier: "share.member.resendInvitation",
                     handler: onResendInvitation
                 ),
                 MemberAction(
+                    kind: .cancelInvitation,
                     title: String(localized: "share.member.cancelInvitation"),
+                    loadingTitle: String(localized: "share.member.cancelInvitation.loading"),
                     isDestructive: true,
                     accessibilityIdentifier: "share.member.cancelInvitation",
                     handler: onCancelInvitation
                 ),
                 MemberAction(
+                    kind: nil,
                     title: String(localized: "share.member.cancel"),
+                    loadingTitle: String(localized: "share.member.cancel"),
                     isDestructive: false,
                     accessibilityIdentifier: "share.member.cancel",
                     handler: onCancel
@@ -120,8 +141,10 @@ struct MemberActionsBottomSheet: View {
 }
 
 private struct MemberAction: Identifiable {
-    let id = UUID()
+    var id: String { accessibilityIdentifier }
+    let kind: ShareMemberAction?
     let title: String
+    let loadingTitle: String
     let isDestructive: Bool
     let accessibilityIdentifier: String
     let handler: () -> Void

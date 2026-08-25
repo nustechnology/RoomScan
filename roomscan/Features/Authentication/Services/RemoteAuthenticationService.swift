@@ -103,7 +103,6 @@ final class RemoteAuthenticationService: AuthenticationService {
             userId: response.user.id,
             userEmail: response.user.email
         )
-
         do {
             try keychainStore.save(storedData)
         } catch {

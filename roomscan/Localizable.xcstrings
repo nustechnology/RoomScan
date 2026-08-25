@@ -605,6 +605,17 @@
         }
       }
     },
+    "invitation.action.open" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open"
+          }
+        }
+      }
+    },
     "invitation.actionFailed.title" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -638,13 +649,57 @@
         }
       }
     },
+    "invitation.alert.alreadyAccepted.message" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You already have access to this item."
+          }
+        }
+      }
+    },
+    "invitation.alert.alreadyAccepted.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Access Already Granted"
+          }
+        }
+      }
+    },
+    "invitation.alert.declined.message" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You've already declined this invitation."
+          }
+        }
+      }
+    },
+    "invitation.alert.declined.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invitation Declined"
+          }
+        }
+      }
+    },
     "invitation.alert.expired.message" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This invitation link has expired. Please ask the owner to resend the invitation."
+            "value" : "This invitation has expired. Ask the owner to send a new one."
           }
         }
       }
@@ -655,7 +710,40 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Link Expired"
+            "value" : "Invitation Expired"
+          }
+        }
+      }
+    },
+    "invitation.expired.backToProjects" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back to My Projects"
+          }
+        }
+      }
+    },
+    "invitation.expired.message.project" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This invitation link has expired. Ask the project owner to resend the invitation."
+          }
+        }
+      }
+    },
+    "invitation.expired.message.scan" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This invitation link has expired. Ask the scan owner to resend the invitation."
           }
         }
       }
@@ -671,24 +759,13 @@
         }
       }
     },
-    "invitation.alert.unavailable.message.project" : {
+    "invitation.alert.unavailable.message" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This project is no longer available."
-          }
-        }
-      }
-    },
-    "invitation.alert.unavailable.message.scan" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This scan is no longer available."
+            "value" : "This invitation is no longer available."
           }
         }
       }
@@ -699,7 +776,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Unavailable"
+            "value" : "Invitation Unavailable"
           }
         }
       }
@@ -3052,6 +3129,17 @@
         }
       }
     },
+    "share.member.cancelInvitation.loading" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelling invitation"
+          }
+        }
+      }
+    },
     "share.member.removeAccess" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3063,6 +3151,17 @@
         }
       }
     },
+    "share.member.removeAccess.loading" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Removing access"
+          }
+        }
+      }
+    },
     "share.member.resendInvitation" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3070,6 +3169,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Resend Invitation"
+          }
+        }
+      }
+    },
+    "share.member.resendInvitation.loading" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resending invitation"
           }
         }
       }

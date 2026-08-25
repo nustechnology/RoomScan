@@ -21,11 +21,13 @@ struct AppStateInvitationTests {
         let appState = AppState(authenticationService: service)
         await appState.restoreSession()
 
-        let url = try #require(URL(string: "https://roomscan.app/invite/scan/pending-token"))
+        let url = try #require(
+            URL(string: "https://roomscan.nustechnology.com/invitations/pending-token")
+        )
         appState.handleIncomingURL(url)
 
         #expect(appState.phase == .signedOut)
-        #expect(appState.pendingInvitation == PendingInvitation(scope: .scan, token: "pending-token"))
+        #expect(appState.pendingInvitation == PendingInvitation(scope: .project, token: "pending-token"))
     }
 
     @Test func clearPendingInvitationRemovesStoredInvite() async throws {
@@ -40,7 +42,7 @@ struct AppStateInvitationTests {
         let appState = AppState(authenticationService: service)
         await appState.restoreSession()
 
-        let url = try #require(URL(string: "roomscan://invite/project/keep-me"))
+        let url = try #require(URL(string: "roomscan://invitations/keep-me"))
         appState.handleIncomingURL(url)
         #expect(appState.pendingInvitation == PendingInvitation(scope: .project, token: "keep-me"))
         appState.clearPendingInvitation()

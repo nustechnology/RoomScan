@@ -204,8 +204,8 @@ struct NoteEditorSheet: View {
                     ? AppColors.brandBlueBottom
                     : Color(uiColor: .systemGray3),
                 action: save,
-                accessibilityIdentifier: "viewer.note.editor.save",
-                isLoading: viewModel.isSaving
+                isLoading: viewModel.isSaving,
+                accessibilityIdentifier: "viewer.note.editor.save"
             )
             .disabled(!viewModel.canSave || viewModel.isSaving)
 

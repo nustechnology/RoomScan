@@ -53,7 +53,7 @@ final class ScanningUITests: XCTestCase {
         XCTAssertTrue(projectDropdown.waitForExistence(timeout: 3))
         projectDropdown.tap()
 
-        let firstProject = app.buttons["projects.card.open.project-1"]
+        let firstProject = app.buttons["review.projectOption.project-1"]
         XCTAssertTrue(firstProject.waitForExistence(timeout: 3))
         firstProject.tap()
 
@@ -93,7 +93,7 @@ final class ScanningUITests: XCTestCase {
 
         XCTAssertTrue(app.scrollViews["projects.list"].waitForExistence(timeout: 5))
 
-        let projectCard = app.buttons["projects.card.open.project-1"]
+        let projectCard = app.staticTexts["projects.card.title.project-1"]
         XCTAssertTrue(projectCard.waitForExistence(timeout: 5))
         projectCard.tap()
 
