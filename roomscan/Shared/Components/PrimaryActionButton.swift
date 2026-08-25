@@ -15,12 +15,15 @@ struct PrimaryActionButton: View {
     var borderColor: Color?
     var borderWidth: CGFloat = 1
     var cornerRadius: CGFloat = 18
+    var isLoading: Bool = false
     var accessibilityIdentifier: String?
-    var isLoading = false
 
     var body: some View {
         Button(
-            action: action,
+            action: {
+                guard !isLoading else { return }
+                action()
+            },
             label: {
                 ZStack {
                     RoundedRectangle(cornerRadius: cornerRadius)
@@ -37,6 +40,12 @@ struct PrimaryActionButton: View {
                         }
                     }
                     .appTypography(typography)
+                    .opacity(isLoading ? 0 : 1)
+
+                    if isLoading {
+                        ProgressView()
+                            .tint(foregroundColor)
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 60)
@@ -45,6 +54,7 @@ struct PrimaryActionButton: View {
         )
         .buttonStyle(.plain)
         .foregroundStyle(foregroundColor)
+        .allowsHitTesting(!isLoading)
         .overlay {
             if let borderColor {
                 RoundedRectangle(cornerRadius: cornerRadius)

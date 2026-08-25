@@ -82,6 +82,7 @@ struct ShareView: View {
         ) { member in
             MemberActionsBottomSheet(
                 member: member,
+                performingAction: viewModel.performingMemberAction,
                 onResendInvitation: {
                     Task {
                         await viewModel.resendInvitation(for: member)

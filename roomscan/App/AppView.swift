@@ -12,6 +12,7 @@ struct AppView: View {
     let notesService: any NotesService
     let shareService: any ShareService
     let sharedService: any SharedService
+    let invitationService: any InvitationService
 
     var body: some View {
         // SplashScreenView()
@@ -32,7 +33,7 @@ struct AppView: View {
                     notesService: notesService,
                     shareService: shareService,
                     sharedService: sharedService,
-                    invitationService: LocalInvitationService.makeForCurrentProcess(),
+                    invitationService: invitationService,
                     pendingInvitation: Binding(
                         get: { appState.pendingInvitation },
                         set: { newValue in

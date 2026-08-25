@@ -35,7 +35,7 @@ final class ShareViewModel {
     private(set) var isSendingInvite = false
     private(set) var isCopyingInvitationLink = false
     private(set) var selectedMember: InvitedMember?
-    private(set) var isPerformingMemberAction = false
+    private(set) var performingMemberAction: ShareMemberAction?
 
     init(input: ShareScreenInput, service: any ShareService) {
         self.input = input
@@ -63,6 +63,10 @@ final class ShareViewModel {
 
     var isShowingMemberActions: Bool {
         selectedMember != nil
+    }
+
+    var isPerformingMemberAction: Bool {
+        performingMemberAction != nil
     }
 
     func loadIfNeeded() async {
@@ -144,13 +148,16 @@ final class ShareViewModel {
     }
 
     func dismissActions() {
+        guard performingMemberAction == nil else { return }
         selectedMember = nil
     }
 
     func resendInvitation(for member: InvitedMember) async {
-        await performMemberAction {
+        await performMemberAction(.resendInvitation) {
             let updated = try await self.service.resendInvitation(for: self.input, id: member.id)
-            if let index = self.members.firstIndex(where: { $0.id == updated.id }) {
+            if let index = self.members.firstIndex(where: {
+                $0.id == member.id || $0.id == updated.id
+            }) {
                 self.members[index] = updated
             }
             self.toastStyle = .success
@@ -162,7 +169,7 @@ final class ShareViewModel {
     }
 
     func cancelInvitation(for member: InvitedMember) async {
-        await performMemberAction {
+        await performMemberAction(.cancelInvitation) {
             try await self.service.revokeInvitation(for: self.input, id: member.id)
             withAnimation(.easeInOut(duration: 0.25)) {
                 self.members.removeAll { $0.id == member.id }
@@ -174,7 +181,7 @@ final class ShareViewModel {
     }
 
     func removeAccess(for member: InvitedMember) async {
-        await performMemberAction {
+        await performMemberAction(.removeAccess) {
             try await self.service.revokeAccess(for: self.input, userID: member.id)
             withAnimation(.easeInOut(duration: 0.25)) {
                 self.members.removeAll { $0.id == member.id }
@@ -237,12 +244,15 @@ final class ShareViewModel {
         return true
     }
 
-    private func performMemberAction(_ action: @escaping @MainActor () async throws -> Void) async {
-        guard !isPerformingMemberAction else { return }
-        isPerformingMemberAction = true
+    private func performMemberAction(
+        _ kind: ShareMemberAction,
+        _ action: @escaping @MainActor () async throws -> Void
+    ) async {
+        guard performingMemberAction == nil else { return }
+        performingMemberAction = kind
         defer {
-            isPerformingMemberAction = false
-            dismissActions()
+            performingMemberAction = nil
+            selectedMember = nil
         }
 
         do {

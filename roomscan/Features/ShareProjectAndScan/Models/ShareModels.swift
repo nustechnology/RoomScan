@@ -26,6 +26,12 @@ enum SharePermission: String, CaseIterable, Hashable, Sendable {
     }
 }
 
+enum ShareMemberAction: String, Equatable, Sendable {
+    case resendInvitation
+    case cancelInvitation
+    case removeAccess
+}
+
 struct InvitedMember: Identifiable, Equatable, Hashable, Sendable {
     let id: String
     let displayName: String?
@@ -38,6 +44,16 @@ struct InvitedMember: Identifiable, Equatable, Hashable, Sendable {
     var rowTitle: String {
         let trimmedName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmedName.isEmpty ? email : trimmedName
+    }
+
+    static func initials(for email: String) -> String {
+        let base = email.split(separator: "@").first.map(String.init) ?? email
+        let letters = base
+            .split(whereSeparator: { $0 == "." || $0 == "_" || $0 == "-" })
+            .prefix(2)
+            .compactMap { $0.first.map { String($0).uppercased() } }
+        let result = letters.joined()
+        return result.isEmpty ? "?" : result
     }
 
     var subtitle: String {

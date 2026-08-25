@@ -4,6 +4,7 @@
 //
 
 import FirebaseCore
+import Foundation
 import SwiftUI
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
@@ -23,8 +24,9 @@ struct RoomScanApp: App {
     @State private var appState: AppState
     @State private var projectsService: any ProjectsService
     @State private var notesService: any NotesService
-    @State private var shareService: MockShareService
+    @State private var shareService: any ShareService
     @State private var sharedService: any SharedService
+    @State private var invitationService: any InvitationService
     private let scanDetailService: (any ScanDetailService)?
 
     init() {
@@ -69,11 +71,18 @@ struct RoomScanApp: App {
         _appState = State(initialValue: appState)
         _projectsService = State(initialValue: resolvedProjectsService)
         _notesService = State(initialValue: resolvedNotesService)
-        _shareService = State(initialValue: MockShareService.makeForCurrentProcess())
+        let resolvedShareService: any ShareService = isUITesting
+            ? MockShareService.makeForCurrentProcess()
+            : RemoteShareService(httpClient: authenticatedClient)
         _sharedService = State(initialValue: isUITesting
             ? MockSharedService.makeForCurrentProcess()
             : RemoteSharedService(httpClient: authenticatedClient)
         )
+        let resolvedInvitationService: any InvitationService = isUITesting
+            ? LocalInvitationService.makeForCurrentProcess()
+            : RemoteInvitationService(httpClient: authenticatedClient)
+        _shareService = State(initialValue: resolvedShareService)
+        _invitationService = State(initialValue: resolvedInvitationService)
     }
 
     var body: some Scene {
@@ -84,7 +93,8 @@ struct RoomScanApp: App {
                 scanDetailService: scanDetailService,
                 notesService: notesService,
                 shareService: shareService,
-                sharedService: sharedService
+                sharedService: sharedService,
+                invitationService: invitationService
             )
                 .task {
                     await appState.restoreSession()
@@ -95,6 +105,10 @@ struct RoomScanApp: App {
                     }
                 }
                 .onOpenURL { url in
+                    appState.handleIncomingURL(url)
+                }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    guard let url = activity.webpageURL else { return }
                     appState.handleIncomingURL(url)
                 }
         }

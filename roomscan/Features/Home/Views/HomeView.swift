@@ -263,6 +263,8 @@ struct HomeView: View {
                 await sharedViewModel.refreshAllContent()
                 openAcceptedDestination(destination)
             }
+        case .opened(let destination):
+            openAcceptedDestination(destination)
         }
     }
 

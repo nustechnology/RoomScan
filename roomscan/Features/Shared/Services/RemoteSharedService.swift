@@ -37,8 +37,17 @@ actor RemoteSharedService: SharedService {
                 }
             )
 
-            for (id, item) in locallyIngestedProjects
-            where item.statusChangedAt > (itemsByID[id]?.statusChangedAt ?? .distantPast) {
+            for (id, item) in locallyIngestedProjects {
+                guard let remoteItem = itemsByID[id] else {
+                    itemsByID[id] = item
+                    continue
+                }
+
+                guard remoteItem.status.isActive,
+                      item.statusChangedAt > remoteItem.statusChangedAt else {
+                    continue
+                }
+
                 itemsByID[id] = item
             }
 
@@ -83,8 +92,17 @@ actor RemoteSharedService: SharedService {
                 }
             )
 
-            for (id, item) in locallyIngestedScans
-            where item.statusChangedAt > (itemsByID[id]?.statusChangedAt ?? .distantPast) {
+            for (id, item) in locallyIngestedScans {
+                guard let remoteItem = itemsByID[id] else {
+                    itemsByID[id] = item
+                    continue
+                }
+
+                guard remoteItem.status.isActive,
+                      item.statusChangedAt > remoteItem.statusChangedAt else {
+                    continue
+                }
+
                 itemsByID[id] = item
             }
 

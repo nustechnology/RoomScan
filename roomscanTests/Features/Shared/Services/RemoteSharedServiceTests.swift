@@ -130,6 +130,38 @@ struct RemoteSharedServiceTests {
         #expect(scans.map(\.id) == ["shared-scan-1"])
     }
 
+    @Test func fetchSharedScans_remoteRevocationOverridesNewerLocallyIngestedItem() async throws {
+        let client = SharedHTTPClient { endpoint in
+            switch endpoint.path {
+            case "/api/v1/shared-projects":
+                return .success(Self.sharedProjectsJSON)
+            case "/api/v1/shared-scans":
+                return .success(Self.sharedScansJSON)
+            default:
+                Issue.record("Unexpected endpoint: \(endpoint.path)")
+                return .failure(.networkError)
+            }
+        }
+        let service = RemoteSharedService(httpClient: client, now: { Self.fixtureNow })
+        let locallyAcceptedScan = SharedScanItem(
+            id: "shared-scan-revoked",
+            name: "Revoked Scan",
+            ownerName: "Owner",
+            noteCount: 0,
+            projectID: "shared-project-revoked",
+            projectName: "Revoked Project",
+            thumbnailName: nil,
+            status: .active,
+            statusChangedAt: Self.fixtureNow,
+            detailScan: nil
+        )
+        try await service.ingestSharedScan(locallyAcceptedScan)
+
+        let scans = try await service.fetchSharedScans()
+
+        #expect(scans.first { $0.id == locallyAcceptedScan.id }?.status == .accessRevoked)
+    }
+
     private static let fixtureNow = Date(timeIntervalSince1970: 1_786_768_170)
 
     private static let sharedProjectsJSON = Data(

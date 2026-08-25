@@ -81,7 +81,7 @@ actor MockShareService: ShareService {
             id: "invite-\(UUID().uuidString)",
             displayName: nil,
             email: normalizedEmail,
-            initials: Self.initials(for: normalizedEmail),
+            initials: InvitedMember.initials(for: normalizedEmail),
             status: .pending,
             sentAt: Date(),
             acceptedAt: nil
@@ -224,16 +224,6 @@ actor MockShareService: ShareService {
                 )
             ]
         ]
-    }
-
-    nonisolated private static func initials(for email: String) -> String {
-        let base = email.split(separator: "@").first.map(String.init) ?? email
-        let letters = base
-            .split(whereSeparator: { $0 == "." || $0 == "_" || $0 == "-" })
-            .prefix(2)
-            .compactMap { $0.first.map { String($0).uppercased() } }
-        let result = letters.joined()
-        return result.isEmpty ? "?" : result
     }
 
     private static func makeDate(year: Int, month: Int, day: Int) -> Date {

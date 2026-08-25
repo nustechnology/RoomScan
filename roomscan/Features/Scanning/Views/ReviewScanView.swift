@@ -123,6 +123,7 @@ struct ReviewScanView: View {
                                             }
                                         }
                                     }
+                                    .accessibilityIdentifier("review.projectOption.\(project.id)")
                                 }
                             } label: {
                                 HStack {

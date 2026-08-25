@@ -40,6 +40,26 @@ struct InvitationViewModelTests {
         #expect(viewModel.screenTitle == String(localized: "invitation.scan.title"))
     }
 
+    @Test func openExistingAccessNavigatesWithoutAcceptingInvitation() async {
+        let viewModel = InvitationViewModel(
+            pendingInvitation: PendingInvitation(scope: .project, token: "existing-access"),
+            service: ExistingAccessInvitationService(),
+            currentUserEmail: "viewer@example.com"
+        )
+
+        await viewModel.loadInvitation()
+        #expect(viewModel.hasExistingAccess)
+
+        viewModel.openExistingAccess()
+
+        guard let outcome = viewModel.navigationOutcome,
+              case .opened(.project(let project)) = outcome else {
+            Issue.record("Expected existing project access to open directly")
+            return
+        }
+        #expect(project.id == "existing-project")
+    }
+
     @Test func expiredInvitationSurfacesBlockingAlert() async {
         let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
         let viewModel = InvitationViewModel(
@@ -54,6 +74,34 @@ struct InvitationViewModelTests {
         #expect(viewModel.invitation == nil)
     }
 
+    @Test func acceptedInvitationSurfacesAlreadyAcceptedAlert() async {
+        let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
+        let viewModel = InvitationViewModel(
+            pendingInvitation: PendingInvitation(scope: .project, token: "accepted-project"),
+            service: service,
+            currentUserEmail: nil
+        )
+
+        await viewModel.loadInvitation()
+
+        #expect(viewModel.blockingAlert == .alreadyAccepted)
+        #expect(viewModel.invitation == nil)
+    }
+
+    @Test func declinedInvitationSurfacesDeclinedAlert() async {
+        let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
+        let viewModel = InvitationViewModel(
+            pendingInvitation: PendingInvitation(scope: .project, token: "declined-project"),
+            service: service,
+            currentUserEmail: nil
+        )
+
+        await viewModel.loadInvitation()
+
+        #expect(viewModel.blockingAlert == .declined)
+        #expect(viewModel.invitation == nil)
+    }
+
     @Test func revokedInvitationSurfacesUnavailableAlert() async {
         let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
         let viewModel = InvitationViewModel(
@@ -64,7 +112,7 @@ struct InvitationViewModelTests {
 
         await viewModel.loadInvitation()
 
-        #expect(viewModel.blockingAlert == .unavailable(.scan))
+        #expect(viewModel.blockingAlert == .unavailable)
     }
 
     @Test func mismatchedAccountSurfacesAccessDenied() async {
@@ -235,42 +283,81 @@ struct InvitationViewModelTests {
 }
 
 struct InvitationDeepLinkParserTests {
-    @Test func parsesHTTPSProjectInvite() throws {
-        let url = try #require(URL(string: "https://roomscan.app/invite/project/abc-123"))
+    @Test func parsesHTTPSInvite() throws {
+        let url = try #require(
+            URL(
+                string: "https://roomscan.nustechnology.com/invitations/uRly-Hf-plhnjPHkgJ-t9btOXwYTcA9XnH76tDcQRwk"
+            )
+        )
         let invitation = InvitationDeepLinkParser.parse(url)
-        #expect(invitation == PendingInvitation(scope: .project, token: "abc-123"))
-    }
-
-    @Test func parsesHTTPSScanInvite() throws {
-        let url = try #require(URL(string: "https://www.roomscan.app/invite/scan/tok-9"))
-        let invitation = InvitationDeepLinkParser.parse(url)
-        #expect(invitation == PendingInvitation(scope: .scan, token: "tok-9"))
+        #expect(
+            invitation == PendingInvitation(
+                scope: .project,
+                token: "uRly-Hf-plhnjPHkgJ-t9btOXwYTcA9XnH76tDcQRwk"
+            )
+        )
     }
 
     @Test func parsesCustomSchemeInvite() throws {
-        let url = try #require(URL(string: "roomscan://invite/project/token-1"))
+        let url = try #require(URL(string: "roomscan://invitations/token-1"))
         let invitation = InvitationDeepLinkParser.parse(url)
         #expect(invitation == PendingInvitation(scope: .project, token: "token-1"))
     }
 
+    @Test func parsesScanScopeFromHTTPSInvite() throws {
+        let url = try #require(
+            URL(string: "https://roomscan.nustechnology.com/invitations/token-1?scope=scan")
+        )
+
+        #expect(
+            InvitationDeepLinkParser.parse(url)
+                == PendingInvitation(scope: .scan, token: "token-1")
+        )
+    }
+
     @Test func rejectsUnknownPaths() throws {
-        let url = try #require(URL(string: "https://roomscan.app/projects/1"))
+        let url = try #require(URL(string: "https://roomscan.nustechnology.com/projects/1"))
+        #expect(InvitationDeepLinkParser.parse(url) == nil)
+    }
+
+    @Test func rejectsUnknownHost() throws {
+        let url = try #require(URL(string: "https://roomscan.app/invitations/token"))
         #expect(InvitationDeepLinkParser.parse(url) == nil)
     }
 
     @Test func rejectsNonHTTPSWebInvite() throws {
-        let url = try #require(URL(string: "http://roomscan.app/invite/project/token"))
+        let url = try #require(URL(string: "http://roomscan.nustechnology.com/invitations/token"))
         #expect(InvitationDeepLinkParser.parse(url) == nil)
     }
 
     @Test func rejectsWebInviteWithTrailingPath() throws {
-        let url = try #require(URL(string: "https://roomscan.app/invite/project/token/extra"))
+        let url = try #require(
+            URL(string: "https://roomscan.nustechnology.com/invitations/token/extra")
+        )
         #expect(InvitationDeepLinkParser.parse(url) == nil)
     }
 
     @Test func rejectsCustomInviteWithTrailingPath() throws {
-        let url = try #require(URL(string: "roomscan://invite/scan/token/extra"))
+        let url = try #require(URL(string: "roomscan://invitations/token/extra"))
         #expect(InvitationDeepLinkParser.parse(url) == nil)
+    }
+
+    @Test func rejectsLegacyCustomInvitePath() throws {
+        let url = try #require(URL(string: "roomscan://invite/project/token-1"))
+        #expect(InvitationDeepLinkParser.parse(url) == nil)
+    }
+
+    @Test func rejectsEncodedPathSeparatorsAndDotSegmentsInToken() throws {
+        let urls = [
+            "https://roomscan.nustechnology.com/invitations/token%2Fextra",
+            "https://roomscan.nustechnology.com/invitations/%2E%2E%2Fprojects",
+            "https://roomscan.nustechnology.com/invitations/%2E%2E"
+        ]
+
+        for rawURL in urls {
+            let url = try #require(URL(string: rawURL))
+            #expect(InvitationDeepLinkParser.parse(url) == nil)
+        }
     }
 }
 
@@ -457,6 +544,49 @@ struct AcceptedInvitationCollectionTests {
             statusChangedAt: Date(timeIntervalSince1970: 1_500)
         )
     }
+}
+
+private actor ExistingAccessInvitationService: InvitationService {
+    func fetchInvitation(
+        scope _: InvitationScope,
+        token: String,
+        currentUserEmail _: String?
+    ) async throws -> InvitationDetails {
+        let project = ProjectSummary(
+            id: "existing-project",
+            name: "Existing Project",
+            ownerName: "owner@example.com",
+            description: "",
+            sharedUserCount: 1,
+            scanCount: 0
+        )
+        return InvitationDetails(
+            token: token,
+            scope: .project,
+            title: project.name,
+            ownerName: project.ownerName,
+            invitedEmail: nil,
+            existingAccessDestination: .project(project),
+            itemCount: 0,
+            showsThumbnail: false,
+            project: project,
+            scan: nil
+        )
+    }
+
+    func acceptInvitation(
+        scope _: InvitationScope,
+        token _: String,
+        currentUserEmail _: String?
+    ) async throws -> AcceptedInvitationDestination {
+        throw InvitationServiceError.unavailable
+    }
+
+    func declineInvitation(
+        scope _: InvitationScope,
+        token _: String,
+        currentUserEmail _: String?
+    ) async throws {}
 }
 
 private actor OneTimeFailingInvitationService: InvitationService {

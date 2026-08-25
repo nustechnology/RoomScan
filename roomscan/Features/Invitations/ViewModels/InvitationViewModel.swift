@@ -17,16 +17,22 @@ final class InvitationViewModel {
     }
 
     enum BlockingAlert: Equatable, Identifiable {
+        case alreadyAccepted
+        case declined
         case expired
-        case unavailable(InvitationScope)
+        case unavailable
         case accessDenied
 
         var id: String {
             switch self {
+            case .alreadyAccepted:
+                return "alreadyAccepted"
+            case .declined:
+                return "declined"
             case .expired:
                 return "expired"
-            case .unavailable(let scope):
-                return "unavailable-\(scope.rawValue)"
+            case .unavailable:
+                return "unavailable"
             case .accessDenied:
                 return "accessDenied"
             }
@@ -36,6 +42,7 @@ final class InvitationViewModel {
     enum NavigationOutcome: Equatable {
         case dismissedToHome(toastMessage: String)
         case accepted(AcceptedInvitationDestination, toastMessage: String)
+        case opened(AcceptedInvitationDestination)
     }
 
     enum Action: String, Equatable {
@@ -91,16 +98,18 @@ final class InvitationViewModel {
 
     var subtitleText: String? {
         guard let invitation else { return nil }
+        let ownerName = invitation.ownerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !ownerName.isEmpty else { return nil }
         switch invitation.scope {
         case .project:
             return String.localizedStringWithFormat(
                 String(localized: "invitation.project.subtitle.format"),
-                invitation.ownerName
+                ownerName
             )
         case .scan:
             return String.localizedStringWithFormat(
                 String(localized: "invitation.scan.subtitle.format"),
-                invitation.ownerName
+                ownerName
             )
         }
     }
@@ -117,6 +126,10 @@ final class InvitationViewModel {
     var itemCountValue: String {
         guard let invitation else { return "" }
         return "\(invitation.itemCount)"
+    }
+
+    var hasExistingAccess: Bool {
+        invitation?.existingAccessDestination != nil
     }
 
     func loadInvitation() async {
@@ -194,6 +207,11 @@ final class InvitationViewModel {
         }
     }
 
+    func openExistingAccess() {
+        guard let destination = invitation?.existingAccessDestination else { return }
+        navigationOutcome = .opened(destination)
+    }
+
     func retryFailedAction(_ failedAction: Action) async {
         actionFailure = nil
 
@@ -226,10 +244,14 @@ final class InvitationViewModel {
 
     private func blockingAlert(for error: InvitationServiceError) -> BlockingAlert? {
         switch error {
+        case .alreadyAccepted:
+            return .alreadyAccepted
+        case .declined:
+            return .declined
         case .expired:
             return .expired
         case .unavailable:
-            return .unavailable(pendingInvitation.scope)
+            return .unavailable
         case .accessDenied:
             return .accessDenied
         case .network, .notFound:

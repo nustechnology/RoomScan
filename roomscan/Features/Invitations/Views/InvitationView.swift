@@ -50,7 +50,7 @@ struct InvitationView: View {
         .alert(
             blockingAlertTitle,
             isPresented: Binding(
-                get: { viewModel.blockingAlert != nil },
+                get: { viewModel.blockingAlert != nil && viewModel.blockingAlert != .expired },
                 set: { if !$0 { viewModel.dismissBlockingAlert() } }
             )
         ) {
@@ -95,7 +95,9 @@ struct InvitationView: View {
                 .accessibilityIdentifier("invitation.loading")
 
         case .failed(let error):
-            if viewModel.blockingAlert != nil {
+            if error == .expired {
+                expiredContent
+            } else if viewModel.blockingAlert != nil {
                 Color.clear
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -117,6 +119,13 @@ struct InvitationView: View {
         case .loaded(let invitation):
             loadedContent(invitation)
         }
+    }
+
+    private var expiredContent: some View {
+        ExpiredInvitationContent(
+            scope: viewModel.pendingInvitation.scope,
+            onBackToProjects: { viewModel.dismissBlockingAlert() }
+        )
     }
 
     private func loadedContent(_ invitation: InvitationDetails) -> some View {
@@ -185,16 +194,33 @@ struct InvitationView: View {
                 accessibilityIdentifier: "invitation.action.decline"
             )
 
-            PrimaryActionButton(
-                title: String(localized: "invitation.action.accept"),
+           PrimaryActionButton(
+                title: primaryActionTitle,
                 systemImageName: nil,
                 color: AppColors.brandPrimary,
-                action: {
-                    Task { await viewModel.accept() }
-                },
+                action: performPrimaryAction,
                 cornerRadius: 18,
-                accessibilityIdentifier: "invitation.action.accept"
+                accessibilityIdentifier: primaryActionAccessibilityIdentifier
             )
+        }
+    }
+
+    private var primaryActionTitle: String {
+        if viewModel.hasExistingAccess {
+            return String(localized: "invitation.action.open")
+        }
+        return String(localized: "invitation.action.accept")
+    }
+
+    private var primaryActionAccessibilityIdentifier: String {
+        viewModel.hasExistingAccess ? "invitation.action.open" : "invitation.action.accept"
+    }
+
+    private func performPrimaryAction() {
+        if viewModel.hasExistingAccess {
+            viewModel.openExistingAccess()
+        } else {
+            Task { await viewModel.accept() }
         }
     }
 
@@ -235,8 +261,66 @@ struct InvitationView: View {
         }
     }
 
-    private var blockingAlertTitle: String {
+}
+
+private struct ExpiredInvitationContent: View {
+    let scope: InvitationScope
+    let onBackToProjects: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: AppSpacing.small) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(AppColors.destructiveLabel)
+                    .accessibilityHidden(true)
+
+                Text(message)
+                    .appTypography(AppTypography.bodySmallStrong)
+                    .foregroundStyle(AppColors.destructiveLabel)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(AppSpacing.medium)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AppColors.destructiveSoftBackground)
+            .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
+            .padding(.horizontal, AppSpacing.extraLarge)
+            .padding(.top, AppSpacing.medium)
+            .accessibilityIdentifier("invitation.expired.banner")
+
+            Spacer()
+
+            PrimaryActionButton(
+                title: String(localized: "invitation.expired.backToProjects"),
+                systemImageName: nil,
+                color: AppColors.background,
+                action: onBackToProjects,
+                foregroundColor: AppColors.primaryText,
+                borderColor: AppColors.borderDefault,
+                cornerRadius: 18,
+                accessibilityIdentifier: "invitation.expired.backToProjects"
+            )
+            .padding(.horizontal, AppSpacing.extraLarge)
+            .padding(.vertical, AppSpacing.large)
+        }
+    }
+
+    private var message: String {
+        switch scope {
+        case .project:
+            return String(localized: "invitation.expired.message.project")
+        case .scan:
+            return String(localized: "invitation.expired.message.scan")
+        }
+    }
+}
+
+private extension InvitationView {
+    var blockingAlertTitle: String {
         switch viewModel.blockingAlert {
+        case .alreadyAccepted:
+            return String(localized: "invitation.alert.alreadyAccepted.title")
+        case .declined:
+            return String(localized: "invitation.alert.declined.title")
         case .expired:
             return String(localized: "invitation.alert.expired.title")
         case .unavailable:
@@ -248,17 +332,16 @@ struct InvitationView: View {
         }
     }
 
-    private var blockingAlertMessage: String {
+    var blockingAlertMessage: String {
         switch viewModel.blockingAlert {
+        case .alreadyAccepted:
+            return String(localized: "invitation.alert.alreadyAccepted.message")
+        case .declined:
+            return String(localized: "invitation.alert.declined.message")
         case .expired:
             return String(localized: "invitation.alert.expired.message")
-        case .unavailable(let scope):
-            switch scope {
-            case .project:
-                return String(localized: "invitation.alert.unavailable.message.project")
-            case .scan:
-                return String(localized: "invitation.alert.unavailable.message.scan")
-            }
+        case .unavailable:
+            return String(localized: "invitation.alert.unavailable.message")
         case .accessDenied:
             return String(localized: "invitation.alert.accessDenied.message")
         case .none:
@@ -266,18 +349,18 @@ struct InvitationView: View {
         }
     }
 
-    private func loadFailedMessage(for error: InvitationServiceError) -> String {
+    func loadFailedMessage(for error: InvitationServiceError) -> String {
         switch error {
         case .network:
             return String(localized: "invitation.loadFailed.network")
         case .notFound:
             return String(localized: "invitation.loadFailed.notFound")
-        case .expired, .unavailable, .accessDenied:
+        case .alreadyAccepted, .declined, .expired, .unavailable, .accessDenied:
             return String(localized: "invitation.loadFailed.generic")
         }
     }
 
-    private var actionFailureMessage: String {
+    var actionFailureMessage: String {
         guard let error = viewModel.actionFailure?.error else { return "" }
         return loadFailedMessage(for: error)
     }
