@@ -47,7 +47,9 @@ protocol ScanAssetRetrying: Sendable {
 
 /// Local cache used by `RemoteProjectsService` for project metadata and scans.
 protocol ProjectsLocalCache: ProjectsService {
-    func cacheProject(_ project: ProjectSummary) async
+    func cacheProject(_ project: ProjectSummary) async throws
+    /// Writes `project` without merging over existing local scans.
+    func replaceCachedProject(_ project: ProjectSummary) async throws
 }
 
 /// Failures thrown by `ProjectsService` implementations.

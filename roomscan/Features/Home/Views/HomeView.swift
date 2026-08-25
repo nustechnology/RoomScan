@@ -18,8 +18,12 @@ struct HomeView: View {
     let notesService: any NotesService
     let shareService: any ShareService
     let sharedService: any SharedService
+    let syncService: any SyncService
+    let usersService: any UsersService
+    let syncEngine: SyncEngine?
     let invitationService: any InvitationService
     @Binding var pendingInvitation: PendingInvitation?
+    let onUserUpdated: (AuthenticatedUser) -> Void
     let onSignOut: () -> Void
 
     @State private var selectedTab: Tab = .projects
@@ -47,8 +51,12 @@ struct HomeView: View {
         notesService: any NotesService,
         shareService: any ShareService,
         sharedService: any SharedService,
+        syncService: any SyncService,
+        usersService: any UsersService,
+        syncEngine: SyncEngine? = nil,
         invitationService: any InvitationService,
         pendingInvitation: Binding<PendingInvitation?> = .constant(nil),
+        onUserUpdated: @escaping (AuthenticatedUser) -> Void = { _ in },
         onSignOut: @escaping () -> Void
     ) {
         self.session = session
@@ -57,14 +65,26 @@ struct HomeView: View {
         self.notesService = notesService
         self.shareService = shareService
         self.sharedService = sharedService
+        self.syncService = syncService
+        self.usersService = usersService
+        self.syncEngine = syncEngine
         self.invitationService = invitationService
         _pendingInvitation = pendingInvitation
+        self.onUserUpdated = onUserUpdated
         self.onSignOut = onSignOut
         _projectsViewModel = State(
-            initialValue: ProjectsViewModel(service: projectsService)
+            initialValue: ProjectsViewModel(
+                service: projectsService,
+                syncEngine: syncEngine,
+                currentUserID: session.user.id
+            )
         )
         _sharedViewModel = State(
-            initialValue: SharedWithMeViewModel(service: sharedService)
+            initialValue: SharedWithMeViewModel(
+                service: sharedService,
+                syncEngine: syncEngine,
+                currentUserID: session.user.id
+            )
         )
     }
 
@@ -172,6 +192,7 @@ struct HomeView: View {
                 scanDetailService: scanDetailService,
                 notesService: notesService,
                 shareService: shareService,
+                syncEngine: syncEngine,
                 currentUserID: session.user.id,
                 accessPolicy: .readOnly,
                 onScanUpdated: { updatedScan in
@@ -216,6 +237,8 @@ struct HomeView: View {
                 scanDetailService: scanDetailService,
                 notesService: notesService,
                 shareService: shareService,
+                syncService: syncService,
+                syncEngine: syncEngine,
                 currentUserID: session.user.id,
                 showsNavigationTitle: false,
                 isShowingDetail: $isShowingProjectsDetail,
@@ -228,6 +251,7 @@ struct HomeView: View {
                 scanDetailService: scanDetailService,
                 notesService: notesService,
                 shareService: shareService,
+                syncEngine: syncEngine,
                 currentUserID: session.user.id
             )
         case .account:
@@ -235,7 +259,10 @@ struct HomeView: View {
                 session: session,
                 projectsService: projectsService,
                 sharedService: sharedService,
+                syncService: syncService,
+                usersService: usersService,
                 storageMeasuring: RealAccountStorageMeasuring(),
+                onUserUpdated: onUserUpdated,
                 onSignOut: onSignOut
             )
         }
@@ -298,8 +325,10 @@ struct HomeView: View {
         acceptedInvitations.applyDeletedScan(projectID: projectID, scanID: scanID)
         projectsViewModel.applyDeletedScan(projectID: projectID, scanID: scanID)
     }
+}
 
-    private func saveNewProject(_ form: ProjectFormInput) async -> Bool {
+private extension HomeView {
+    func saveNewProject(_ form: ProjectFormInput) async -> Bool {
         let name = form.name
         let projectDescription = form.projectDescription
         do {
@@ -318,9 +347,6 @@ struct HomeView: View {
             return false
         }
     }
-}
-
-private extension HomeView {
     func publishPendingProjectScanRequest() {
         guard let scanRequestAfterProjectCreation else { return }
         requestedScanSourceProjectID = scanRequestAfterProjectCreation
@@ -334,6 +360,8 @@ private extension HomeView {
             scanDetailService: scanDetailService,
             notesService: notesService,
             shareService: shareService,
+            syncService: syncService,
+            syncEngine: syncEngine,
             currentUserID: session.user.id,
             onScanUpdated: { updatedScan in
                 projectsViewModel.applyUpdatedScan(projectID: project.id, scan: updatedScan)
@@ -529,6 +557,8 @@ private struct HomeHeader: View {
         notesService: MockNotesService(),
         shareService: MockShareService(simulatedDelayNanoseconds: 0),
         sharedService: MockSharedService(simulatedDelayNanoseconds: 0),
+        syncService: MockSyncService(simulatedDelayNanoseconds: 0),
+        usersService: MockUsersService(),
         invitationService: LocalInvitationService(simulatedDelayNanoseconds: 0),
         onSignOut: {}
     )

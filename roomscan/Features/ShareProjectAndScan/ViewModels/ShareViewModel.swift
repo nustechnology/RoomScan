@@ -21,12 +21,14 @@ final class ShareViewModel {
     let input: ShareScreenInput
 
     private let service: any ShareService
+    private let syncService: (any SyncService)?
 
     private(set) var viewState: ViewState = .idle
     private(set) var members: [InvitedMember] = []
     private(set) var isRefreshing = false
     private(set) var isInviteSheetPresented = false
     private(set) var isOffline = false
+    private(set) var isShareReady: Bool
     private(set) var toastStyle: ToastStyle = .error
     private(set) var toastMessage: String?
     private(set) var errorMessage: String?
@@ -37,9 +39,15 @@ final class ShareViewModel {
     private(set) var selectedMember: InvitedMember?
     private(set) var performingMemberAction: ShareMemberAction?
 
-    init(input: ShareScreenInput, service: any ShareService) {
+    init(
+        input: ShareScreenInput,
+        service: any ShareService,
+        syncService: (any SyncService)? = nil
+    ) {
         self.input = input
         self.service = service
+        self.syncService = syncService
+        self.isShareReady = syncService == nil
     }
 
     var invitedPeopleTitle: String {
@@ -50,15 +58,15 @@ final class ShareViewModel {
     }
 
     var canInvitePeople: Bool {
-        !isOffline
+        !isOffline && isShareReady
     }
 
     var canSendInvite: Bool {
-        !isOffline && !isSendingInvite && !isCopyingInvitationLink
+        !isOffline && isShareReady && !isSendingInvite && !isCopyingInvitationLink
     }
 
     var canCopyInvitationLink: Bool {
-        !isOffline && !isSendingInvite && !isCopyingInvitationLink
+        !isOffline && isShareReady && !isSendingInvite && !isCopyingInvitationLink
     }
 
     var isShowingMemberActions: Bool {
@@ -83,7 +91,16 @@ final class ShareViewModel {
     }
 
     func openInviteSheet() {
-        guard canInvitePeople else { return }
+        guard canInvitePeople else {
+            if isOffline {
+                toastStyle = .error
+                toastMessage = String(localized: "share.error.offline")
+            } else if !isShareReady {
+                toastStyle = .error
+                toastMessage = String(localized: "share.error.syncNotReady")
+            }
+            return
+        }
         emailValidationMessage = nil
         inviteEmail = ""
         isInviteSheetPresented = true
@@ -205,7 +222,10 @@ final class ShareViewModel {
         defer { self.isRefreshing = false }
 
         do {
-            let snapshot = try await service.loadInvitedMembers(for: input)
+            async let membersSnapshot = service.loadInvitedMembers(for: input)
+            async let readiness = refreshShareReadiness()
+            let snapshot = try await membersSnapshot
+            _ = await readiness
             members = snapshot.members
             self.isOffline = snapshot.isOffline
             errorMessage = nil
@@ -220,6 +240,32 @@ final class ShareViewModel {
                 errorMessage = error.userFacingMessage
                 viewState = .failed
             }
+        }
+    }
+
+    private func refreshShareReadiness() async {
+        guard let syncService else {
+            isShareReady = true
+            return
+        }
+        guard let projectID = input.projectIDForSyncStatus else {
+            isShareReady = false
+            return
+        }
+
+        do {
+            let statuses = try await syncService.fetchSyncStatus(projectId: projectID)
+            guard let status = statuses.first else {
+                isShareReady = false
+                return
+            }
+            isShareReady = status.requiredAssetsUploaded
+                && status.syncStatus == .synced
+                && status.unresolvedCount == 0
+        } catch is CancellationError {
+            return
+        } catch {
+            isShareReady = false
         }
     }
 

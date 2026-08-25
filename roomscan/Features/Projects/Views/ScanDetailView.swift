@@ -16,6 +16,7 @@ struct ScanDetailView: View {
     let projectName: String?
     let notesService: any NotesService
     let shareService: any ShareService
+    var syncService: (any SyncService)?
     var accessPolicy: DetailAccessPolicy = .editable
     let onScanUpdated: (RoomScanSummary) -> Void
     let onScanDeleted: () -> Void
@@ -138,7 +139,7 @@ struct ScanDetailView: View {
             )
         }
         .fullScreenCover(item: $shareInput) { input in
-            ShareView(input: input, service: shareService)
+            ShareView(input: input, service: shareService, syncService: syncService)
         }
         .overlay {
             if let loadingAction {
@@ -149,6 +150,7 @@ struct ScanDetailView: View {
         }
         .task {
             await viewModel.loadDetail()
+            onScanUpdated(viewModel.scan)
         }
         .modifier(RetryScanPresentationModifier(
             showsMissingScanAlert: $showsMissingScanAlert,

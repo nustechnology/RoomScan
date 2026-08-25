@@ -29,6 +29,8 @@ final class SharedWithMeViewModel {
 
     private let service: any SharedService
     private let ingestQueue: PendingAcceptedSharedIngestQueue
+    private let syncEngine: SyncEngine?
+    private let currentUserID: String?
     private var projectsRequestGeneration = 0
     private var scansRequestGeneration = 0
 
@@ -41,9 +43,15 @@ final class SharedWithMeViewModel {
     private(set) var pendingAlert: PendingAlert?
     private(set) var isRemovingItem = false
 
-    init(service: any SharedService) {
+    init(
+        service: any SharedService,
+        syncEngine: SyncEngine? = nil,
+        currentUserID: String? = nil
+    ) {
         self.service = service
         self.ingestQueue = PendingAcceptedSharedIngestQueue(service: service)
+        self.syncEngine = syncEngine
+        self.currentUserID = currentUserID
     }
 
     func selectSubTab(_ tab: SubTab) {
@@ -51,6 +59,7 @@ final class SharedWithMeViewModel {
     }
 
     func loadInitialContent() async {
+        await pullRemoteChangesIfNeeded()
         async let projectsLoad: Void = loadProjectsIfNeeded()
         async let scansLoad: Void = loadScansIfNeeded()
         _ = await (projectsLoad, scansLoad)
@@ -63,6 +72,7 @@ final class SharedWithMeViewModel {
     }
 
     func refreshSelectedTab() async {
+        await pullRemoteChangesIfNeeded()
         await ingestQueue.retryPending()
         switch selectedSubTab {
         case .projects:
@@ -73,6 +83,7 @@ final class SharedWithMeViewModel {
     }
 
     func refreshAllContent() async {
+        await pullRemoteChangesIfNeeded()
         await ingestQueue.retryPending()
         async let projectsReload: Void = reloadProjects()
         async let scansReload: Void = reloadScans()
@@ -183,6 +194,17 @@ final class SharedWithMeViewModel {
             } else {
                 toastMessage = String(localized: "shared.action.error")
             }
+        }
+    }
+
+    private func pullRemoteChangesIfNeeded() async {
+        guard let syncEngine, let currentUserID, !currentUserID.isEmpty else { return }
+        do {
+            _ = try await syncEngine.pullChanges(forUserId: currentUserID)
+        } catch is CancellationError {
+            return
+        } catch {
+            // Shared list still loads when pull fails.
         }
     }
 

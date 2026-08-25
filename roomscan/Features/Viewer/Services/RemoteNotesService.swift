@@ -125,7 +125,23 @@ final class RemoteNotesService: NotesService, @unchecked Sendable {
             idempotencyKey: idempotencyKey
         )
 
-        return try await requestNote(endpoint: endpoint, resourceID: nil)
+        do {
+            return try await performCreateNote(endpoint: endpoint)
+        } catch let error as HTTPClientError where error == .networkError {
+            do {
+                return try await performCreateNote(endpoint: endpoint)
+            } catch let retryError as HTTPClientError {
+                throw mapHTTPClientError(retryError)
+            }
+        } catch let error as HTTPClientError {
+            throw mapHTTPClientError(error)
+        }
+    }
+
+    private func performCreateNote(endpoint: APIEndpoint) async throws -> SpatialNote {
+        let dto: NoteDTO = try await httpClient.request(endpoint)
+        await revisionStore.update(dto.revision.map(String.init), for: dto.id)
+        return NoteAPIMapping.toSpatialNote(dto)
     }
 
     func updateNote(

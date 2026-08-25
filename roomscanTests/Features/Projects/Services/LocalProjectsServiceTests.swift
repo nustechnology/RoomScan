@@ -143,7 +143,7 @@ struct LocalProjectsServiceTests {
             notes: []
         )
         let service = LocalProjectsService(directory: tempDir, seedIfEmpty: false)
-        await service.cacheProject(
+        try await service.cacheProject(
             ProjectSummary(
                 id: "project-1",
                 name: "Cached",
@@ -152,7 +152,7 @@ struct LocalProjectsServiceTests {
             )
         )
 
-        await service.cacheProject(
+        try await service.cacheProject(
             ProjectSummary(
                 id: "project-1",
                 name: "Updated From Remote",

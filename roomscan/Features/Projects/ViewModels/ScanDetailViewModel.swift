@@ -82,7 +82,12 @@ final class ScanDetailViewModel {
     }
 
     var displaySyncStatus: RoomScanSyncStatus {
-        detail?.syncStatus ?? scan.syncStatus
+        guard let detail else { return scan.syncStatus }
+        return ProjectAPIMapping.preferredSyncStatus(
+            local: scan.syncStatus,
+            remote: detail.syncStatus,
+            hasLocalUploadArtifacts: scan.hasLocalUploadArtifacts
+        )
     }
 
     func loadDetail() async {
@@ -92,14 +97,21 @@ final class ScanDetailViewModel {
         defer { isLoadingDetail = false }
 
         do {
-            detail = try await scanDetailService.fetchScanDetail(id: scan.id)
+            let fetched = try await scanDetailService.fetchScanDetail(id: scan.id)
+            let mergedStatus = ProjectAPIMapping.preferredSyncStatus(
+                local: scan.syncStatus,
+                remote: fetched.syncStatus,
+                hasLocalUploadArtifacts: scan.hasLocalUploadArtifacts
+            )
+            detail = fetched.updating(syncStatus: mergedStatus)
+            scan = scanReplacing(syncStatus: mergedStatus)
         } catch {
-            return
+            // Keep list-row scan metadata when detail fetch fails.
         }
     }
 
     var showsRetryUpload: Bool {
-        allowsOwnerActions && displaySyncStatus == .failed
+        allowsOwnerActions && (displaySyncStatus == .failed || displaySyncStatus == .conflict)
     }
 
     var hasRemoteModelDownload: Bool {
@@ -184,7 +196,7 @@ final class ScanDetailViewModel {
     @discardableResult
     func retryUpload() async -> Bool {
         guard allowsOwnerActions else { return false }
-        guard displaySyncStatus == .failed else { return false }
+        guard displaySyncStatus == .failed || displaySyncStatus == .conflict else { return false }
 
         isPerformingAction = true
         defer { isPerformingAction = false }
@@ -241,18 +253,26 @@ final class ScanDetailViewModel {
     }
 
     private func scanWithUpdatedName(_ name: String) -> RoomScanSummary {
+        scanReplacing(name: name)
+    }
+
+    private func scanReplacing(
+        name: String? = nil,
+        syncStatus: RoomScanSyncStatus? = nil
+    ) -> RoomScanSummary {
         RoomScanSummary(
             id: scan.id,
-            name: name,
+            name: name ?? scan.name,
             createdAt: scan.createdAt,
             localModelURL: scan.localModelURL,
             thumbnailName: scan.thumbnailName,
-            syncStatus: scan.syncStatus,
+            syncStatus: syncStatus ?? scan.syncStatus,
             creatorUserID: scan.creatorUserID,
             creatorDisplayName: scan.creatorDisplayName,
             notes: scan.notes,
             meshPath: scan.meshPath,
-            thumbnailPath: scan.thumbnailPath
+            thumbnailPath: scan.thumbnailPath,
+            noteCount: scan.noteCount
         )
     }
 

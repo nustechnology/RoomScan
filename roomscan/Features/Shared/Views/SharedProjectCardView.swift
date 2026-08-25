@@ -18,7 +18,7 @@ struct SharedProjectCardView: View {
                         .frame(width: 88, height: 72)
 
                     VStack(alignment: .leading, spacing: AppSpacing.extraSmall) {
-                        Text(project.name)
+                        Text(SharedProjectCardPresentation.title(for: project.name))
                             .font(.headline.bold())
                             .foregroundStyle(.primary)
                             .lineLimit(2)
@@ -72,6 +72,14 @@ struct SharedProjectCardView: View {
 }
 
 enum SharedProjectCardPresentation {
+    static func title(for name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return String(localized: "shared.project.placeholderName")
+        }
+        return trimmed
+    }
+
     static func subtitle(ownerName: String, scanCount: Int) -> String {
         String.localizedStringWithFormat(
             String(localized: "shared.project.subtitle.format"),

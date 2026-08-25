@@ -11,6 +11,8 @@ struct ProjectDetailView: View {
     let scanDetailService: (any ScanDetailService)?
     let notesService: any NotesService
     let shareService: any ShareService
+    let syncService: (any SyncService)?
+    let syncEngine: SyncEngine?
     let currentUserID: String
     var accessPolicy: DetailAccessPolicy = .editable
     var onScanUpdated: (RoomScanSummary) -> Void = { _ in }
@@ -30,6 +32,8 @@ struct ProjectDetailView: View {
         scanDetailService: (any ScanDetailService)? = nil,
         notesService: any NotesService,
         shareService: any ShareService,
+        syncService: (any SyncService)? = nil,
+        syncEngine: SyncEngine? = nil,
         currentUserID: String,
         accessPolicy: DetailAccessPolicy = .editable,
         onScanUpdated: @escaping (RoomScanSummary) -> Void = { _ in },
@@ -41,6 +45,8 @@ struct ProjectDetailView: View {
         self.scanDetailService = scanDetailService
         self.notesService = notesService
         self.shareService = shareService
+        self.syncService = syncService
+        self.syncEngine = syncEngine
         self.currentUserID = currentUserID
         self.accessPolicy = accessPolicy
         self.onScanUpdated = onScanUpdated
@@ -202,6 +208,7 @@ struct ProjectDetailView: View {
                         projectName: displayedProject.name,
                         notesService: notesService,
                         shareService: shareService,
+                        syncService: syncService,
                         accessPolicy: accessPolicy,
                         onScanUpdated: handleScanUpdated,
                         onScanDeleted: {
@@ -212,7 +219,7 @@ struct ProjectDetailView: View {
                 }
             }
             .fullScreenCover(item: $shareInput) { input in
-                ShareView(input: input, service: shareService)
+                ShareView(input: input, service: shareService, syncService: syncService)
             }
         }
         .background(AppColors.background)
@@ -275,14 +282,36 @@ struct ProjectDetailView: View {
         shareInput = .project(id: displayedProject.id, name: displayedProject.name)
     }
 
-    private func loadProjectDetail() async {
+    private func handleScanUpdated(_ updatedScan: RoomScanSummary) {
+        guard let index = roomScans.firstIndex(where: { $0.id == updatedScan.id }) else { return }
+        roomScans[index] = updatedScan
+        onScanUpdated(updatedScan)
+    }
+
+    private func handleScanDeleted(scanID: RoomScanSummary.ID) {
+        roomScans.removeAll { $0.id == scanID }
+        displayedProject = displayedProject.removingScan(id: scanID)
+        onScanDeleted(scanID)
+    }
+}
+
+private extension ProjectDetailView {
+    func loadProjectDetail() async {
         isLoadingDetail = true
         defer { isLoadingDetail = false }
 
+        if let syncEngine, !currentUserID.isEmpty {
+            do {
+                _ = try await syncEngine.pullChanges(forUserId: currentUserID)
+            } catch is CancellationError {
+                guard !Task.isCancelled else { return }
+            } catch {
+                // Detail fetch still proceeds when pull fails.
+            }
+        }
+
         do {
             let remote = try await projectsService.fetchProject(id: project.id)
-            // fetchProject already merges API scans with the local store; also merge
-            // any fresher in-memory scans from this screen (e.g. mid-session edits).
             let mergedScans = ProjectAPIMapping.mergeRoomScans(
                 apiScans: remote.roomScans,
                 localScans: roomScans
@@ -303,18 +332,6 @@ struct ProjectDetailView: View {
         } catch {
             showsDetailLoadError = true
         }
-    }
-
-    private func handleScanUpdated(_ updatedScan: RoomScanSummary) {
-        guard let index = roomScans.firstIndex(where: { $0.id == updatedScan.id }) else { return }
-        roomScans[index] = updatedScan
-        onScanUpdated(updatedScan)
-    }
-
-    private func handleScanDeleted(scanID: RoomScanSummary.ID) {
-        roomScans.removeAll { $0.id == scanID }
-        displayedProject = displayedProject.removingScan(id: scanID)
-        onScanDeleted(scanID)
     }
 }
 

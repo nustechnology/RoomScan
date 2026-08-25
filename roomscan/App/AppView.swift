@@ -12,6 +12,9 @@ struct AppView: View {
     let notesService: any NotesService
     let shareService: any ShareService
     let sharedService: any SharedService
+    let syncService: any SyncService
+    let usersService: any UsersService
+    let syncEngine: SyncEngine?
     let invitationService: any InvitationService
 
     var body: some View {
@@ -33,6 +36,9 @@ struct AppView: View {
                     notesService: notesService,
                     shareService: shareService,
                     sharedService: sharedService,
+                    syncService: syncService,
+                    usersService: usersService,
+                    syncEngine: syncEngine,
                     invitationService: invitationService,
                     pendingInvitation: Binding(
                         get: { appState.pendingInvitation },
@@ -41,12 +47,18 @@ struct AppView: View {
                                 appState.clearPendingInvitation()
                             }
                         }
-                    )
-                ) {
-                    Task {
-                        await appState.signOut(showSuccessToast: true)
+                    ),
+                    onUserUpdated: { user in
+                        appState.applySignedInSession(
+                            AuthenticationSession(user: user, provider: session.provider)
+                        )
+                    },
+                    onSignOut: {
+                        Task {
+                            await appState.signOut(showSuccessToast: true)
+                        }
                     }
-                }
+                )
 
             case .restoreFailed(let error):
                 ContentUnavailableView {

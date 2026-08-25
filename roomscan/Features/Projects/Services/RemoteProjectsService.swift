@@ -61,7 +61,7 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
                     revision: Int(await revisionStore.currentRevision(for: item.id)),
                     preservingRoomScans: existingScans
                 )
-                await localStore.cacheProject(project)
+                try await cacheLocally(project)
                 projects.append(project)
             }
             let hasMore = response.pagination.page < response.pagination.totalPages
@@ -99,7 +99,7 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
                 revision: Int(await revisionStore.currentRevision(for: id)),
                 preservingRoomScans: existingScans
             )
-            await localStore.cacheProject(project)
+            try await cacheLocally(project)
             return project
         } catch let error as HTTPClientError {
             #if DEBUG
@@ -146,11 +146,10 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
         )
 
         #if DEBUG
-        let bodyString = String(data: body, encoding: .utf8) ?? "<non-utf8 \(body.count) bytes>"
         print(
             """
             [RemoteProjectsService] updateProject request method=\(endpoint.method.rawValue) \
-            path=\(endpoint.path) body=\(bodyString)
+            path=\(endpoint.path) bodyBytes=\(body.count)
             """
         )
         #endif
@@ -164,7 +163,7 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
                 revision: Int(await revisionStore.currentRevision(for: id)),
                 preservingRoomScans: existingScans
             )
-            await localStore.cacheProject(project)
+            try await cacheLocally(project)
             return project
         } catch let error as HTTPClientError {
             #if DEBUG
@@ -247,32 +246,37 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
             throw ProjectsServiceError.network
         }
 
+        let idempotencyKey = UUID().uuidString
         let endpoint = APIEndpoint(
             path: "/api/v1/projects",
             method: .post,
             body: body,
-            idempotencyKey: UUID().uuidString
+            idempotencyKey: idempotencyKey
         )
 
         #if DEBUG
-        let bodyString = String(data: body, encoding: .utf8) ?? "<non-utf8 \(body.count) bytes>"
         print(
             """
             [RemoteProjectsService] createProject request method=\(endpoint.method.rawValue) \
-            path=\(endpoint.path) body=\(bodyString)
+            path=\(endpoint.path) bodyBytes=\(body.count)
             """
         )
         #endif
 
         do {
-            let response: ProjectAPIResponse = try await httpClient.request(endpoint)
-            await revisionStore.update(response.revision.map(String.init), for: response.id)
-            let project = ProjectAPIMapping.toProjectSummary(
-                response,
-                revision: Int(await revisionStore.currentRevision(for: response.id))
-            )
-            await localStore.cacheProject(project)
-            return project
+            return try await performCreateProject(endpoint: endpoint)
+        } catch let error as HTTPClientError where error == .networkError {
+            // Retry once with the same Idempotency-Key so a committed create is not duplicated.
+            do {
+                return try await performCreateProject(endpoint: endpoint)
+            } catch let retryError as HTTPClientError {
+                #if DEBUG
+                logHTTPClientError("createProject", retryError)
+                #endif
+                throw mapHTTPClientError(retryError, operation: .createProject)
+            } catch {
+                throw ProjectsServiceError.network
+            }
         } catch let error as HTTPClientError {
             #if DEBUG
             logHTTPClientError("createProject", error)
@@ -285,29 +289,4 @@ final class RemoteProjectsService: ProjectsService, ScanAssetRetrying, @unchecke
             throw ProjectsServiceError.network
         }
     }
-
-    #if DEBUG
-    private func logHTTPClientError(_ operation: String, _ error: HTTPClientError) {
-        switch error {
-        case .invalidURL:
-            print("[RemoteProjectsService] \(operation) failed: invalidURL")
-        case .networkError:
-            print("[RemoteProjectsService] \(operation) failed: networkError")
-        case let .serverError(statusCode, apiError):
-            print(
-                """
-                [RemoteProjectsService] \(operation) failed: serverError \
-                status=\(statusCode) apiError=\(String(describing: apiError))
-                """
-            )
-        case let .decodingError(underlying, bodyPreview):
-            print(
-                """
-                [RemoteProjectsService] \(operation) failed: decodingError \
-                underlying=\(underlying) body=\(bodyPreview)
-                """
-            )
-        }
-    }
-    #endif
 }

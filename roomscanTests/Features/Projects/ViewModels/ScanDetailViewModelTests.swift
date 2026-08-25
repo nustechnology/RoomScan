@@ -220,6 +220,80 @@ struct ScanDetailViewModelTests {
         #expect(!viewModel.showsRetryUpload)
     }
 
+    @Test func displaySyncStatusKeepsFailedWhenLocalMeshExists() async {
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(
+                localModelURL: URL(fileURLWithPath: "/tmp/mesh.usdz"),
+                syncStatus: .failed
+            ),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(
+                projects: [makeProject(syncStatus: .failed)],
+                simulatedDelayNanoseconds: 0
+            ),
+            scanDetailService: ScanDetailStatusStub(syncStatus: .pending)
+        )
+
+        await viewModel.loadDetail()
+
+        #expect(viewModel.displaySyncStatus == .failed)
+        #expect(viewModel.showsRetryUpload)
+    }
+
+    @Test func displaySyncStatusTrustsRemotePendingWhenFailedHasNoMesh() async {
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(syncStatus: .failed),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(
+                projects: [makeProject(syncStatus: .failed)],
+                simulatedDelayNanoseconds: 0
+            ),
+            scanDetailService: ScanDetailStatusStub(syncStatus: .pending)
+        )
+
+        await viewModel.loadDetail()
+
+        #expect(viewModel.displaySyncStatus == .pending)
+        #expect(!viewModel.showsRetryUpload)
+    }
+
+    @Test func displaySyncStatusKeepsUploadingOverRemotePending() async {
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(syncStatus: .uploading),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(
+                projects: [makeProject(syncStatus: .uploading)],
+                simulatedDelayNanoseconds: 0
+            ),
+            scanDetailService: ScanDetailStatusStub(syncStatus: .pending)
+        )
+
+        await viewModel.loadDetail()
+
+        #expect(viewModel.displaySyncStatus == .uploading)
+    }
+
+    @Test func displaySyncStatusTrustsRemoteSyncedWhenLocalIsPending() async {
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(syncStatus: .pending),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(
+                projects: [makeProject(syncStatus: .pending)],
+                simulatedDelayNanoseconds: 0
+            ),
+            scanDetailService: ScanDetailStatusStub(syncStatus: .synced)
+        )
+
+        await viewModel.loadDetail()
+
+        #expect(viewModel.displaySyncStatus == .synced)
+        #expect(!viewModel.showsRetryUpload)
+    }
+
     @Test func retryUploadIgnoredWhenNotFailed() async {
         let viewModel = makeViewModel(syncStatus: .synced)
         let didRetry = await viewModel.retryUpload()
@@ -461,6 +535,21 @@ private actor ScanDetailRenameSpy: ScanDetailService {
     func lastUpdateDescription() -> String? {
         updateDescription
     }
+}
+
+private struct ScanDetailStatusStub: ScanDetailService {
+    let syncStatus: RoomScanSyncStatus
+
+    func fetchScanDetail(id: String) async throws -> ScanDetail {
+        ScanDetailRenameStub().makeDetail(id: id, name: "Living Room", description: nil)
+            .updating(syncStatus: syncStatus)
+    }
+
+    func updateScanDetail(id: String, name: String, description: String?) async throws -> ScanDetail {
+        ScanDetailRenameStub().makeDetail(id: id, name: name, description: description)
+    }
+
+    func deleteScanDetail(id: String) async throws {}
 }
 
 private struct ScanDetailRetryStub: ScanDetailService {

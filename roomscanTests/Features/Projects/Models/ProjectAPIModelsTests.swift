@@ -9,12 +9,16 @@ import Testing
 
 struct ProjectAPIModelsTests {
     @Test func decodeProjectScanRevision_acceptsIntegerAndNumericString() throws {
-        let integerJSON = """
-        {"id":"scan-1","revision":7,"name":"Kitchen","noteCount":0,"createdAt":"2026-08-10T03:53:54.365Z"}
-        """.data(using: .utf8)!
-        let stringJSON = """
-        {"id":"scan-1","revision":"8","name":"Kitchen","noteCount":0,"createdAt":"2026-08-10T03:53:54.365Z"}
-        """.data(using: .utf8)!
+        let integerJSON = Data(
+            """
+            {"id":"scan-1","revision":7,"name":"Kitchen","noteCount":0,"createdAt":"2026-08-10T03:53:54.365Z"}
+            """.utf8
+        )
+        let stringJSON = Data(
+            """
+            {"id":"scan-1","revision":"8","name":"Kitchen","noteCount":0,"createdAt":"2026-08-10T03:53:54.365Z"}
+            """.utf8
+        )
 
         let decoder = LiveHTTPClient.makeAPIDecoder()
         #expect(try decoder.decode(ProjectScanDTO.self, from: integerJSON).revision == 7)
@@ -46,29 +50,31 @@ struct ProjectAPIModelsTests {
     }
 
     @Test func decodeProjectAPIResponse_withFractionalSeconds() throws {
-        let json = """
-        {
-          "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-          "name": "Lakeside Remodel",
-          "description": null,
-          "owner": { "id": "owner-1", "email": "owner@example.com" },
-          "scanCount": 0,
-          "scans": [],
-          "sharedCount": 2,
-          "thumbnail": null,
-          "syncStatus": "PENDING",
-          "createdAt": "2026-08-10T03:53:54.365Z",
-          "updatedAt": "2026-08-10T03:53:54.365Z",
-          "permissions": {
-            "role": "OWNER",
-            "canView": true,
-            "canEdit": true,
-            "canDelete": true,
-            "canShare": true,
-            "canCreateScan": true
-          }
-        }
-        """.data(using: .utf8)!
+        let json = Data(
+            """
+            {
+              "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+              "name": "Lakeside Remodel",
+              "description": null,
+              "owner": { "id": "owner-1", "email": "owner@example.com" },
+              "scanCount": 0,
+              "scans": [],
+              "sharedCount": 2,
+              "thumbnail": null,
+              "syncStatus": "PENDING",
+              "createdAt": "2026-08-10T03:53:54.365Z",
+              "updatedAt": "2026-08-10T03:53:54.365Z",
+              "permissions": {
+                "role": "OWNER",
+                "canView": true,
+                "canEdit": true,
+                "canDelete": true,
+                "canShare": true,
+                "canCreateScan": true
+              }
+            }
+            """.utf8
+        )
 
         let response = try LiveHTTPClient.makeAPIDecoder().decode(ProjectAPIResponse.self, from: json)
         let summary = ProjectAPIMapping.toProjectSummary(response)
@@ -83,40 +89,42 @@ struct ProjectAPIModelsTests {
     }
 
     @Test func decodeProjectAPIResponse_withNestedScans() throws {
-        let json = """
-        {
-          "id": "project-1",
-          "name": "With Scans",
-          "description": "Desc",
-          "owner": { "id": "owner-1", "email": "owner@example.com" },
-          "scanCount": 1,
-          "scans": [
+        let json = Data(
+            """
             {
-              "id": "scan-1",
-              "name": "Kitchen",
-              "description": "Main kitchen",
-              "thumbnail": "https://example.com/thumb.jpg",
-              "noteCount": 3,
-              "assetStatus": "NONE",
+              "id": "project-1",
+              "name": "With Scans",
+              "description": "Desc",
+              "owner": { "id": "owner-1", "email": "owner@example.com" },
+              "scanCount": 1,
+              "scans": [
+                {
+                  "id": "scan-1",
+                  "name": "Kitchen",
+                  "description": "Main kitchen",
+                  "thumbnail": "https://example.com/thumb.jpg",
+                  "noteCount": 3,
+                  "assetStatus": "NONE",
+                  "syncStatus": "PENDING",
+                  "createdAt": "2026-08-11T02:56:32.757Z"
+                }
+              ],
+              "sharedCount": 0,
+              "thumbnail": "https://example.com/project.jpg",
               "syncStatus": "PENDING",
-              "createdAt": "2026-08-11T02:56:32.757Z"
+              "createdAt": "2026-08-11T02:56:32.757Z",
+              "updatedAt": "2026-08-11T02:56:32.757Z",
+              "permissions": {
+                "role": "OWNER",
+                "canView": true,
+                "canEdit": true,
+                "canDelete": true,
+                "canShare": true,
+                "canCreateScan": true
+              }
             }
-          ],
-          "sharedCount": 0,
-          "thumbnail": "https://example.com/project.jpg",
-          "syncStatus": "PENDING",
-          "createdAt": "2026-08-11T02:56:32.757Z",
-          "updatedAt": "2026-08-11T02:56:32.757Z",
-          "permissions": {
-            "role": "OWNER",
-            "canView": true,
-            "canEdit": true,
-            "canDelete": true,
-            "canShare": true,
-            "canCreateScan": true
-          }
-        }
-        """.data(using: .utf8)!
+            """.utf8
+        )
 
         let response = try LiveHTTPClient.makeAPIDecoder().decode(ProjectAPIResponse.self, from: json)
         let summary = ProjectAPIMapping.toProjectSummary(response)
@@ -181,29 +189,207 @@ struct ProjectAPIModelsTests {
         #expect(merged[1].id == "scan-local")
     }
 
+    @Test func mergeRoomScans_noteCountIncludesUnionOfLocalAndRemoteNotes() {
+        let apiScan = RoomScanSummary(
+            id: "scan-1",
+            name: "Kitchen",
+            createdAt: Date(timeIntervalSince1970: 2_000),
+            thumbnailName: "",
+            syncStatus: .synced,
+            notes: [
+                RoomScanNoteSummary(id: "remote-1", text: "Remote", createdAt: Date(timeIntervalSince1970: 1_200))
+            ],
+            noteCount: 1
+        )
+        let localScan = RoomScanSummary(
+            id: "scan-1",
+            name: "Kitchen",
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            thumbnailName: "thumbnail-0",
+            syncStatus: .synced,
+            notes: [
+                RoomScanNoteSummary(id: "local-1", text: "Local", createdAt: Date(timeIntervalSince1970: 1_100))
+            ],
+            noteCount: 1
+        )
+
+        let merged = ProjectAPIMapping.mergeRoomScans(apiScans: [apiScan], localScans: [localScan])
+
+        #expect(merged[0].notes.count == 2)
+        #expect(merged[0].noteCount == 2)
+    }
+
+    @Test func mergeRoomScans_keepsFailedOnlyWhenLocalMeshExists() {
+        let remotePending = RoomScanSummary(
+            id: "scan-1",
+            name: "Kitchen",
+            createdAt: Date(timeIntervalSince1970: 2_000),
+            thumbnailName: "",
+            syncStatus: .pending,
+            notes: []
+        )
+        let failedWithMesh = RoomScanSummary(
+            id: "scan-1",
+            name: "Kitchen",
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            localModelURL: URL(fileURLWithPath: "/tmp/mesh.usdz"),
+            thumbnailName: "thumbnail-0",
+            syncStatus: .failed,
+            notes: []
+        )
+        let failedWithoutMesh = RoomScanSummary(
+            id: "scan-1",
+            name: "Kitchen",
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            thumbnailName: "thumbnail-0",
+            syncStatus: .failed,
+            notes: []
+        )
+
+        let withArtifacts = ProjectAPIMapping.mergeRoomScans(
+            apiScans: [remotePending],
+            localScans: [failedWithMesh]
+        )
+        let withoutArtifacts = ProjectAPIMapping.mergeRoomScans(
+            apiScans: [remotePending],
+            localScans: [failedWithoutMesh]
+        )
+
+        #expect(withArtifacts.first?.syncStatus == .failed)
+        #expect(withoutArtifacts.first?.syncStatus == .pending)
+    }
+
+    @Test func mergeRoomScans_keepsUploadingAndTrustsRemoteWhenLocalPendingHasNoMesh() {
+        let remote = RoomScanSummary(
+            id: "scan-1",
+            name: "Kitchen",
+            createdAt: Date(timeIntervalSince1970: 2_000),
+            thumbnailName: "",
+            syncStatus: .pending,
+            notes: []
+        )
+        let uploading = RoomScanSummary(
+            id: "scan-1",
+            name: "Kitchen",
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            thumbnailName: "thumbnail-0",
+            syncStatus: .uploading,
+            notes: []
+        )
+        let localPendingWithoutMesh = RoomScanSummary(
+            id: "scan-1",
+            name: "Kitchen",
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            thumbnailName: "thumbnail-0",
+            syncStatus: .pending,
+            notes: []
+        )
+        let remoteSynced = RoomScanSummary(
+            id: "scan-1",
+            name: "Kitchen",
+            createdAt: Date(timeIntervalSince1970: 2_000),
+            thumbnailName: "",
+            syncStatus: .synced,
+            notes: []
+        )
+
+        #expect(
+            ProjectAPIMapping.mergeRoomScans(apiScans: [remote], localScans: [uploading]).first?.syncStatus
+                == .uploading
+        )
+        #expect(
+            ProjectAPIMapping.mergeRoomScans(
+                apiScans: [remoteSynced],
+                localScans: [localPendingWithoutMesh]
+            ).first?.syncStatus == .synced
+        )
+    }
+
+    @Test func mergeRoomScans_trustsRemoteSyncedWhenLocalPendingEvenIfMeshExists() {
+        let remoteSynced = RoomScanSummary(
+            id: "scan-1",
+            name: "Kitchen",
+            createdAt: Date(timeIntervalSince1970: 2_000),
+            thumbnailName: "",
+            syncStatus: .synced,
+            notes: []
+        )
+        let localPendingWithMesh = RoomScanSummary(
+            id: "scan-1",
+            name: "Kitchen",
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            localModelURL: URL(fileURLWithPath: "/tmp/mesh.usdz"),
+            thumbnailName: "thumbnail-0",
+            syncStatus: .pending,
+            notes: []
+        )
+
+        let merged = ProjectAPIMapping.mergeRoomScans(
+            apiScans: [remoteSynced],
+            localScans: [localPendingWithMesh]
+        )
+
+        #expect(merged.first?.syncStatus == .synced)
+        #expect(merged.first?.localModelURL == URL(fileURLWithPath: "/tmp/mesh.usdz"))
+        #expect(merged.first?.contributesToLocalUnresolvedCount == false)
+    }
+
+    @Test @MainActor func toScanDetail_mapsSyncingToUploading() throws {
+        let json = Data(
+            """
+            {
+              "id": "scan-1",
+              "projectId": "project-1",
+              "name": "Kitchen",
+              "description": null,
+              "thumbnail": null,
+              "creator": { "id": "user-1", "email": "owner@example.com" },
+              "noteCount": 0,
+              "assetStatus": "NONE",
+              "syncStatus": "SYNCING",
+              "modelVersion": 1,
+              "createdAt": "2026-08-11T02:56:32.757Z",
+              "updatedAt": "2026-08-11T02:56:32.757Z",
+              "permissions": {
+                "role": "OWNER",
+                "canView": true,
+                "canEdit": true,
+                "canDelete": true
+              }
+            }
+            """.utf8
+        )
+
+        let response = try LiveHTTPClient.makeAPIDecoder().decode(ScanDetailAPIResponse.self, from: json)
+        let detail = try response.toScanDetail()
+        #expect(detail.syncStatus == .uploading)
+    }
+
     @Test func decodeProjectAPIResponse_withNullSyncStatus() throws {
-        let json = """
-        {
-          "id": "3250faea-6471-422d-ac1e-3f04bde194d7",
-          "name": "Project1",
-          "description": "Tetra",
-          "owner": { "id": "0b6e11ec-29a6-4a6b-813b-661dedfbeadc", "email": "tony.dev@nustechnology.com" },
-          "scanCount": 0,
-          "sharedCount": 0,
-          "thumbnail": null,
-          "syncStatus": null,
-          "createdAt": "2026-08-10T07:18:40.458Z",
-          "updatedAt": "2026-08-10T07:18:40.458Z",
-          "permissions": {
-            "role": "OWNER",
-            "canView": true,
-            "canEdit": true,
-            "canDelete": true,
-            "canShare": true,
-            "canCreateScan": true
-          }
-        }
-        """.data(using: .utf8)!
+        let json = Data(
+            """
+            {
+              "id": "3250faea-6471-422d-ac1e-3f04bde194d7",
+              "name": "Project1",
+              "description": "Tetra",
+              "owner": { "id": "0b6e11ec-29a6-4a6b-813b-661dedfbeadc", "email": "tony.dev@nustechnology.com" },
+              "scanCount": 0,
+              "sharedCount": 0,
+              "thumbnail": null,
+              "syncStatus": null,
+              "createdAt": "2026-08-10T07:18:40.458Z",
+              "updatedAt": "2026-08-10T07:18:40.458Z",
+              "permissions": {
+                "role": "OWNER",
+                "canView": true,
+                "canEdit": true,
+                "canDelete": true,
+                "canShare": true,
+                "canCreateScan": true
+              }
+            }
+            """.utf8
+        )
 
         let response = try LiveHTTPClient.makeAPIDecoder().decode(ProjectAPIResponse.self, from: json)
         let summary = ProjectAPIMapping.toProjectSummary(response)
@@ -219,50 +405,52 @@ struct ProjectAPIModelsTests {
     }
 
     @Test func decodeProjectsListAPIResponse_itemsAndPagination() throws {
-        let json = """
-        {
-          "items": [
+        let json = Data(
+            """
             {
-              "id": "3250faea-6471-422d-ac1e-3f04bde194d7",
-              "name": "Project1",
-              "description": "Tetra",
-              "owner": { "id": "owner-1", "email": "owner@example.com" },
-              "scanCount": 3,
-              "scans": [
+              "items": [
                 {
-                  "id": "scan-a",
-                  "name": "Room A",
-                  "description": null,
+                  "id": "3250faea-6471-422d-ac1e-3f04bde194d7",
+                  "name": "Project1",
+                  "description": "Tetra",
+                  "owner": { "id": "owner-1", "email": "owner@example.com" },
+                  "scanCount": 3,
+                  "scans": [
+                    {
+                      "id": "scan-a",
+                      "name": "Room A",
+                      "description": null,
+                      "thumbnail": null,
+                      "noteCount": 0,
+                      "assetStatus": "NONE",
+                      "syncStatus": "SYNCED",
+                      "createdAt": "2026-08-10T07:18:40.458Z"
+                    }
+                  ],
+                  "sharedCount": 1,
                   "thumbnail": null,
-                  "noteCount": 0,
-                  "assetStatus": "NONE",
-                  "syncStatus": "SYNCED",
-                  "createdAt": "2026-08-10T07:18:40.458Z"
+                  "syncStatus": null,
+                  "createdAt": "2026-08-10T07:18:40.458Z",
+                  "updatedAt": "2026-08-10T07:18:40.458Z",
+                  "permissions": {
+                    "role": "OWNER",
+                    "canView": true,
+                    "canEdit": true,
+                    "canDelete": true,
+                    "canShare": true,
+                    "canCreateScan": true
+                  }
                 }
               ],
-              "sharedCount": 1,
-              "thumbnail": null,
-              "syncStatus": null,
-              "createdAt": "2026-08-10T07:18:40.458Z",
-              "updatedAt": "2026-08-10T07:18:40.458Z",
-              "permissions": {
-                "role": "OWNER",
-                "canView": true,
-                "canEdit": true,
-                "canDelete": true,
-                "canShare": true,
-                "canCreateScan": true
+              "pagination": {
+                "page": 1,
+                "limit": 5,
+                "total": 6,
+                "totalPages": 2
               }
             }
-          ],
-          "pagination": {
-            "page": 1,
-            "limit": 5,
-            "total": 6,
-            "totalPages": 2
-          }
-        }
-        """.data(using: .utf8)!
+            """.utf8
+        )
 
         let response = try LiveHTTPClient.makeAPIDecoder().decode(ProjectsListAPIResponse.self, from: json)
         let page = ProjectAPIMapping.toProjectPage(response)

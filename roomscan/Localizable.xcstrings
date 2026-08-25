@@ -17,6 +17,90 @@
         }
       }
     },
+    "account.editName.error" : {
+      "comment" : "Error shown when updating the display name fails.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't update your name. Try again."
+          }
+        }
+      }
+    },
+    "account.editName.fieldLabel" : {
+      "comment" : "Label above the display name text field.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Display name"
+          }
+        }
+      }
+    },
+    "account.editName.placeholder" : {
+      "comment" : "Placeholder for the display name text field.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter your name"
+          }
+        }
+      }
+    },
+    "account.editName.save" : {
+      "comment" : "Save button for editing display name.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save"
+          }
+        }
+      }
+    },
+    "account.editName.saving" : {
+      "comment" : "Save button title while display name update is in progress.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saving…"
+          }
+        }
+      }
+    },
+    "account.editName.title" : {
+      "comment" : "Title for the edit display name bottom sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit name"
+          }
+        }
+      }
+    },
+    "account.editName.validation.empty" : {
+      "comment" : "Validation message when display name is empty.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter a name to continue."
+          }
+        }
+      }
+    },
     "account.metrics.load.error" : {
       "comment" : "Error state when account metrics fail to load.",
       "extractionState" : "manual",
@@ -1659,6 +1743,17 @@
         }
       }
     },
+    "projects.scan.status.conflict" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conflict"
+          }
+        }
+      }
+    },
     "projects.scan.status.pending" : {
       "localizations" : {
         "en" : {
@@ -2952,6 +3047,17 @@
         }
       }
     },
+    "share.error.syncNotReady" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finish uploading this project before sharing."
+          }
+        }
+      }
+    },
     "share.error.tryAgain" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3561,6 +3667,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Loading…"
+          }
+        }
+      }
+    },
+    "shared.project.placeholderName" : {
+      "comment" : "Fallback title when a shared project name is not yet available locally.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Project"
           }
         }
       }

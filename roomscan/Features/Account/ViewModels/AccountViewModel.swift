@@ -11,23 +11,48 @@ import Observation
 final class AccountViewModel {
     private let projectsService: any ProjectsService
     private let sharedService: any SharedService
+    private let syncService: any SyncService
+    private let usersService: any UsersService
     private let storageMeasuring: any AccountStorageMeasuring
+    private let onUserUpdated: (AuthenticatedUser) -> Void
 
     private(set) var metrics: AccountMetrics?
     private(set) var isLoading = false
     private(set) var loadFailed = false
     private(set) var showsSignOutConfirmation = false
 
+    private(set) var isEditNameSheetPresented = false
+    private(set) var editedDisplayName = ""
+    private(set) var isSavingDisplayName = false
+    private(set) var editValidationMessage: String?
+    private(set) var saveErrorMessage: String?
+
     private var loadGeneration = 0
+    private var profileLoadGeneration = 0
+    private var saveGeneration = 0
+    private var baselineDisplayName: String?
 
     init(
         projectsService: any ProjectsService,
         sharedService: any SharedService,
-        storageMeasuring: any AccountStorageMeasuring = MockAccountStorageMeasuring()
+        syncService: any SyncService,
+        usersService: any UsersService = MockUsersService(),
+        storageMeasuring: any AccountStorageMeasuring = MockAccountStorageMeasuring(),
+        onUserUpdated: @escaping (AuthenticatedUser) -> Void = { _ in }
     ) {
         self.projectsService = projectsService
         self.sharedService = sharedService
+        self.syncService = syncService
+        self.usersService = usersService
         self.storageMeasuring = storageMeasuring
+        self.onUserUpdated = onUserUpdated
+    }
+
+    var canSaveDisplayName: Bool {
+        let trimmed = editedDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let baseline = baselineDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed != baseline && !isSavingDisplayName
     }
 
     func loadMetrics() async {
@@ -38,27 +63,116 @@ final class AccountViewModel {
         do {
             async let projectsTask = fetchAllProjects()
             async let sharedProjectsTask = sharedService.fetchSharedProjects()
+            async let syncStatusTask = fetchPendingSyncCountFromServer()
             async let storageTask = storageMeasuring.usedBytes()
 
             let projects = try await projectsTask
             let sharedProjects = try await sharedProjectsTask
+            let serverPendingCount = try await syncStatusTask
             let storageUsedBytes = await storageTask
 
             guard generation == loadGeneration else { return }
 
             let allScans = projects.flatMap(\.roomScans)
+            let localPendingCount = allScans.filter(\.contributesToLocalUnresolvedCount).count
+            let pendingSyncCount: Int
+            if let serverPendingCount {
+                pendingSyncCount = max(serverPendingCount, localPendingCount)
+            } else {
+                pendingSyncCount = localPendingCount
+            }
+
             metrics = AccountMetrics(
                 localScanCount: allScans.count,
-                pendingSyncCount: allScans.filter { $0.syncStatus != .synced }.count,
+                pendingSyncCount: pendingSyncCount,
                 sharedProjectCount: sharedProjects.count,
                 storageUsedBytes: storageUsedBytes
             )
             loadFailed = false
             isLoading = false
+        } catch is CancellationError {
+            guard generation == loadGeneration else { return }
+            isLoading = false
         } catch {
             guard generation == loadGeneration else { return }
             loadFailed = true
             isLoading = false
+        }
+    }
+
+    func loadProfile(currentUser: AuthenticatedUser) async {
+        profileLoadGeneration += 1
+        let generation = profileLoadGeneration
+
+        do {
+            let user = try await usersService.fetchMe(fallingBackTo: currentUser)
+            guard generation == profileLoadGeneration else { return }
+            onUserUpdated(user)
+        } catch is CancellationError {
+            return
+        } catch {
+            // Keep local session data if profile refresh fails.
+        }
+    }
+
+    func openEditNameSheet(currentDisplayName: String?) {
+        baselineDisplayName = currentDisplayName
+        editedDisplayName = currentDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        editValidationMessage = nil
+        saveErrorMessage = nil
+        isSavingDisplayName = false
+        isEditNameSheetPresented = true
+    }
+
+    func closeEditNameSheet() {
+        isEditNameSheetPresented = false
+        editedDisplayName = ""
+        baselineDisplayName = nil
+        editValidationMessage = nil
+        saveErrorMessage = nil
+        isSavingDisplayName = false
+    }
+
+    func updateEditedDisplayName(_ value: String) {
+        editedDisplayName = value
+        if editValidationMessage != nil {
+            editValidationMessage = nil
+        }
+        if saveErrorMessage != nil {
+            saveErrorMessage = nil
+        }
+    }
+
+    func saveDisplayName(currentUser: AuthenticatedUser) async {
+        let trimmed = editedDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            editValidationMessage = String(localized: "account.editName.validation.empty")
+            return
+        }
+
+        profileLoadGeneration += 1
+        saveGeneration += 1
+        let generation = saveGeneration
+        isSavingDisplayName = true
+        editValidationMessage = nil
+        saveErrorMessage = nil
+
+        do {
+            let user = try await usersService.updateMe(
+                displayName: trimmed,
+                fallingBackTo: currentUser
+            )
+            guard generation == saveGeneration else { return }
+            onUserUpdated(user)
+            isSavingDisplayName = false
+            closeEditNameSheet()
+        } catch is CancellationError {
+            guard generation == saveGeneration else { return }
+            isSavingDisplayName = false
+        } catch {
+            guard generation == saveGeneration else { return }
+            isSavingDisplayName = false
+            saveErrorMessage = String(localized: "account.editName.error")
         }
     }
 
@@ -90,5 +204,17 @@ final class AccountViewModel {
         }
 
         return allProjects
+    }
+
+    /// Prefer backend `/sync/status` totals; returns `nil` so callers can fall back to local scan statuses.
+    private func fetchPendingSyncCountFromServer() async throws -> Int? {
+        do {
+            let summaries = try await syncService.fetchSyncStatus()
+            return summaries.reduce(0) { $0 + $1.unresolvedCount }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return nil
+        }
     }
 }

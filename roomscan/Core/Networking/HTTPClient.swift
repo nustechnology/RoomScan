@@ -28,14 +28,16 @@ struct APIRevision: Decodable, Sendable, Equatable {
 actor APIRevisionStore {
     static let shared = APIRevisionStore()
     private static let storageKey = "api.revisions"
+    private let defaults: UserDefaults
     private var revisions: [String: String]
 
-    init() {
-        revisions = UserDefaults.standard.dictionary(forKey: Self.storageKey) as? [String: String] ?? [:]
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        revisions = defaults.dictionary(forKey: Self.storageKey) as? [String: String] ?? [:]
     }
 
     private func persist() {
-        UserDefaults.standard.set(revisions, forKey: Self.storageKey)
+        defaults.set(revisions, forKey: Self.storageKey)
     }
 
     func currentRevision(for resourceID: String) -> String {
@@ -206,8 +208,15 @@ struct LiveHTTPClient: HTTPClient {
 
     func request<T: Decodable>(_ endpoint: APIEndpoint) async throws -> T {
         let request = endpoint.urlRequest(baseURL: baseURL)
+        #if DEBUG
+        Self.logRequest(request)
+        #endif
 
         let (data, httpResponse) = try await perform(request, endpoint: endpoint)
+
+        #if DEBUG
+        Self.logResponse(httpResponse, data: data, for: request)
+        #endif
 
         guard (200...299).contains(httpResponse.statusCode) else {
             let apiError = try? decoder.decode(APIErrorResponse.self, from: data)
@@ -235,7 +244,8 @@ struct LiveHTTPClient: HTTPClient {
             print(
                 """
                 [HTTP] decode failed method=\(endpoint.method.rawValue) path=\(endpoint.path) \
-                status=\(httpResponse.statusCode) error=\(underlying)
+                status=\(httpResponse.statusCode) error=\(underlying) \
+                bodyBytes=\(bodyPreview.utf8.count)
                 """
             )
             #endif
@@ -275,7 +285,64 @@ struct LiveHTTPClient: HTTPClient {
         return (data, httpResponse)
     }
 
-    private static func bodyPreview(from data: Data, limit: Int = 2_048) -> String {
+    #if DEBUG
+    private static let sensitiveHeaderKeys: Set<String> = [
+        "authorization",
+        "cookie",
+        "set-cookie",
+        "x-api-key",
+    ]
+
+    private static func logRequest(_ request: URLRequest) {
+        let method = request.httpMethod ?? "?"
+        let url = request.url?.absoluteString ?? "<nil>"
+        let headers = redactedHeaders(from: request.allHTTPHeaderFields ?? [:])
+        let bodyBytes = request.httpBody?.count ?? 0
+        print(
+            """
+            [HTTP] → \(method) \(url)
+            headers=\(headers)
+            bodyBytes=\(bodyBytes)
+            """
+        )
+    }
+
+    private static func logResponse(_ response: HTTPURLResponse, data: Data, for request: URLRequest) {
+        let method = request.httpMethod ?? "?"
+        let url = request.url?.absoluteString ?? response.url?.absoluteString ?? "<nil>"
+        let headers = redactedHeaders(from: response.allHeaderFields)
+        print(
+            """
+            [HTTP] ← \(response.statusCode) \(method) \(url)
+            headers=\(headers)
+            bodyBytes=\(data.count)
+            """
+        )
+    }
+
+    private static func redactedHeaders(from headers: [String: String]) -> [String: String] {
+        Dictionary(uniqueKeysWithValues: headers.map { key, value in
+            let redacted = sensitiveHeaderKeys.contains(key.lowercased()) ? "<redacted>" : value
+            return (key, redacted)
+        })
+    }
+
+    private static func redactedHeaders(from headers: [AnyHashable: Any]) -> [String: String] {
+        var result: [String: String] = [:]
+        for (key, value) in headers {
+            let keyString = String(describing: key)
+            if sensitiveHeaderKeys.contains(keyString.lowercased()) {
+                result[keyString] = "<redacted>"
+            } else {
+                result[keyString] = String(describing: value)
+            }
+        }
+        return result
+    }
+    #endif
+
+    private static func bodyPreview(from data: Data?, limit: Int = 2_048) -> String {
+        guard let data, !data.isEmpty else { return "<empty>" }
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 \(data.count) bytes>"
         guard raw.count > limit else { return raw }
         return String(raw.prefix(limit)) + "…(\(raw.count - limit) more)"
