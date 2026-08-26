@@ -8,21 +8,36 @@ import Foundation
 import Testing
 
 struct ProjectCardPresentationTests {
-    @Test func scanCountTextUsesRemoteTotalWhenFullyLoaded() {
+    @Test func updatedTextUsesRelativeTime() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+
         #expect(
-            ProjectCardPresentation.scanCountText(remoteScanCount: 10, loadedScanCount: 10)
-                == "10 room scans"
+            ProjectCardPresentation.updatedText(
+                updatedAt: now.addingTimeInterval(-30),
+                now: now,
+                locale: Locale(identifier: "en_US")
+            ) == "Updated just now"
         )
         #expect(
-            ProjectCardPresentation.scanCountText(remoteScanCount: 0, loadedScanCount: 0)
-                == "0 room scans"
+            ProjectCardPresentation.updatedText(
+                updatedAt: now.addingTimeInterval(-86_400),
+                now: now,
+                locale: Locale(identifier: "en_US")
+            ) == "Updated 1 day ago"
         )
     }
 
-    @Test func scanCountTextCallsOutPartialLocalCache() {
+    @Test func timelineStartsAtFutureTimestampThenUsesPastOffset() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let updatedAt = now.addingTimeInterval(30)
+
         #expect(
-            ProjectCardPresentation.scanCountText(remoteScanCount: 10, loadedScanCount: 4)
-                == "10 room scans · 4 loaded"
+            ProjectCardPresentation.timelineStartDate(updatedAt: updatedAt, now: now)
+                == updatedAt
+        )
+        #expect(
+            ProjectCardPresentation.timelineStartDate(updatedAt: updatedAt, now: updatedAt)
+                == updatedAt.addingTimeInterval(60)
         )
     }
 

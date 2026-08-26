@@ -239,6 +239,12 @@ struct ProjectsPresentationModifier: ViewModifier {
             onAddScan: { projectID in
                 pendingScanSourceProjectID = projectID
                 selectedProject = nil
+            },
+            onEdit: { project in
+                projectToEdit = project
+            },
+            onDelete: { project in
+                projectPendingDelete = project
             }
         )
     }

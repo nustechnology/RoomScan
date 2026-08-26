@@ -252,7 +252,7 @@ struct NewProjectView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
                 .background(
-                    AppColors.brandBlueBottom,
+                    canSave ? AppColors.brandBlueBottom : AppColors.brandBlueBottom.opacity(0.9),
                     in: RoundedRectangle(cornerRadius: AppCornerRadius.large)
                 )
             }
@@ -261,7 +261,6 @@ struct NewProjectView: View {
             // `save()` already guards against double-submit via `isSaving`.
             .disabled(!canSave)
             .allowsHitTesting(canSave && !isSaving)
-            .opacity(canSave ? 1 : 0.3)
             .accessibilityIdentifier("\(accessibilityRootID).save")
 
             Button(action: cancel) {
