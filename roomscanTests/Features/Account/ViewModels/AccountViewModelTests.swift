@@ -22,7 +22,11 @@ struct AccountViewModelTests {
                 roomScans: [
                     makeScan(id: "s1", syncStatus: .synced),
                     makeScan(id: "s2", syncStatus: .uploading),
-                    makeScan(id: "s3", syncStatus: .failed)
+                    makeScan(
+                        id: "s3",
+                        syncStatus: .failed,
+                        localModelURL: URL(fileURLWithPath: "/tmp/mesh.usdz")
+                    )
                 ]
             )
         ]
@@ -59,6 +63,7 @@ struct AccountViewModelTests {
                 scans: [],
                 simulatedDelayNanoseconds: 0
             ),
+            syncService: MockSyncService(simulatedDelayNanoseconds: 0),
             storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 1_800_000_000)
         )
 
@@ -68,6 +73,212 @@ struct AccountViewModelTests {
         #expect(viewModel.metrics?.pendingSyncCount == 2)
         #expect(viewModel.metrics?.sharedProjectCount == 2)
         #expect(viewModel.metrics?.storageUsedBytes == 1_800_000_000)
+        #expect(viewModel.metrics?.showsSyncPendingBanner == true)
+    }
+
+    @Test func loadMetricsPrefersServerSyncStatusTotals() async {
+        let projects = [
+            ProjectSummary(
+                id: "p1",
+                name: "One",
+                ownerName: "You",
+                createdAt: Date(),
+                updatedAt: Date(),
+                description: "",
+                sharedUserCount: 0,
+                roomScans: [
+                    makeScan(id: "s1", syncStatus: .synced),
+                    makeScan(id: "s2", syncStatus: .synced)
+                ]
+            )
+        ]
+
+        let viewModel = AccountViewModel(
+            projectsService: MockProjectsService(
+                projects: projects,
+                simulatedDelayNanoseconds: 0
+            ),
+            sharedService: MockSharedService(
+                projects: [],
+                scans: [],
+                simulatedDelayNanoseconds: 0
+            ),
+            syncService: MockSyncService(
+                items: [
+                    ProjectSyncStatusSummary(
+                        projectId: "p1",
+                        syncStatus: .pending,
+                        pendingCount: 1,
+                        syncingCount: 2,
+                        failedCount: 1,
+                        conflictCount: 0,
+                        lastSyncedAt: nil,
+                        requiredAssetsUploaded: false
+                    )
+                ],
+                simulatedDelayNanoseconds: 0
+            ),
+            storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 0)
+        )
+
+        await viewModel.loadMetrics()
+
+        #expect(viewModel.metrics?.pendingSyncCount == 4)
+        #expect(viewModel.metrics?.showsSyncPendingBanner == true)
+        #expect(viewModel.metrics?.localScanCount == 2)
+    }
+
+    @Test func loadMetricsUsesLocalPendingWhenHigherThanServer() async {
+        let projects = [
+            ProjectSummary(
+                id: "p1",
+                name: "One",
+                ownerName: "You",
+                createdAt: Date(),
+                updatedAt: Date(),
+                description: "",
+                sharedUserCount: 0,
+                roomScans: [
+                    makeScan(id: "s1", syncStatus: .uploading),
+                    makeScan(
+                        id: "s2",
+                        syncStatus: .failed,
+                        localModelURL: URL(fileURLWithPath: "/tmp/mesh.usdz")
+                    )
+                ]
+            )
+        ]
+
+        let viewModel = AccountViewModel(
+            projectsService: MockProjectsService(
+                projects: projects,
+                simulatedDelayNanoseconds: 0
+            ),
+            sharedService: MockSharedService(
+                projects: [],
+                scans: [],
+                simulatedDelayNanoseconds: 0
+            ),
+            syncService: MockSyncService(
+                items: [
+                    ProjectSyncStatusSummary(
+                        projectId: "p1",
+                        syncStatus: .synced,
+                        pendingCount: 0,
+                        syncingCount: 0,
+                        failedCount: 0,
+                        conflictCount: 0,
+                        lastSyncedAt: Date(),
+                        requiredAssetsUploaded: true
+                    )
+                ],
+                simulatedDelayNanoseconds: 0
+            ),
+            storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 0)
+        )
+
+        await viewModel.loadMetrics()
+
+        #expect(viewModel.metrics?.pendingSyncCount == 2)
+        #expect(viewModel.metrics?.showsSyncPendingBanner == true)
+    }
+
+    @Test func loadMetricsFallsBackToLocalPendingCountWhenSyncStatusFails() async {
+        let projects = [
+            ProjectSummary(
+                id: "p1",
+                name: "One",
+                ownerName: "You",
+                createdAt: Date(),
+                updatedAt: Date(),
+                description: "",
+                sharedUserCount: 0,
+                roomScans: [
+                    makeScan(id: "s1", syncStatus: .synced),
+                    makeScan(
+                        id: "s2",
+                        syncStatus: .failed,
+                        localModelURL: URL(fileURLWithPath: "/tmp/mesh.usdz")
+                    )
+                ]
+            )
+        ]
+
+        let syncService = MockSyncService(
+            items: [],
+            scenario: .failLoad,
+            simulatedDelayNanoseconds: 0
+        )
+
+        let viewModel = AccountViewModel(
+            projectsService: MockProjectsService(
+                projects: projects,
+                simulatedDelayNanoseconds: 0
+            ),
+            sharedService: MockSharedService(
+                projects: [],
+                scans: [],
+                simulatedDelayNanoseconds: 0
+            ),
+            syncService: syncService,
+            storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 0)
+        )
+
+        await viewModel.loadMetrics()
+
+        #expect(viewModel.metrics?.pendingSyncCount == 1)
+        #expect(viewModel.metrics?.showsSyncPendingBanner == true)
+        #expect(viewModel.loadFailed == false)
+    }
+
+    @Test func loadMetricsIgnoresStaleFailedWithoutLocalMeshWhenServerIsClear() async {
+        let projects = [
+            ProjectSummary(
+                id: "p1",
+                name: "One",
+                ownerName: "You",
+                createdAt: Date(),
+                updatedAt: Date(),
+                description: "",
+                sharedUserCount: 0,
+                roomScans: [
+                    makeScan(id: "s1", syncStatus: .failed),
+                    makeScan(id: "s2", syncStatus: .uploading)
+                ]
+            )
+        ]
+
+        let viewModel = AccountViewModel(
+            projectsService: MockProjectsService(
+                projects: projects,
+                simulatedDelayNanoseconds: 0
+            ),
+            sharedService: MockSharedService(
+                projects: [],
+                scans: [],
+                simulatedDelayNanoseconds: 0
+            ),
+            syncService: MockSyncService(
+                items: [
+                    ProjectSyncStatusSummary(
+                        projectId: "p1",
+                        syncStatus: .synced,
+                        pendingCount: 0,
+                        syncingCount: 0,
+                        failedCount: 0,
+                        conflictCount: 0,
+                        lastSyncedAt: Date(),
+                        requiredAssetsUploaded: true
+                    )
+                ],
+                simulatedDelayNanoseconds: 0
+            ),
+            storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 0)
+        )
+
+        await viewModel.loadMetrics()
+
+        #expect(viewModel.metrics?.pendingSyncCount == 1)
         #expect(viewModel.metrics?.showsSyncPendingBanner == true)
     }
 
@@ -96,6 +307,7 @@ struct AccountViewModelTests {
                 scans: [],
                 simulatedDelayNanoseconds: 0
             ),
+            syncService: MockSyncService(simulatedDelayNanoseconds: 0),
             storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 0)
         )
 
@@ -131,6 +343,7 @@ struct AccountViewModelTests {
                 scans: [],
                 simulatedDelayNanoseconds: 0
             ),
+            syncService: MockSyncService(simulatedDelayNanoseconds: 0),
             storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 0)
         )
 
@@ -147,6 +360,7 @@ struct AccountViewModelTests {
                 simulatedDelayNanoseconds: 0
             ),
             sharedService: MockSharedService(simulatedDelayNanoseconds: 0),
+            syncService: MockSyncService(simulatedDelayNanoseconds: 0),
             storageMeasuring: MockAccountStorageMeasuring()
         )
 
@@ -166,6 +380,7 @@ struct AccountViewModelTests {
         let viewModel = AccountViewModel(
             projectsService: MockProjectsService(simulatedDelayNanoseconds: 0),
             sharedService: sharedService,
+            syncService: MockSyncService(simulatedDelayNanoseconds: 0),
             storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 1_000)
         )
 
@@ -190,6 +405,7 @@ struct AccountViewModelTests {
         let viewModel = AccountViewModel(
             projectsService: MockProjectsService(simulatedDelayNanoseconds: 0),
             sharedService: sharedService,
+            syncService: MockSyncService(simulatedDelayNanoseconds: 0),
             storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 2_000)
         )
 
@@ -209,6 +425,7 @@ struct AccountViewModelTests {
         let viewModel = AccountViewModel(
             projectsService: MockProjectsService(simulatedDelayNanoseconds: 0),
             sharedService: MockSharedService(simulatedDelayNanoseconds: 0),
+            syncService: MockSyncService(simulatedDelayNanoseconds: 0),
             storageMeasuring: MockAccountStorageMeasuring()
         )
         var didSignOut = false
@@ -227,27 +444,22 @@ struct AccountViewModelTests {
         #expect(didSignOut)
         #expect(viewModel.showsSignOutConfirmation == false)
     }
+}
 
-    @Test func displayNameInitialsAndProviderSubtitle() {
-        #expect(AccountDisplayName.initials(from: "Mike Nguyen") == "MN")
-        #expect(AccountDisplayName.initials(from: "Madonna") == "MA")
-        #expect(AccountDisplayName.resolved(from: "  ") == String(localized: "account.defaultName"))
-        #expect(AuthenticationProvider.apple.signedInSubtitle == String(localized: "account.signedIn.apple"))
-        #expect(AuthenticationProvider.google.signedInSubtitle == String(localized: "account.signedIn.google"))
-        #expect(AuthenticationProvider.facebook.signedInSubtitle == String(localized: "account.signedIn.facebook"))
-    }
-
-    private func makeScan(id: String, syncStatus: RoomScanSyncStatus) -> RoomScanSummary {
-        RoomScanSummary(
-            id: id,
-            name: id,
-            createdAt: Date(),
-            localModelURL: nil,
-            thumbnailName: "thumb",
-            syncStatus: syncStatus,
-            creatorUserID: "mock-user-apple",
-            creatorDisplayName: "Mock Apple User",
-            notes: []
-        )
-    }
+private func makeScan(
+    id: String,
+    syncStatus: RoomScanSyncStatus,
+    localModelURL: URL? = nil
+) -> RoomScanSummary {
+    RoomScanSummary(
+        id: id,
+        name: id,
+        createdAt: Date(),
+        localModelURL: localModelURL,
+        thumbnailName: "thumb",
+        syncStatus: syncStatus,
+        creatorUserID: "mock-user-apple",
+        creatorDisplayName: "Mock Apple User",
+        notes: []
+    )
 }

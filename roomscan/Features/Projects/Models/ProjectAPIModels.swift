@@ -287,19 +287,30 @@ enum ProjectAPIMapping {
             guard let local = localByID[remote.id] else {
                 return remote
             }
+            let notes = mergedNotes(local: local.notes, incoming: remote.notes)
             return RoomScanSummary(
                 id: remote.id,
                 name: remote.name.isEmpty ? local.name : remote.name,
                 createdAt: remote.createdAt,
                 localModelURL: local.localModelURL,
                 thumbnailName: local.thumbnailName,
-                syncStatus: preferredSyncStatus(local: local.syncStatus, remote: remote.syncStatus),
+                syncStatus: preferredSyncStatus(
+                    local: local.syncStatus,
+                    remote: remote.syncStatus,
+                    hasLocalUploadArtifacts: local.hasLocalUploadArtifacts
+                ),
                 creatorUserID: local.creatorUserID,
                 creatorDisplayName: local.creatorDisplayName,
-                notes: local.notes,
+                notes: notes,
                 meshPath: local.meshPath,
                 thumbnailPath: preferredThumbnailPath(local: local.thumbnailPath, remote: remote.thumbnailPath),
-                noteCount: max(remote.noteCount, local.noteCount, local.notes.count)
+                noteCount: max(
+                    remote.noteCount,
+                    local.noteCount,
+                    local.notes.count,
+                    remote.notes.count,
+                    notes.count
+                )
             )
         }
 
@@ -309,13 +320,33 @@ enum ProjectAPIMapping {
         return merged
     }
 
-    nonisolated private static func preferredSyncStatus(
+    nonisolated private static func mergedNotes(
+        local: [RoomScanNoteSummary],
+        incoming: [RoomScanNoteSummary]
+    ) -> [RoomScanNoteSummary] {
+        var byID = Dictionary(local.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+        for note in incoming {
+            byID[note.id] = note
+        }
+        return byID.values.sorted {
+            $0.createdAt == $1.createdAt ? $0.id < $1.id : $0.createdAt > $1.createdAt
+        }
+    }
+
+    /// Keep in-flight uploads sticky; keep Failed/Conflict while a mesh remains for retry.
+    /// Do not sticky-keep `.pending` — device-created scans persist `.pending` with a mesh URL
+    /// that is deliberately retained after a successful upload, so mesh presence is not an
+    /// outstanding-upload signal. Otherwise trust the remote scan `syncStatus`.
+    nonisolated static func preferredSyncStatus(
         local: RoomScanSyncStatus,
-        remote: RoomScanSyncStatus
+        remote: RoomScanSyncStatus,
+        hasLocalUploadArtifacts: Bool
     ) -> RoomScanSyncStatus {
         switch local {
-        case .uploading, .failed:
-            return local
+        case .uploading:
+            return .uploading
+        case .failed, .conflict:
+            return hasLocalUploadArtifacts ? local : remote
         case .pending, .synced:
             return remote
         }

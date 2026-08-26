@@ -147,14 +147,16 @@ final class LocalProjectsService: ProjectsLocalCache, @unchecked Sendable {
         return project
     }
 
-    func cacheProject(_ project: ProjectSummary) async {
+    func writeCachedProject(_ project: ProjectSummary, mergingLocalScans: Bool) throws {
         if let index = projects.firstIndex(where: { $0.id == project.id }) {
-            projects[index] = ProjectSummary.mergingRemoteCache(project, over: projects[index])
+            projects[index] = mergingLocalScans
+                ? ProjectSummary.mergingRemoteCache(project, over: projects[index])
+                : project
         } else {
             projects.insert(project, at: 0)
         }
         projects.sort { $0.updatedAt > $1.updatedAt }
-        try? persist()
+        try persist()
     }
 
     func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool {

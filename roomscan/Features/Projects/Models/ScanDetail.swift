@@ -127,7 +127,7 @@ struct ScanDetailAPIResponse: Decodable, Sendable {
             creatorEmail: creator.email,
             noteCount: noteCount,
             assetStatus: assetStatus,
-            syncStatus: RoomScanSyncStatus(rawValue: syncStatus.lowercased()) ?? .pending,
+            syncStatus: RoomScanSyncStatus.fromAPI(syncStatus),
             modelVersion: modelVersion,
             createdAt: try Self.parseDate(createdAt),
             updatedAt: try Self.parseDate(updatedAt),

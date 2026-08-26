@@ -238,6 +238,26 @@ nonisolated struct RoomScanSummary: Identifiable, Codable, Equatable, Hashable, 
         thumbnailPath = try container.decodeIfPresent(String.self, forKey: .thumbnailPath)
             ?? "Scans/\(id)/thumbnail.jpg"
     }
+
+    /// True when this device has a retained local mesh (upload/retry candidate).
+    /// Presence alone does not mean an upload is outstanding — meshes are kept after sync.
+    /// Default `meshPath` strings are not artifacts — they are always non-empty.
+    nonisolated var hasLocalUploadArtifacts: Bool {
+        localModelURL != nil
+    }
+
+    /// Local contribution to Account's unresolved count. Stale Failed without a mesh
+    /// must not keep the sync-pending banner up after the server reports zero failures.
+    nonisolated var contributesToLocalUnresolvedCount: Bool {
+        switch syncStatus {
+        case .synced:
+            return false
+        case .pending, .uploading:
+            return true
+        case .failed, .conflict:
+            return hasLocalUploadArtifacts
+        }
+    }
 }
 
 nonisolated struct RoomScanNoteSummary: Identifiable, Codable, Equatable, Hashable, Sendable {
@@ -251,16 +271,19 @@ nonisolated enum RoomScanSyncStatus: String, CaseIterable, Codable, Equatable, S
     case synced
     case uploading
     case failed
+    case conflict
 
     /// Maps API `syncStatus` values (e.g. `PENDING`) onto the local enum.
     nonisolated static func fromAPI(_ raw: String?) -> RoomScanSyncStatus {
         switch raw?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
         case "SYNCED":
             return .synced
-        case "UPLOADING":
+        case "UPLOADING", "SYNCING":
             return .uploading
         case "FAILED":
             return .failed
+        case "CONFLICT":
+            return .conflict
         case "PENDING", nil:
             return .pending
         default:
@@ -278,6 +301,8 @@ nonisolated enum RoomScanSyncStatus: String, CaseIterable, Codable, Equatable, S
             return String(localized: "projects.scan.status.uploading")
         case .failed:
             return String(localized: "projects.scan.status.failed")
+        case .conflict:
+            return String(localized: "projects.scan.status.conflict")
         }
     }
 }

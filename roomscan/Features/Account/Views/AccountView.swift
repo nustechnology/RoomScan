@@ -15,7 +15,10 @@ struct AccountView: View {
         session: AuthenticationSession,
         projectsService: any ProjectsService,
         sharedService: any SharedService,
+        syncService: any SyncService,
+        usersService: any UsersService,
         storageMeasuring: any AccountStorageMeasuring = MockAccountStorageMeasuring(),
+        onUserUpdated: @escaping (AuthenticatedUser) -> Void = { _ in },
         onSignOut: @escaping () -> Void
     ) {
         self.session = session
@@ -24,7 +27,10 @@ struct AccountView: View {
             initialValue: AccountViewModel(
                 projectsService: projectsService,
                 sharedService: sharedService,
-                storageMeasuring: storageMeasuring
+                syncService: syncService,
+                usersService: usersService,
+                storageMeasuring: storageMeasuring,
+                onUserUpdated: onUserUpdated
             )
         )
     }
@@ -32,7 +38,9 @@ struct AccountView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: AppSpacing.large) {
-                AccountProfileCard(session: session)
+                AccountProfileCard(session: session) {
+                    viewModel.openEditNameSheet(currentDisplayName: session.user.displayName)
+                }
 
                 if let metrics = viewModel.metrics {
                     if metrics.showsSyncPendingBanner {
@@ -77,7 +85,29 @@ struct AccountView: View {
         }
         .background(AppColors.background)
         .task {
-            await viewModel.loadMetrics()
+            async let profile: Void = viewModel.loadProfile(currentUser: session.user)
+            async let metrics: Void = viewModel.loadMetrics()
+            _ = await (profile, metrics)
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { viewModel.isEditNameSheetPresented },
+                set: { if !$0 { viewModel.closeEditNameSheet() } }
+            )
+        ) {
+            EditDisplayNameBottomSheet(
+                displayName: Binding(
+                    get: { viewModel.editedDisplayName },
+                    set: { viewModel.updateEditedDisplayName($0) }
+                ),
+                validationMessage: viewModel.editValidationMessage,
+                errorMessage: viewModel.saveErrorMessage,
+                isSaving: viewModel.isSavingDisplayName,
+                canSave: viewModel.canSaveDisplayName,
+                onSave: {
+                    Task { await viewModel.saveDisplayName(currentUser: session.user) }
+                }
+            )
         }
         .alert(
             String(localized: "account.signOut.confirm.title"),
@@ -155,6 +185,8 @@ private struct AccountMetricsLoadFailureRow: View {
         session: .mockAppleUser,
         projectsService: MockProjectsService(simulatedDelayNanoseconds: 0),
         sharedService: MockSharedService(simulatedDelayNanoseconds: 0),
+        syncService: MockSyncService(simulatedDelayNanoseconds: 0),
+        usersService: MockUsersService(),
         onSignOut: {}
     )
 }

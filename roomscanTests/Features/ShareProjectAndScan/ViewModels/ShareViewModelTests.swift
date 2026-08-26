@@ -140,18 +140,106 @@ struct ShareViewModelTests {
         #expect(viewModel.selectedMember == nil)
     }
 
-    @Test func offlineDisablesInviteAndShowsToast() async {
+    @Test func offlineDisablesInviteAndShowsOfflineToast() async {
         let service = TestShareService(isOffline: true)
-        let viewModel = ShareViewModel(input: .scan(projectID: nil, projectName: nil, scanID: "scan-1", scanName: "Scan"), service: service)
+        let viewModel = ShareViewModel(
+            input: .scan(projectID: nil, projectName: nil, scanID: "scan-1", scanName: "Scan"),
+            service: service,
+            syncService: MockSyncService(simulatedDelayNanoseconds: 0)
+        )
 
         await viewModel.loadIfNeeded()
         viewModel.openInviteSheet()
-        await viewModel.copyInvitationLink()
 
         #expect(viewModel.isOffline)
+        #expect(viewModel.isShareReady == false)
         #expect(viewModel.canInvitePeople == false)
         #expect(viewModel.isInviteSheetPresented == false)
-        #expect(viewModel.toastMessage == nil)
+        #expect(viewModel.toastStyle == .error)
+        #expect(viewModel.toastMessage == String(localized: "share.error.offline"))
+    }
+
+    @Test func syncNotReadyShowsSyncToastWhenOnline() async {
+        let viewModel = ShareViewModel(
+            input: .project(id: "project-1", name: "Project"),
+            service: TestShareService(),
+            syncService: MockSyncService(items: [], simulatedDelayNanoseconds: 0)
+        )
+
+        await viewModel.loadIfNeeded()
+        viewModel.openInviteSheet()
+
+        #expect(viewModel.isOffline == false)
+        #expect(viewModel.isShareReady == false)
+        #expect(viewModel.isInviteSheetPresented == false)
+        #expect(viewModel.toastStyle == .error)
+        #expect(viewModel.toastMessage == String(localized: "share.error.syncNotReady"))
+    }
+
+    @Test func emptySyncStatusDisablesInvite() async {
+        let viewModel = ShareViewModel(
+            input: .project(id: "project-1", name: "Project"),
+            service: TestShareService(),
+            syncService: MockSyncService(items: [], simulatedDelayNanoseconds: 0)
+        )
+
+        await viewModel.loadIfNeeded()
+
+        #expect(viewModel.isShareReady == false)
+        #expect(viewModel.canInvitePeople == false)
+    }
+
+    @Test func syncStatusFailureDisablesInvite() async {
+        let viewModel = ShareViewModel(
+            input: .project(id: "project-1", name: "Project"),
+            service: TestShareService(),
+            syncService: MockSyncService(scenario: .failLoad, simulatedDelayNanoseconds: 0)
+        )
+
+        await viewModel.loadIfNeeded()
+
+        #expect(viewModel.isShareReady == false)
+        #expect(viewModel.canInvitePeople == false)
+    }
+
+    @Test func scanWithoutProjectIDDisablesInviteWhenSyncServiceExists() async {
+        let viewModel = ShareViewModel(
+            input: .scan(projectID: nil, projectName: nil, scanID: "scan-1", scanName: "Scan"),
+            service: TestShareService(),
+            syncService: MockSyncService(simulatedDelayNanoseconds: 0)
+        )
+
+        await viewModel.loadIfNeeded()
+
+        #expect(viewModel.isShareReady == false)
+        #expect(viewModel.canInvitePeople == false)
+    }
+
+    @Test func syncedProjectEnablesInvite() async {
+        let viewModel = ShareViewModel(
+            input: .project(id: "project-1", name: "Project"),
+            service: TestShareService(),
+            syncService: MockSyncService(
+                items: [
+                    ProjectSyncStatusSummary(
+                        projectId: "project-1",
+                        syncStatus: .synced,
+                        pendingCount: 0,
+                        syncingCount: 0,
+                        failedCount: 0,
+                        conflictCount: 0,
+                        lastSyncedAt: Date(),
+                        requiredAssetsUploaded: true
+                    )
+                ],
+                simulatedDelayNanoseconds: 0
+            )
+        )
+
+        await viewModel.loadIfNeeded()
+
+        #expect(viewModel.isShareReady == true)
+        #expect(viewModel.canInvitePeople == true)
     }
 }
 

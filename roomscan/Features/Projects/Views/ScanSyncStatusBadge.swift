@@ -54,7 +54,7 @@ extension RoomScanSyncStatus {
             return .green
         case .uploading:
             return .brown
-        case .failed:
+        case .failed, .conflict:
             return .red
         }
     }

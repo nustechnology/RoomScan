@@ -146,9 +146,18 @@ actor MockProjectsService: ProjectsLocalCache {
         return newProject
     }
 
-    func cacheProject(_ project: ProjectSummary) {
+    func cacheProject(_ project: ProjectSummary) throws {
         if let index = projects.firstIndex(where: { $0.id == project.id }) {
             projects[index] = ProjectSummary.mergingRemoteCache(project, over: projects[index])
+        } else {
+            projects.insert(project, at: 0)
+        }
+        projects.sort { $0.updatedAt > $1.updatedAt }
+    }
+
+    func replaceCachedProject(_ project: ProjectSummary) throws {
+        if let index = projects.firstIndex(where: { $0.id == project.id }) {
+            projects[index] = project
         } else {
             projects.insert(project, at: 0)
         }

@@ -26,6 +26,9 @@ struct RoomScanApp: App {
     @State private var notesService: any NotesService
     @State private var shareService: any ShareService
     @State private var sharedService: any SharedService
+    @State private var syncService: any SyncService
+    @State private var usersService: any UsersService
+    @State private var syncEngine: SyncEngine?
     @State private var invitationService: any InvitationService
     private let scanDetailService: (any ScanDetailService)?
 
@@ -57,31 +60,54 @@ struct RoomScanApp: App {
             ? nil
             : ScanDetailRemoteService(httpClient: authenticatedClient)
 
+        let localProjectsStore = LocalProjectsService(seedIfEmpty: false)
+        let resolvedSharedService: any SharedService = isUITesting
+            ? MockSharedService.makeForCurrentProcess()
+            : RemoteSharedService(httpClient: authenticatedClient)
+
         let resolvedProjectsService: any ProjectsService = isUITesting
             ? MockProjectsService.makeForCurrentProcess()
             : RemoteProjectsService(
                 httpClient: authenticatedClient,
-                localStore: LocalProjectsService(seedIfEmpty: false)
+                localStore: localProjectsStore
             )
 
         let resolvedNotesService: any NotesService = isUITesting
             ? MockNotesService()
             : RemoteNotesService(httpClient: authenticatedClient)
 
-        _appState = State(initialValue: appState)
-        _projectsService = State(initialValue: resolvedProjectsService)
-        _notesService = State(initialValue: resolvedNotesService)
         let resolvedShareService: any ShareService = isUITesting
             ? MockShareService.makeForCurrentProcess()
             : RemoteShareService(httpClient: authenticatedClient)
-        _sharedService = State(initialValue: isUITesting
-            ? MockSharedService.makeForCurrentProcess()
-            : RemoteSharedService(httpClient: authenticatedClient)
-        )
+
+        let resolvedSyncService: any SyncService = isUITesting
+            ? MockSyncService.makeForCurrentProcess()
+            : RemoteSyncService(httpClient: authenticatedClient)
+
+        let resolvedUsersService: any UsersService = isUITesting
+            ? MockUsersService.makeForCurrentProcess()
+            : RemoteUsersService(httpClient: authenticatedClient)
+
         let resolvedInvitationService: any InvitationService = isUITesting
             ? LocalInvitationService.makeForCurrentProcess()
             : RemoteInvitationService(httpClient: authenticatedClient)
+
+        let resolvedSyncEngine: SyncEngine? = isUITesting
+            ? nil
+            : SyncEngine(
+                syncService: resolvedSyncService,
+                localCache: localProjectsStore,
+                sharedService: resolvedSharedService
+            )
+
+        _appState = State(initialValue: appState)
+        _projectsService = State(initialValue: resolvedProjectsService)
+        _notesService = State(initialValue: resolvedNotesService)
         _shareService = State(initialValue: resolvedShareService)
+        _sharedService = State(initialValue: resolvedSharedService)
+        _syncService = State(initialValue: resolvedSyncService)
+        _usersService = State(initialValue: resolvedUsersService)
+        _syncEngine = State(initialValue: resolvedSyncEngine)
         _invitationService = State(initialValue: resolvedInvitationService)
     }
 
@@ -94,6 +120,9 @@ struct RoomScanApp: App {
                 notesService: notesService,
                 shareService: shareService,
                 sharedService: sharedService,
+                syncService: syncService,
+                usersService: usersService,
+                syncEngine: syncEngine,
                 invitationService: invitationService
             )
                 .task {
@@ -102,6 +131,18 @@ struct RoomScanApp: App {
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
                         appState.recordActivity()
+                        if case .authenticated(let session) = appState.phase {
+                            Task {
+                                try? await syncEngine?.pullChanges(forUserId: session.user.id)
+                            }
+                        }
+                    }
+                }
+                .onChange(of: appState.phase) { oldPhase, newPhase in
+                    if case .authenticated(let session) = oldPhase, case .signedOut = newPhase {
+                        Task {
+                            await syncEngine?.clearCursor(forUserId: session.user.id)
+                        }
                     }
                 }
                 .onOpenURL { url in

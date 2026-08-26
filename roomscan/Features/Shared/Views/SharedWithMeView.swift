@@ -11,6 +11,7 @@ struct SharedWithMeView: View {
     let scanDetailService: (any ScanDetailService)?
     let notesService: any NotesService
     let shareService: any ShareService
+    let syncEngine: SyncEngine?
     let currentUserID: String
 
     @State private var selectedProject: ProjectSummary?
@@ -23,6 +24,7 @@ struct SharedWithMeView: View {
         scanDetailService: (any ScanDetailService)? = nil,
         notesService: any NotesService,
         shareService: any ShareService,
+        syncEngine: SyncEngine? = nil,
         currentUserID: String
     ) {
         _viewModel = State(initialValue: viewModel)
@@ -30,6 +32,7 @@ struct SharedWithMeView: View {
         self.scanDetailService = scanDetailService
         self.notesService = notesService
         self.shareService = shareService
+        self.syncEngine = syncEngine
         self.currentUserID = currentUserID
     }
 
@@ -50,6 +53,7 @@ struct SharedWithMeView: View {
                 scanDetailService: scanDetailService,
                 notesService: notesService,
                 shareService: shareService,
+                syncEngine: syncEngine,
                 currentUserID: currentUserID,
                 accessPolicy: .readOnly
             )

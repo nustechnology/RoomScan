@@ -83,7 +83,7 @@ struct ScanCompletionView: View {
             return .green
         case .uploading, .pending:
             return .orange
-        case .failed:
+        case .failed, .conflict:
             return .red
         }
     }

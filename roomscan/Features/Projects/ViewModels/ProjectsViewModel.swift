@@ -28,6 +28,8 @@ struct VisibleProject: Identifiable, Equatable {
     }
 
     private let service: any ProjectsService
+    private let syncEngine: SyncEngine?
+    private let currentUserID: String?
     private var currentPage = 0
     private var requestGeneration = 0
     private var allProjects: [ProjectSummary] = []
@@ -47,8 +49,14 @@ struct VisibleProject: Identifiable, Equatable {
     private(set) var expandedProjectIDs: Set<ProjectSummary.ID> = []
     private(set) var searchQuery = ""
 
-    init(service: any ProjectsService) {
+    init(
+        service: any ProjectsService,
+        syncEngine: SyncEngine? = nil,
+        currentUserID: String? = nil
+    ) {
         self.service = service
+        self.syncEngine = syncEngine
+        self.currentUserID = currentUserID
     }
 
     var trimmedSearchQuery: String {
@@ -238,6 +246,8 @@ struct VisibleProject: Identifiable, Equatable {
             expandedProjectIDs.removeAll()
         }
 
+        await pullRemoteChangesIfNeeded()
+
         do {
             let page = try await fetchProjects(page: 1)
             guard generation == requestGeneration else { return }
@@ -260,30 +270,6 @@ struct VisibleProject: Identifiable, Equatable {
                 hasMoreProjects = false
                 viewState = .failed
             }
-        }
-
-    }
-
-    private func loadPage(_ page: Int) async {
-        let generation = requestGeneration
-        isLoadingNextPage = true
-        defer {
-            isLoadingNextPage = false
-        }
-        showsPaginationError = false
-
-        do {
-            let projectPage = try await fetchProjects(page: page)
-            guard generation == requestGeneration else { return }
-            appendUnique(projectPage.projects)
-            currentPage = page
-            hasMoreProjects = projectPage.hasMore
-            hasLoadedCompleteDataset = !projectPage.hasMore
-        } catch is CancellationError {
-            return
-        } catch {
-            guard generation == requestGeneration else { return }
-            showsPaginationError = true
         }
 
     }
@@ -456,5 +442,41 @@ private extension ProjectsViewModel {
         var updatedProjects = source
         updatedProjects[projectIndex] = project.removingScan(id: scanID)
         return updatedProjects
+    }
+}
+
+private extension ProjectsViewModel {
+    func pullRemoteChangesIfNeeded() async {
+        guard let syncEngine, let currentUserID, !currentUserID.isEmpty else { return }
+        do {
+            _ = try await syncEngine.pullChanges(forUserId: currentUserID)
+        } catch is CancellationError {
+            return
+        } catch {
+            // List load still proceeds from REST/cache when pull fails.
+        }
+    }
+
+    func loadPage(_ page: Int) async {
+        let generation = requestGeneration
+        isLoadingNextPage = true
+        defer {
+            isLoadingNextPage = false
+        }
+        showsPaginationError = false
+
+        do {
+            let projectPage = try await fetchProjects(page: page)
+            guard generation == requestGeneration else { return }
+            appendUnique(projectPage.projects)
+            currentPage = page
+            hasMoreProjects = projectPage.hasMore
+            hasLoadedCompleteDataset = !projectPage.hasMore
+        } catch is CancellationError {
+            return
+        } catch {
+            guard generation == requestGeneration else { return }
+            showsPaginationError = true
+        }
     }
 }

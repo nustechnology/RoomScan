@@ -14,6 +14,8 @@ struct ProjectsView: View {
     let scanDetailService: (any ScanDetailService)?
     let notesService: any NotesService
     let shareService: any ShareService
+    let syncService: (any SyncService)?
+    let syncEngine: SyncEngine?
     var currentUserID: String
     var showsNavigationTitle = true
     @Binding var isShowingDetail: Bool
@@ -39,6 +41,8 @@ struct ProjectsView: View {
         scanDetailService: (any ScanDetailService)? = nil,
         notesService: any NotesService,
         shareService: any ShareService,
+        syncService: (any SyncService)? = nil,
+        syncEngine: SyncEngine? = nil,
         currentUserID: String,
         showsNavigationTitle: Bool = true,
         isShowingDetail: Binding<Bool> = .constant(false),
@@ -49,6 +53,8 @@ struct ProjectsView: View {
         self.scanDetailService = scanDetailService
         self.notesService = notesService
         self.shareService = shareService
+        self.syncService = syncService
+        self.syncEngine = syncEngine
         self.currentUserID = currentUserID
         self.showsNavigationTitle = showsNavigationTitle
         _isShowingDetail = isShowingDetail
@@ -77,6 +83,8 @@ struct ProjectsView: View {
                 scanDetailService: scanDetailService,
                 notesService: notesService,
                 shareService: shareService,
+                syncService: syncService,
+                syncEngine: syncEngine,
                 currentUserID: currentUserID,
                 showsScanFlow: $showsScanFlow,
                 scanningSourceProjectID: $scanningSourceProjectID,

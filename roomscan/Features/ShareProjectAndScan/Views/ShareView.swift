@@ -9,8 +9,10 @@ struct ShareView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel: ShareViewModel
 
-    init(input: ShareScreenInput, service: any ShareService) {
-        _viewModel = State(initialValue: ShareViewModel(input: input, service: service))
+    init(input: ShareScreenInput, service: any ShareService, syncService: (any SyncService)? = nil) {
+        _viewModel = State(
+            initialValue: ShareViewModel(input: input, service: service, syncService: syncService)
+        )
     }
 
     init(viewModel: ShareViewModel) {

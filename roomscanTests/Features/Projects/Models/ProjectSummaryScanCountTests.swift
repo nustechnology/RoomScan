@@ -102,7 +102,7 @@ struct ProjectSummaryScanCountTests {
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
         let service = LocalProjectsService(directory: tempDir, seedIfEmpty: false)
-        await service.cacheProject(
+        try await service.cacheProject(
             makeProject(remoteScanCount: 5, localScans: [makeScan(id: "scan-1")])
         )
 

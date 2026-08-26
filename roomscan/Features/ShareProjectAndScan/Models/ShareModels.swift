@@ -121,6 +121,18 @@ struct ShareScreenInput: Identifiable, Hashable, Sendable {
     let target: ShareTarget
     let targetID: String
 
+    var projectIDForSyncStatus: String? {
+        let raw: String?
+        switch target {
+        case .project(let project):
+            raw = project.projectID
+        case .scan(let scan):
+            raw = scan.projectID
+        }
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (trimmed?.isEmpty == false) ? trimmed : nil
+    }
+
     var titleText: String {
         target.displayTitle
     }
