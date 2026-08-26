@@ -27,7 +27,7 @@ final class roomscanUITests: XCTestCase {
 
         XCTAssertTrue(app.scrollViews["projects.list"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["projects.card.title.project-1"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["projects.card.scanCount.project-1"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["projects.card.updatedAt.project-1"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["projects.card.menu.project-1"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["projects.scan.project-1-scan-1"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["projects.scan.status.uploading"].waitForExistence(timeout: 5))

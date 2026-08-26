@@ -59,10 +59,15 @@ struct ProjectCardView: View {
                     .lineLimit(1)
                     .accessibilityIdentifier("projects.card.title.\(project.id)")
 
-                Text(scanCountText)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("projects.card.scanCount.\(project.id)")
+                TimelineView(.periodic(
+                    from: ProjectCardPresentation.timelineStartDate(updatedAt: project.updatedAt),
+                    by: 60
+                )) { context in
+                    Text(ProjectCardPresentation.updatedText(updatedAt: project.updatedAt, now: context.date))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("projects.card.updatedAt.\(project.id)")
+                }
             }
 
             Spacer()
@@ -107,13 +112,6 @@ struct ProjectCardView: View {
         }
     }
 
-    private var scanCountText: String {
-        ProjectCardPresentation.scanCountText(
-            remoteScanCount: project.scanCount,
-            loadedScanCount: project.roomScans.count
-        )
-    }
-
     private var expandButtonTitle: String {
         if isExpanded {
             return String(localized: "projects.card.showLess")
@@ -128,18 +126,28 @@ struct ProjectCardView: View {
 }
 
 enum ProjectCardPresentation {
-    static func scanCountText(remoteScanCount: Int, loadedScanCount: Int) -> String {
-        if loadedScanCount > 0, loadedScanCount < remoteScanCount {
-            return String.localizedStringWithFormat(
-                String(localized: "projects.card.scanCount.partial.format"),
-                remoteScanCount,
-                loadedScanCount
-            )
+    static func timelineStartDate(updatedAt: Date, now: Date = Date()) -> Date {
+        updatedAt > now ? updatedAt : updatedAt.addingTimeInterval(60)
+    }
+
+    static func updatedText(
+        updatedAt: Date,
+        now: Date = Date(),
+        locale: Locale = .current
+    ) -> String {
+        if updatedAt <= now, updatedAt >= now.addingTimeInterval(-60) {
+            return String(localized: "projects.card.updated.justNow")
         }
 
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = locale
+        formatter.unitsStyle = .full
+        let relativeTime = formatter.localizedString(
+            fromTimeInterval: updatedAt.timeIntervalSince(now)
+        )
         return String.localizedStringWithFormat(
-            String(localized: "projects.card.scanCount.format"),
-            remoteScanCount
+            String(localized: "projects.card.updated.format"),
+            relativeTime
         )
     }
 

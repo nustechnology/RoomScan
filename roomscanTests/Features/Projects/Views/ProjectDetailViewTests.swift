@@ -36,4 +36,14 @@ struct ProjectDetailViewTests {
         #expect(DetailAccessPolicy.editable.allowsOwnerActions)
         #expect(DetailAccessPolicy.readOnly.allowsOwnerActions == false)
     }
+
+    @Test func ownerNameUsesYouForEditableProject() {
+        #expect(
+            ProjectDetailPresentation.ownerName("owner@example.com", accessPolicy: .editable) == "You"
+        )
+        #expect(
+            ProjectDetailPresentation.ownerName("owner@example.com", accessPolicy: .readOnly)
+                == "owner@example.com"
+        )
+    }
 }

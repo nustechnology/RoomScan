@@ -170,10 +170,64 @@ final class ReviewScanViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.projects.isEmpty)
         XCTAssertNotNil(viewModel.saveErrorMessage)
     }
+
+    func testLoadProjects_whenCancelled_doesNotExposeErrorMessage() async {
+        let cancellingService = FailingProjectsService(fetchProjectsBehavior: .cancellation)
+        let viewModel = ReviewScanViewModel(
+            draft: dummyDraft,
+            projectsService: cancellingService
+        )
+
+        await viewModel.loadProjects()
+
+        XCTAssertNil(viewModel.saveErrorMessage)
+        XCTAssertFalse(viewModel.isLoadingProjects)
+    }
+
+    func testLoadProjects_stopsAtMaximumPageLimit() async {
+        let paginatedService = FailingProjectsService(fetchProjectsBehavior: .alwaysHasMore)
+        let viewModel = ReviewScanViewModel(
+            draft: dummyDraft,
+            projectsService: paginatedService
+        )
+
+        await viewModel.loadProjects()
+
+        let callCount = await paginatedService.fetchProjectsCallCount()
+        XCTAssertEqual(callCount, ReviewScanViewModel.maxProjectPages)
+        XCTAssertNil(viewModel.saveErrorMessage)
+    }
 }
 
 private actor FailingProjectsService: ProjectsService {
-    func fetchProjects(page: Int, pageSize: Int) async throws -> ProjectPage { throw ProjectsServiceError.network }
+    enum FetchProjectsBehavior: Sendable {
+        case failure
+        case cancellation
+        case alwaysHasMore
+    }
+
+    private let fetchProjectsBehavior: FetchProjectsBehavior
+    private var fetchCount = 0
+
+    init(fetchProjectsBehavior: FetchProjectsBehavior = .failure) {
+        self.fetchProjectsBehavior = fetchProjectsBehavior
+    }
+
+    func fetchProjects(page: Int, pageSize: Int) async throws -> ProjectPage {
+        fetchCount += 1
+
+        switch fetchProjectsBehavior {
+        case .failure:
+            throw ProjectsServiceError.network
+        case .cancellation:
+            throw CancellationError()
+        case .alwaysHasMore:
+            return ProjectPage(projects: [], hasMore: true)
+        }
+    }
+
+    func fetchProjectsCallCount() -> Int { fetchCount }
+
     func fetchProject(id: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }
     func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] { throw ProjectsServiceError.network }
     func createProject(name: String, projectDescription: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }

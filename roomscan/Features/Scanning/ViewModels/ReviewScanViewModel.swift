@@ -8,6 +8,8 @@ import Foundation
 
 @MainActor
 final class ReviewScanViewModel: ObservableObject {
+    static let maxProjectPages = 100
+
     @Published var draft: RoomScanDraft
     @Published var scanName: String = ""
     @Published var selectedProjectID: String?
@@ -66,8 +68,31 @@ final class ReviewScanViewModel: ObservableObject {
             isLoadingProjects = false
         }
         do {
-            let fetchedProjects = try await projectsService.fetchAllProjectsSortedByUpdated()
+            var fetchedProjects: [ProjectSummary] = []
+            var page = 1
+            var hasMore = true
+
+            while hasMore, page <= Self.maxProjectPages {
+                try Task.checkCancellation()
+                let result = try await projectsService.fetchProjects(page: page, pageSize: 100)
+                fetchedProjects.append(contentsOf: result.projects)
+                hasMore = result.hasMore
+                page += 1
+            }
+
+            if hasMore {
+                #if DEBUG
+                print("[ReviewScanViewModel] Project pagination reached the \(Self.maxProjectPages)-page limit")
+                #endif
+            }
+
             self.projects = fetchedProjects
+            if let selectedProjectID,
+               !fetchedProjects.contains(where: { $0.id == selectedProjectID }) {
+                self.selectedProjectID = nil
+            }
+        } catch is CancellationError {
+            return
         } catch {
             self.saveErrorMessage = String(localized: "review.error.load_projects_failed")
         }

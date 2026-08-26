@@ -18,6 +18,8 @@ struct ProjectDetailView: View {
     var onScanUpdated: (RoomScanSummary) -> Void = { _ in }
     var onScanDeleted: (RoomScanSummary.ID) -> Void = { _ in }
     var onAddScan: ((String) -> Void)?
+    var onEdit: ((ProjectSummary) -> Void)?
+    var onDelete: ((ProjectSummary) -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var selectedScanDetail: ProjectDetailScanDestination?
     @State private var shareInput: ShareScreenInput?
@@ -25,6 +27,8 @@ struct ProjectDetailView: View {
     @State private var roomScans: [RoomScanSummary] = []
     @State private var isLoadingDetail = false
     @State private var showsDetailLoadError = false
+    @State private var projectToEditOnDismiss: ProjectSummary?
+    @State private var projectToDeleteOnDismiss: ProjectSummary?
 
     init(
         project: ProjectSummary,
@@ -38,7 +42,9 @@ struct ProjectDetailView: View {
         accessPolicy: DetailAccessPolicy = .editable,
         onScanUpdated: @escaping (RoomScanSummary) -> Void = { _ in },
         onScanDeleted: @escaping (RoomScanSummary.ID) -> Void = { _ in },
-        onAddScan: ((String) -> Void)? = nil
+        onAddScan: ((String) -> Void)? = nil,
+        onEdit: ((ProjectSummary) -> Void)? = nil,
+        onDelete: ((ProjectSummary) -> Void)? = nil
     ) {
         self.project = project
         self.projectsService = projectsService
@@ -52,6 +58,8 @@ struct ProjectDetailView: View {
         self.onScanUpdated = onScanUpdated
         self.onScanDeleted = onScanDeleted
         self.onAddScan = onAddScan
+        self.onEdit = onEdit
+        self.onDelete = onDelete
         _displayedProject = State(initialValue: project)
     }
 
@@ -191,8 +199,42 @@ struct ProjectDetailView: View {
                         .lineLimit(1)
                         .accessibilityIdentifier("projects.detail.title.\(displayedProject.id)")
                 }
+
+                if showsOwnerActions, onEdit != nil || onDelete != nil {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            if onEdit != nil {
+                                Button(String(localized: "projects.card.menu.edit")) {
+                                    projectToEditOnDismiss = displayedProject
+                                    dismiss()
+                                }
+                                .accessibilityIdentifier("projects.detail.menu.edit")
+                            }
+
+                            if onDelete != nil {
+                                Button(String(localized: "projects.card.menu.delete"), role: .destructive) {
+                                    projectToDeleteOnDismiss = displayedProject
+                                    dismiss()
+                                }
+                                .accessibilityIdentifier("projects.detail.menu.delete")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .frame(width: 36, height: 36)
+                        }
+                        .accessibilityLabel(String(localized: "projects.card.menu.accessibility"))
+                        .accessibilityIdentifier("projects.detail.menu")
+                    }
+                }
             }
             .accessibilityIdentifier("projects.detail")
+            .onDisappear {
+                if let projectToEditOnDismiss {
+                    onEdit?(projectToEditOnDismiss)
+                } else if let projectToDeleteOnDismiss {
+                    onDelete?(projectToDeleteOnDismiss)
+                }
+            }
             .fullScreenCover(item: $selectedScanDetail) { destination in
                 NavigationStack {
                     ScanDetailView(
@@ -225,11 +267,14 @@ struct ProjectDetailView: View {
         .background(AppColors.background)
     }
 
-    private var projectMetadata: some View {
+}
+
+private extension ProjectDetailView {
+    var projectMetadata: some View {
         VStack(spacing: 0) {
             DetailMetadataRow(
                 title: "projects.detail.metadata.owner.label",
-                value: displayedProject.ownerName,
+                value: ownerName,
                 accessibilityIdentifier: "projects.detail.metadata.owner"
             )
             metadataDivider
@@ -250,49 +295,45 @@ struct ProjectDetailView: View {
         }
     }
 
-    private var createdDateText: String {
+    var createdDateText: String {
         ProjectDetailPresentation.createdDateText(for: displayedProject.createdAt)
     }
 
-    private var sharedUserCountText: String {
+    var sharedUserCountText: String {
         ProjectDetailPresentation.sharedUserCountText(for: displayedProject.sharedUserCount)
     }
 
-    private var scansTitle: String {
+    var scansTitle: String {
         ProjectDetailPresentation.scansTitle(
             for: max(displayedProject.scanCount, roomScans.count)
         )
     }
 
-    private var detailScansContentState: ProjectScansContentState {
+    var detailScansContentState: ProjectScansContentState {
         .resolve(localScanCount: roomScans.count, remoteScanCount: displayedProject.scanCount)
     }
 
-    private var shareMetadataAction: (() -> Void)? {
+    var shareMetadataAction: (() -> Void)? {
         showsOwnerActions ? { openShareProject() } : nil
     }
 
-    private var metadataDivider: some View {
+    var ownerName: String {
+        ProjectDetailPresentation.ownerName(
+            displayedProject.ownerName,
+            accessPolicy: accessPolicy
+        )
+    }
+
+    var metadataDivider: some View {
         Rectangle()
             .fill(.secondary.opacity(0.45))
             .frame(height: 1)
     }
 
-    private func openShareProject() {
+    func openShareProject() {
         shareInput = .project(id: displayedProject.id, name: displayedProject.name)
     }
 
-    private func handleScanUpdated(_ updatedScan: RoomScanSummary) {
-        guard let index = roomScans.firstIndex(where: { $0.id == updatedScan.id }) else { return }
-        roomScans[index] = updatedScan
-        onScanUpdated(updatedScan)
-    }
-
-    private func handleScanDeleted(scanID: RoomScanSummary.ID) {
-        roomScans.removeAll { $0.id == scanID }
-        displayedProject = displayedProject.removingScan(id: scanID)
-        onScanDeleted(scanID)
-    }
 }
 
 private extension ProjectDetailView {
@@ -318,6 +359,7 @@ private extension ProjectDetailView {
             )
             displayedProject = ProjectSummary(
                 id: remote.id,
+                revision: remote.revision,
                 name: remote.name,
                 ownerName: remote.ownerName,
                 createdAt: remote.createdAt,
@@ -333,6 +375,17 @@ private extension ProjectDetailView {
             showsDetailLoadError = true
         }
     }
+    func handleScanUpdated(_ updatedScan: RoomScanSummary) {
+        guard let index = roomScans.firstIndex(where: { $0.id == updatedScan.id }) else { return }
+        roomScans[index] = updatedScan
+        onScanUpdated(updatedScan)
+    }
+
+    func handleScanDeleted(scanID: RoomScanSummary.ID) {
+        roomScans.removeAll { $0.id == scanID }
+        displayedProject = displayedProject.removingScan(id: scanID)
+        onScanDeleted(scanID)
+    }
 }
 
 private struct ProjectDetailScanDestination: Identifiable {
@@ -345,12 +398,26 @@ private struct ProjectDetailScanDestination: Identifiable {
 }
 
 enum ProjectDetailPresentation {
+    static func ownerName(_ ownerName: String, accessPolicy: DetailAccessPolicy) -> String {
+        if accessPolicy.allowsOwnerActions {
+            return String(localized: "projects.detail.metadata.owner.you")
+        }
+        return ownerName
+    }
+
     static func showsOwnerActions(for accessPolicy: DetailAccessPolicy) -> Bool {
         accessPolicy.allowsOwnerActions
     }
 
-    static func createdDateText(for date: Date, locale: Locale = .current) -> String {
-        date.formatted(.dateTime.month(.abbreviated).day().year().locale(locale))
+    static func createdDateText(
+        for date: Date,
+        locale: Locale = Locale(identifier: "en_US_POSIX")
+    ) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "MMM dd, yyyy"
+        return formatter.string(from: date)
     }
 
     static func sharedUserCountText(for count: Int) -> String {
