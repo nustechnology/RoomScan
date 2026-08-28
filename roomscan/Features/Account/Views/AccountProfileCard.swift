@@ -18,11 +18,7 @@ struct AccountProfileCard: View {
     }
 
     private var subtitle: String {
-        let email = session.user.email?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !email.isEmpty {
-            return email
-        }
-        return session.provider.signedInSubtitle
+        session.provider.signedInSubtitle
     }
 
     var body: some View {

@@ -342,7 +342,7 @@ struct ProjectAPIModelsTests {
               "projectId": "project-1",
               "name": "Kitchen",
               "description": null,
-              "thumbnail": null,
+              "thumbnail": "https://example.com/scans/scan-1/thumbnail",
               "creator": { "id": "user-1", "email": "owner@example.com" },
               "noteCount": 0,
               "assetStatus": "NONE",
@@ -363,6 +363,7 @@ struct ProjectAPIModelsTests {
         let response = try LiveHTTPClient.makeAPIDecoder().decode(ScanDetailAPIResponse.self, from: json)
         let detail = try response.toScanDetail()
         #expect(detail.syncStatus == .uploading)
+        #expect(detail.thumbnail == "https://example.com/scans/scan-1/thumbnail")
     }
 
     @Test func decodeProjectAPIResponse_withNullSyncStatus() throws {

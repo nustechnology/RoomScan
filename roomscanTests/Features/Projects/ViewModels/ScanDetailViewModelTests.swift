@@ -47,6 +47,22 @@ struct ScanDetailViewModelTests {
         #expect(viewModel.notesCountText == "3")
     }
 
+    @Test func thumbnailPathUsesThumbnailFromDetail() async {
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(projects: [makeProject()], simulatedDelayNanoseconds: 0),
+            scanDetailService: ScanDetailRenameStub(
+                thumbnail: "https://roomscan.nustechnology.com/roomscan-assets/scans/scan-1/thumbnail"
+            )
+        )
+
+        await viewModel.loadDetail()
+
+        #expect(viewModel.thumbnailPath == "https://roomscan.nustechnology.com/roomscan-assets/scans/scan-1/thumbnail")
+    }
+
     @Test func renameScanUpdatesTitle() async {
         let service = MockProjectsService(
             projects: [makeProject()],
@@ -478,9 +494,11 @@ struct ScanDetailAssetAvailabilityTests {
 
 private struct ScanDetailRenameStub: ScanDetailService {
     let assetStatus: String
+    let thumbnail: String?
 
-    init(assetStatus: String = "NONE") {
+    init(assetStatus: String = "NONE", thumbnail: String? = nil) {
         self.assetStatus = assetStatus
+        self.thumbnail = thumbnail
     }
 
     func fetchScanDetail(id: String) async throws -> ScanDetail {
@@ -499,7 +517,7 @@ private struct ScanDetailRenameStub: ScanDetailService {
             projectID: "project-1",
             name: name,
             description: description,
-            thumbnail: nil,
+            thumbnail: thumbnail,
             creatorID: "mock-user-apple",
             creatorEmail: nil,
             noteCount: 0,
