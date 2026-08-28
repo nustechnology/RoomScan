@@ -138,12 +138,7 @@ struct ShareScreenInput: Identifiable, Hashable, Sendable {
     }
 
     var screenTitle: String {
-        switch scope {
-        case .project:
-            return String(localized: "share.screenTitle.project")
-        case .scan:
-            return String(localized: "share.screenTitle.scan")
-        }
+        String(localized: "share.screenTitle")
     }
 
     var descriptionText: String {

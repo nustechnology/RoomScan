@@ -30,6 +30,7 @@ struct ScanDetailView: View {
     @State private var shareInput: ShareScreenInput?
     @State private var showsMissingScanAlert = false
     @State private var showsRetryCamera = false
+    @State private var loadedThumbnail: UIImage?
 
     private var open3DModelButtonTitle: String { String(localized: "scanDetail.open3DModel") }
 
@@ -210,11 +211,27 @@ struct ScanDetailView: View {
                 .scaledToFit()
                 .frame(maxWidth: 160, maxHeight: 120)
                 .accessibilityHidden(true)
+
+            if let loadedThumbnail {
+                Image(uiImage: loadedThumbnail)
+                    .resizable()
+                    .scaledToFill()
+                    .accessibilityHidden(true)
+            }
         }
         .frame(maxWidth: .infinity)
         .frame(height: 220)
         .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.medium))
         .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.medium))
+        .task(id: viewModel.thumbnailPath) {
+            loadedThumbnail = nil
+            let thumbnail = await ScanThumbnailLoader.load(
+                from: viewModel.thumbnailPath,
+                maxPixelSize: thumbnailMaxPixelSize
+            )
+            guard !Task.isCancelled else { return }
+            loadedThumbnail = thumbnail
+        }
     }
 
     private var metadataSection: some View {
@@ -242,26 +259,6 @@ struct ScanDetailView: View {
             Divider()
             statusRow
         }
-    }
-
-    private func open3DModel() {
-        viewerInput = ViewerInput(
-            projectID: projectID,
-            projectName: projectName,
-            scanID: viewModel.scan.id,
-            scanName: viewModel.scan.name,
-            modelVersion: viewModel.viewerModelVersion,
-            modelURL: viewModel.scan.localModelURL
-        )
-    }
-
-    private func openShare() {
-        shareInput = .scan(
-            projectID: projectID,
-            projectName: projectName,
-            scanID: viewModel.scan.id,
-            scanName: viewModel.scan.name
-        )
     }
 
     private func metadataRow(
@@ -327,6 +324,31 @@ struct ScanDetailView: View {
 }
 
 private extension ScanDetailView {
+    var thumbnailMaxPixelSize: Int {
+        let cardWidth = UIScreen.main.bounds.width - (AppSpacing.extraLarge * 2)
+        return Int(max(cardWidth, 220) * UIScreen.main.scale)
+    }
+
+    func open3DModel() {
+        viewerInput = ViewerInput(
+            projectID: projectID,
+            projectName: projectName,
+            scanID: viewModel.scan.id,
+            scanName: viewModel.scan.name,
+            modelVersion: viewModel.viewerModelVersion,
+            modelURL: viewModel.scan.localModelURL
+        )
+    }
+
+    func openShare() {
+        shareInput = .scan(
+            projectID: projectID,
+            projectName: projectName,
+            scanID: viewModel.scan.id,
+            scanName: viewModel.scan.name
+        )
+    }
+
     var scanDetailLoadingOverlay: some View {
         ZStack {
             Color.black.opacity(0.12)

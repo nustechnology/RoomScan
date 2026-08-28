@@ -51,6 +51,17 @@ final class ScanDetailViewModel {
         detail?.name ?? scan.name
     }
 
+    var thumbnailPath: String {
+        for candidate in [detail?.thumbnail, scan.thumbnailPath] {
+            guard let value = candidate?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !value.isEmpty else {
+                continue
+            }
+            return value
+        }
+        return ""
+    }
+
     var createdByText: String {
         let creatorID = detail?.creatorID ?? scan.creatorUserID
         if creatorID == currentUserID {

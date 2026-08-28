@@ -23,7 +23,6 @@ struct ShareView: View {
         NavigationStack {
             content
                 .background(AppColors.background)
-                .navigationTitle(viewModel.input.screenTitle)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
@@ -38,6 +37,12 @@ struct ShareView: View {
                         .foregroundStyle(.primary)
                         .accessibilityLabel(String(localized: "common.back"))
                         .accessibilityIdentifier("share.back")
+                    }
+
+                    ToolbarItem(placement: .principal) {
+                        Text(viewModel.input.screenTitle)
+                            .appTypography(AppTypography.headingLarge)
+                            .foregroundStyle(AppColors.primaryText)
                     }
                 }
         }
@@ -135,7 +140,7 @@ struct ShareView: View {
                     }
                 }
             }
-            .overlay(alignment: .top) {
+            .safeAreaInset(edge: .top, spacing: 0) {
                 if viewModel.isOffline {
                     OfflineBanner()
                         .padding(.top, AppSpacing.medium)
@@ -158,9 +163,10 @@ struct ShareView: View {
                     .frame(minHeight: 420)
                 }
                 .padding(.horizontal, AppSpacing.extraLarge)
-                .padding(.vertical, AppSpacing.large)
+                .padding(.top, AppSpacing.small)
+                .padding(.bottom, AppSpacing.large)
             }
-            .overlay(alignment: .top) {
+            .safeAreaInset(edge: .top, spacing: 0) {
                 if viewModel.isOffline {
                     OfflineBanner()
                         .padding(.top, AppSpacing.medium)
@@ -202,9 +208,10 @@ struct ShareView: View {
                     }
                 }
                 .padding(.horizontal, AppSpacing.extraLarge)
-                .padding(.vertical, AppSpacing.large)
+                .padding(.top, AppSpacing.small)
+                .padding(.bottom, AppSpacing.large)
             }
-            .overlay(alignment: .top) {
+            .safeAreaInset(edge: .top, spacing: 0) {
                 if viewModel.isOffline {
                     OfflineBanner()
                         .padding(.top, AppSpacing.medium)

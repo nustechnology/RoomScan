@@ -1116,7 +1116,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No scans yet - tap to add the first one"
+            "value" : "No room scans in this project yet. Press the \"Add Scan\" button to start your first scan"
           }
         }
       }
@@ -1841,7 +1841,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No results found for %@"
+            "value" : "No results found for \"%@\""
           }
         }
       }
@@ -3369,24 +3369,13 @@
         }
       }
     },
-    "share.screenTitle.project" : {
+    "share.screenTitle" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Share Project"
-          }
-        }
-      }
-    },
-    "share.screenTitle.scan" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Share Scan"
+            "value" : "Share"
           }
         }
       }
