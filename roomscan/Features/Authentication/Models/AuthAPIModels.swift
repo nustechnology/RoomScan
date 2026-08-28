@@ -29,4 +29,5 @@ struct AuthUserDTO: Decodable, Sendable {
     let id: String
     let email: String?
     let provider: String
+    let displayName: String?
 }

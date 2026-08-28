@@ -246,6 +246,10 @@ private actor GatedFetchUsersService: UsersService {
         return fetchedUser
     }
 
+    func fetchRemoteDisplayName() async throws -> String? {
+        AppleUserDisplayName.nonBlank(fetchedUser.displayName)
+    }
+
     func updateMe(
         displayName: String,
         fallingBackTo currentUser: AuthenticatedUser

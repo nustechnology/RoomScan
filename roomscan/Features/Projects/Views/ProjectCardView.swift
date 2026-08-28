@@ -59,10 +59,7 @@ struct ProjectCardView: View {
                     .lineLimit(1)
                     .accessibilityIdentifier("projects.card.title.\(project.id)")
 
-                TimelineView(.periodic(
-                    from: ProjectCardPresentation.timelineStartDate(updatedAt: project.updatedAt),
-                    by: 60
-                )) { context in
+                TimelineView(.yearBoundary) { context in
                     Text(ProjectCardPresentation.updatedText(updatedAt: project.updatedAt, now: context.date))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -126,28 +123,19 @@ struct ProjectCardView: View {
 }
 
 enum ProjectCardPresentation {
-    static func timelineStartDate(updatedAt: Date, now: Date = Date()) -> Date {
-        updatedAt > now ? updatedAt : updatedAt.addingTimeInterval(60)
-    }
-
     static func updatedText(
         updatedAt: Date,
-        now: Date = Date(),
-        locale: Locale = .current
+        now: Date = .now,
+        calendar: Calendar = .current,
+        locale: Locale = .current,
+        timeZone: TimeZone = .current
     ) -> String {
-        if updatedAt <= now, updatedAt >= now.addingTimeInterval(-60) {
-            return String(localized: "projects.card.updated.justNow")
-        }
-
-        let formatter = RelativeDateTimeFormatter()
-        formatter.locale = locale
-        formatter.unitsStyle = .full
-        let relativeTime = formatter.localizedString(
-            fromTimeInterval: updatedAt.timeIntervalSince(now)
-        )
-        return String.localizedStringWithFormat(
-            String(localized: "projects.card.updated.format"),
-            relativeTime
+        ProjectDateFormatting.relativeText(
+            updatedAt,
+            now: now,
+            calendar: calendar,
+            locale: locale,
+            timeZone: timeZone
         )
     }
 

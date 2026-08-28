@@ -11,11 +11,13 @@ final class RemoteAuthenticationService: AuthenticationService {
     private let httpClient: any HTTPClient
     private let keychainStore: any KeychainTokenStore
     private let refreshCoordinator: AccessTokenRefreshCoordinator
+    private var usersService: (any UsersService)?
 
     init(
         httpClient: any HTTPClient,
         keychainStore: any KeychainTokenStore,
-        refreshCoordinator: AccessTokenRefreshCoordinator? = nil
+        refreshCoordinator: AccessTokenRefreshCoordinator? = nil,
+        usersService: (any UsersService)? = nil
     ) {
         self.httpClient = httpClient
         self.keychainStore = keychainStore
@@ -23,6 +25,11 @@ final class RemoteAuthenticationService: AuthenticationService {
             httpClient: httpClient,
             keychainStore: keychainStore
         )
+        self.usersService = usersService
+    }
+
+    func attachUsersService(_ service: any UsersService) {
+        usersService = service
     }
 
     // MARK: - Session Restoration
@@ -34,7 +41,9 @@ final class RemoteAuthenticationService: AuthenticationService {
 
         do {
             let refreshedData = try await refreshCoordinator.refreshTokens()
-            return makeSession(from: refreshedData)
+            let session = makeSession(from: refreshedData)
+            await uploadDisplayNameIfNeeded(for: session, checkRemoteFirst: true)
+            return session
         } catch let error as AuthenticationError {
             if error == .invalidCredential {
                 try? keychainStore.deleteTokens()
@@ -48,7 +57,7 @@ final class RemoteAuthenticationService: AuthenticationService {
         AuthenticationSession(
             user: AuthenticatedUser(
                 id: storedData.userId,
-                displayName: nil,
+                displayName: storedData.userDisplayName,
                 email: storedData.userEmail
             ),
             provider: .apple
@@ -90,9 +99,33 @@ final class RemoteAuthenticationService: AuthenticationService {
             throw AuthenticationError.networkError
         }
 
+        return try await completeAppleSignIn(from: response, appleFullName: appleCredential.fullName)
+    }
+
+    func completeAppleSignIn(
+        from response: AuthAPIResponse,
+        appleFullName: PersonNameComponents?
+    ) async throws -> AuthenticationSession {
+        let session = try persistAppleSession(from: response, appleFullName: appleFullName)
+        await uploadDisplayNameIfNeeded(for: session, checkRemoteFirst: false)
+        return session
+    }
+
+    func persistAppleSession(
+        from response: AuthAPIResponse,
+        appleFullName: PersonNameComponents?
+    ) throws -> AuthenticationSession {
+        let displayName = AppleUserDisplayName.resolved(
+            appleFullName: appleFullName,
+            apiDisplayName: response.user.displayName
+        )
+        let needsDisplayNameUpload = AppleUserDisplayName.nameToUploadToAPI(
+            appleFullName: appleFullName,
+            apiDisplayName: response.user.displayName
+        ) != nil
         let user = AuthenticatedUser(
             id: response.user.id,
-            displayName: nil,
+            displayName: displayName,
             email: response.user.email
         )
         let provider = AuthenticationProvider(rawValue: response.user.provider) ?? .apple
@@ -101,7 +134,9 @@ final class RemoteAuthenticationService: AuthenticationService {
             accessToken: response.accessToken,
             refreshToken: response.refreshToken,
             userId: response.user.id,
-            userEmail: response.user.email
+            userEmail: response.user.email,
+            userDisplayName: displayName,
+            needsDisplayNameUpload: needsDisplayNameUpload
         )
         do {
             try keychainStore.save(storedData)
@@ -113,6 +148,37 @@ final class RemoteAuthenticationService: AuthenticationService {
             user: user,
             provider: provider
         )
+    }
+
+    private func uploadDisplayNameIfNeeded(
+        for session: AuthenticationSession,
+        checkRemoteFirst: Bool
+    ) async {
+        guard let usersService else { return }
+        guard let storedData = try? keychainStore.getStoredAuthData(),
+              storedData.needsDisplayNameUpload,
+              let localName = AppleUserDisplayName.nonBlank(storedData.userDisplayName)
+        else { return }
+
+        do {
+            if checkRemoteFirst {
+                let remoteName = try await usersService.fetchRemoteDisplayName()
+                if AppleUserDisplayName.nonBlank(remoteName) != nil {
+                    try? await refreshCoordinator.markDisplayNameUploadComplete()
+                    return
+                }
+            }
+
+            _ = try await usersService.updateMe(
+                displayName: localName,
+                fallingBackTo: session.user
+            )
+            try? await refreshCoordinator.markDisplayNameUploadComplete()
+        } catch is CancellationError {
+            return
+        } catch {
+            // Sign-in is already valid; retry while needsDisplayNameUpload remains true.
+        }
     }
 
     // MARK: - Sign Out

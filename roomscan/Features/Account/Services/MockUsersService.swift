@@ -56,6 +56,14 @@ actor MockUsersService: UsersService {
         ).toAuthenticatedUser(fallingBackTo: currentUser)
     }
 
+    func fetchRemoteDisplayName() async throws -> String? {
+        try await simulateDelay()
+        if scenario == .fetchFailure {
+            throw UsersServiceError.network
+        }
+        return AppleUserDisplayName.nonBlank(currentUser.displayName)
+    }
+
     func updateMe(
         displayName: String,
         fallingBackTo currentUser: AuthenticatedUser

@@ -13,6 +13,65 @@ struct StoredAuthData: Codable, Sendable {
     let refreshToken: String
     let userId: String
     let userEmail: String?
+    let userDisplayName: String?
+    let needsDisplayNameUpload: Bool
+
+    init(
+        accessToken: String,
+        refreshToken: String,
+        userId: String,
+        userEmail: String?,
+        userDisplayName: String?,
+        needsDisplayNameUpload: Bool = false
+    ) {
+        self.accessToken = accessToken
+        self.refreshToken = refreshToken
+        self.userId = userId
+        self.userEmail = userEmail
+        self.userDisplayName = userDisplayName
+        self.needsDisplayNameUpload = needsDisplayNameUpload
+    }
+
+    func withNeedsDisplayNameUpload(_ value: Bool) -> StoredAuthData {
+        StoredAuthData(
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            userId: userId,
+            userEmail: userEmail,
+            userDisplayName: userDisplayName,
+            needsDisplayNameUpload: value
+        )
+    }
+
+    func withRefreshedTokens(accessToken: String, refreshToken: String) -> StoredAuthData {
+        StoredAuthData(
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            userId: userId,
+            userEmail: userEmail,
+            userDisplayName: userDisplayName,
+            needsDisplayNameUpload: needsDisplayNameUpload
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case accessToken
+        case refreshToken
+        case userId
+        case userEmail
+        case userDisplayName
+        case needsDisplayNameUpload
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        accessToken = try container.decode(String.self, forKey: .accessToken)
+        refreshToken = try container.decode(String.self, forKey: .refreshToken)
+        userId = try container.decode(String.self, forKey: .userId)
+        userEmail = try container.decodeIfPresent(String.self, forKey: .userEmail)
+        userDisplayName = try container.decodeIfPresent(String.self, forKey: .userDisplayName)
+        needsDisplayNameUpload = try container.decodeIfPresent(Bool.self, forKey: .needsDisplayNameUpload) ?? false
+    }
 }
 
 // MARK: - Errors
