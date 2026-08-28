@@ -1236,28 +1236,6 @@
         }
       }
     },
-    "projects.card.updated.format" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Updated %@"
-          }
-        }
-      }
-    },
-    "projects.card.updated.justNow" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Updated just now"
-          }
-        }
-      }
-    },
     "projects.create.accessibility" : {
       "localizations" : {
         "en" : {

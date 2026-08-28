@@ -23,53 +23,9 @@ actor AccessTokenRefreshCoordinator {
             return try await refreshTask.value
         }
 
-        let task = Task { [httpClient, keychainStore] in
-            let storedData: StoredAuthData
-            do {
-                guard let existingData = try keychainStore.getStoredAuthData() else {
-                    throw AuthenticationError.invalidCredential
-                }
-                storedData = existingData
-            } catch let error as AuthenticationError {
-                throw error
-            } catch {
-                throw AuthenticationError.unknown
-            }
-
-            guard !storedData.refreshToken.isEmpty else {
-                throw AuthenticationError.invalidCredential
-            }
-
-            let body = try JSONEncoder().encode(
-                RefreshTokenAPIRequest(refreshToken: storedData.refreshToken)
-            )
-            let endpoint = APIEndpoint(
-                path: "/api/v1/auth/refresh",
-                method: .post,
-                body: body
-            )
-
-            let response: RefreshTokenAPIResponse = try await Self.requestWithRetry(
-                httpClient: httpClient,
-                endpoint: endpoint
-            )
-
-            let updatedData = StoredAuthData(
-                accessToken: response.accessToken,
-                refreshToken: response.refreshToken ?? storedData.refreshToken,
-                userId: storedData.userId,
-                userEmail: storedData.userEmail
-            )
-
-            do {
-                try keychainStore.save(updatedData)
-            } catch {
-                throw AuthenticationError.unknown
-            }
-
-            return updatedData
+        let task = Task {
+            try await self.executeRefresh()
         }
-
         refreshTask = task
 
         do {
@@ -79,6 +35,62 @@ actor AccessTokenRefreshCoordinator {
         } catch {
             refreshTask = nil
             throw error
+        }
+    }
+
+    func markDisplayNameUploadComplete() throws {
+        guard let latest = try keychainStore.getStoredAuthData() else { return }
+        try keychainStore.save(latest.withNeedsDisplayNameUpload(false))
+    }
+
+    private func executeRefresh() async throws -> StoredAuthData {
+        let storedData: StoredAuthData
+        do {
+            guard let existingData = try keychainStore.getStoredAuthData() else {
+                throw AuthenticationError.invalidCredential
+            }
+            storedData = existingData
+        } catch let error as AuthenticationError {
+            throw error
+        } catch {
+            throw AuthenticationError.unknown
+        }
+
+        guard !storedData.refreshToken.isEmpty else {
+            throw AuthenticationError.invalidCredential
+        }
+
+        let body = try JSONEncoder().encode(
+            RefreshTokenAPIRequest(refreshToken: storedData.refreshToken)
+        )
+        let endpoint = APIEndpoint(
+            path: "/api/v1/auth/refresh",
+            method: .post,
+            body: body
+        )
+
+        let response: RefreshTokenAPIResponse = try await Self.requestWithRetry(
+            httpClient: httpClient,
+            endpoint: endpoint
+        )
+
+        return try persistRefreshedTokens(response: response)
+    }
+
+    private func persistRefreshedTokens(response: RefreshTokenAPIResponse) throws -> StoredAuthData {
+        guard let latest = try keychainStore.getStoredAuthData() else {
+            throw AuthenticationError.invalidCredential
+        }
+
+        let updated = latest.withRefreshedTokens(
+            accessToken: response.accessToken,
+            refreshToken: response.refreshToken ?? latest.refreshToken
+        )
+        do {
+            try keychainStore.save(updated)
+            return updated
+        } catch {
+            throw AuthenticationError.unknown
         }
     }
 

@@ -7,6 +7,7 @@ import Foundation
 
 protocol UsersService: Sendable {
     func fetchMe(fallingBackTo currentUser: AuthenticatedUser) async throws -> AuthenticatedUser
+    func fetchRemoteDisplayName() async throws -> String?
     func updateMe(
         displayName: String,
         fallingBackTo currentUser: AuthenticatedUser

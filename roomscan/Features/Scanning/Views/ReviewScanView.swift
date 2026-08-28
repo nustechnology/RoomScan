@@ -7,6 +7,7 @@ import SwiftUI
 
 struct ReviewScanView: View {
     @StateObject var viewModel: ReviewScanViewModel
+    @FocusState private var isScanNameFocused: Bool
     let onSaveSuccess: (RoomScanSummary) -> Void
     let onScanAgain: () -> Void
     let onDiscard: () -> Void
@@ -73,6 +74,7 @@ struct ReviewScanView: View {
 
                             TextField(String(localized: "review.placeholder.scan_name"), text: $viewModel.scanName)
                                 .font(.body)
+                                .focused($isScanNameFocused)
                                 .onChange(of: viewModel.scanName) { _, newValue in
                                     if newValue.count > 50 {
                                         viewModel.scanName = String(newValue.prefix(50))
@@ -97,65 +99,7 @@ struct ReviewScanView: View {
                             }
                         }
 
-                        // Select Project Dropdown Field
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(String(localized: "review.label.select_project"))
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundColor(viewModel.projectSelectError == nil ? .secondary : .red)
-
-                            Menu {
-                                Button {
-                                    viewModel.openCreateProjectModal()
-                                } label: {
-                                    Label(String(localized: "review.action.create_project"), systemImage: "plus")
-                                }
-
-                                Divider()
-
-                                ForEach(viewModel.projects) { project in
-                                    Button {
-                                        viewModel.selectedProjectID = project.id
-                                    } label: {
-                                        HStack {
-                                            Text(project.name)
-                                            if viewModel.selectedProjectID == project.id {
-                                                Image(systemName: "checkmark")
-                                            }
-                                        }
-                                    }
-                                    .accessibilityIdentifier("review.projectOption.\(project.id)")
-                                }
-                            } label: {
-                                HStack {
-                                    Text(selectedProjectName)
-                                        .font(.body)
-                                        .foregroundColor(viewModel.selectedProjectID == nil ? .gray : .primary)
-                                    Spacer()
-                                    Image(systemName: "chevron.down")
-                                        .font(.subheadline.weight(.bold))
-                                        .foregroundColor(.secondary)
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 14)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 14)
-                                        .stroke(
-                                            viewModel.projectSelectError == nil
-                                                ? Color(uiColor: UIColor.systemGray4)
-                                                : Color.red,
-                                            lineWidth: 1.5
-                                        )
-                                )
-                            }
-                            .accessibilityIdentifier("review.selectProjectDropdown")
-
-                            if let error = viewModel.projectSelectError {
-                                Text(error)
-                                    .font(.caption)
-                                    .foregroundColor(.red)
-                                    .accessibilityIdentifier("review.selectProjectError")
-                            }
-                        }
+                        projectSelectSection
                     }
 
                     Spacer(minLength: 20)
@@ -264,11 +208,92 @@ struct ReviewScanView: View {
         }
     }
 
+    private var projectSelectSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(String(localized: "review.label.select_project"))
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(viewModel.projectSelectError == nil ? .secondary : .red)
+
+            Menu {
+                Button {
+                    viewModel.openCreateProjectModal()
+                } label: {
+                    Label(String(localized: "review.action.create_project"), systemImage: "plus")
+                }
+
+                Divider()
+
+                ForEach(viewModel.projects) { project in
+                    Button {
+                        viewModel.selectedProjectID = project.id
+                    } label: {
+                        HStack {
+                            Text(project.name)
+                            if viewModel.selectedProjectID == project.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    .accessibilityIdentifier("review.projectOption.\(project.id)")
+                }
+            } label: {
+                projectDropdownFieldLabel
+            }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0).onChanged { _ in
+                    dismissScanNameField()
+                }
+            )
+            .accessibilityIdentifier("review.selectProjectDropdown")
+
+            if let error = viewModel.projectSelectError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .accessibilityIdentifier("review.selectProjectError")
+            }
+        }
+    }
+
+    private var projectDropdownFieldLabel: some View {
+        HStack {
+            Text(selectedProjectName)
+                .font(.body)
+                .foregroundColor(viewModel.selectedProjectID == nil ? .gray : .primary)
+            Spacer()
+            Image(systemName: "chevron.down")
+                .font(.subheadline.weight(.bold))
+                .foregroundColor(.secondary)
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(
+                    viewModel.projectSelectError == nil
+                        ? Color(uiColor: UIColor.systemGray4)
+                        : Color.red,
+                    lineWidth: 1.5
+                )
+        )
+    }
+
     private var selectedProjectName: String {
         if let id = viewModel.selectedProjectID,
            let project = viewModel.projects.first(where: { $0.id == id }) {
             return project.name
         }
         return String(localized: "review.placeholder.select_project")
+    }
+
+    private func dismissScanNameField() {
+        isScanNameFocused = false
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
     }
 }

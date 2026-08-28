@@ -41,13 +41,12 @@ struct RoomScanApp: App {
             keychainStore: keychainStore
         )
 
-        let authenticationService: any AuthenticationService = isUITesting
-            ? MockAuthenticationService.makeForCurrentProcess()
-            : RemoteAuthenticationService(
-                httpClient: httpClient,
-                keychainStore: keychainStore,
-                refreshCoordinator: refreshCoordinator
-            )
+        let (authenticationService, remoteAuthenticationService) = Self.makeAuthentication(
+            isUITesting: isUITesting,
+            httpClient: httpClient,
+            keychainStore: keychainStore,
+            refreshCoordinator: refreshCoordinator
+        )
         let appState = AppState(authenticationService: authenticationService)
         let authenticatedClient = AuthenticatedHTTPClient(
             httpClient: httpClient,
@@ -87,6 +86,7 @@ struct RoomScanApp: App {
         let resolvedUsersService: any UsersService = isUITesting
             ? MockUsersService.makeForCurrentProcess()
             : RemoteUsersService(httpClient: authenticatedClient)
+        remoteAuthenticationService?.attachUsersService(resolvedUsersService)
 
         let resolvedInvitationService: any InvitationService = isUITesting
             ? LocalInvitationService.makeForCurrentProcess()
@@ -153,5 +153,23 @@ struct RoomScanApp: App {
                     appState.handleIncomingURL(url)
                 }
         }
+    }
+
+    private static func makeAuthentication(
+        isUITesting: Bool,
+        httpClient: any HTTPClient,
+        keychainStore: any KeychainTokenStore,
+        refreshCoordinator: AccessTokenRefreshCoordinator
+    ) -> (any AuthenticationService, RemoteAuthenticationService?) {
+        if isUITesting {
+            return (MockAuthenticationService.makeForCurrentProcess(), nil)
+        }
+
+        let remote = RemoteAuthenticationService(
+            httpClient: httpClient,
+            keychainStore: keychainStore,
+            refreshCoordinator: refreshCoordinator
+        )
+        return (remote, remote)
     }
 }

@@ -24,10 +24,12 @@ struct RoomScanRowView: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
 
-                    Text(scanMetadataText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    TimelineView(.yearBoundary) { context in
+                        Text(scanMetadataText(now: context.date))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
 
                     ScanSyncStatusBadge(syncStatus: scan.syncStatus)
                 }
@@ -40,35 +42,13 @@ struct RoomScanRowView: View {
         .accessibilityIdentifier("projects.scan.\(scan.id)")
     }
 
-    private var scanMetadataText: String {
+    private func scanMetadataText(now: Date) -> String {
         let notesText = String.localizedStringWithFormat(
             String(localized: "projects.scan.notes.format"),
             scan.noteCount
         )
-        let dateText = RoomScanRowPresentation.dateText(scan.createdAt)
+        let dateText = ProjectDateFormatting.relativeText(scan.createdAt, now: now)
         return "\(notesText) · \(dateText)"
-    }
-}
-
-private enum RoomScanRowPresentation {
-    static func dateText(
-        _ date: Date,
-        now: Date = .now,
-        calendar: Calendar = .current,
-        locale: Locale = .current
-    ) -> String {
-        var baseStyle = Date.FormatStyle()
-            .month(.abbreviated)
-            .day()
-            .locale(locale)
-        baseStyle.calendar = calendar
-        baseStyle.timeZone = calendar.timeZone
-
-        if calendar.isDate(date, equalTo: now, toGranularity: .year) {
-            return date.formatted(baseStyle)
-        }
-
-        return date.formatted(baseStyle.year())
     }
 }
 

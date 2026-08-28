@@ -27,6 +27,21 @@ final class RemoteUsersService: UsersService, @unchecked Sendable {
         }
     }
 
+    func fetchRemoteDisplayName() async throws -> String? {
+        let endpoint = APIEndpoint(path: "/api/v1/users/me", method: .get)
+
+        do {
+            let response: UserMeAPIResponse = try await httpClient.request(endpoint)
+            return AppleUserDisplayName.nonBlank(response.displayName)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as HTTPClientError {
+            throw mapHTTPError(error)
+        } catch {
+            throw UsersServiceError.network
+        }
+    }
+
     func updateMe(
         displayName: String,
         fallingBackTo currentUser: AuthenticatedUser
