@@ -181,7 +181,8 @@ actor MockShareService: ShareService {
             projectID: "project-1",
             projectName: "Lakeside Remodel",
             scanID: "scan-1",
-            scanName: "Living Room"
+            scanName: "Living Room",
+            syncStatus: .synced
         )
 
         if scenario == .empty {

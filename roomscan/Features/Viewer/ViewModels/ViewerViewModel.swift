@@ -15,6 +15,11 @@ final class ViewerViewModel {
         case loading
         case loaded(ModelSource)
         case failed(ModelLoadingError)
+
+        var isFailed: Bool {
+            if case .failed = self { return true }
+            return false
+        }
     }
 
     let input: ViewerInput
@@ -54,6 +59,8 @@ final class ViewerViewModel {
     var allowsOwnerActions: Bool {
         accessPolicy.allowsOwnerActions
     }
+
+    var canShare: Bool { RoomScanSummary.isReadyToShare(syncStatus: input.syncStatus, assetStatus: input.assetStatus) }
 
     var movingNote: SpatialNote? {
         guard case .moving(let noteID) = placementMode else { return nil }
@@ -588,12 +595,5 @@ extension ViewerViewModel {
         #if DEBUG
         print("[Notes] \(message)")
         #endif
-    }
-}
-
-private extension ViewerViewModel.LoadState {
-    var isFailed: Bool {
-        if case .failed = self { return true }
-        return false
     }
 }

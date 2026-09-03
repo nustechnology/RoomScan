@@ -237,7 +237,6 @@ struct HomeView: View {
                 scanDetailService: scanDetailService,
                 notesService: notesService,
                 shareService: shareService,
-                syncService: syncService,
                 syncEngine: syncEngine,
                 currentUserID: session.user.id,
                 showsNavigationTitle: false,
@@ -360,7 +359,6 @@ private extension HomeView {
             scanDetailService: scanDetailService,
             notesService: notesService,
             shareService: shareService,
-            syncService: syncService,
             syncEngine: syncEngine,
             currentUserID: session.user.id,
             onScanUpdated: { updatedScan in

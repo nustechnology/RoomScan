@@ -11,7 +11,6 @@ struct ProjectDetailView: View {
     let scanDetailService: (any ScanDetailService)?
     let notesService: any NotesService
     let shareService: any ShareService
-    let syncService: (any SyncService)?
     let syncEngine: SyncEngine?
     let currentUserID: String
     var accessPolicy: DetailAccessPolicy = .editable
@@ -36,7 +35,6 @@ struct ProjectDetailView: View {
         scanDetailService: (any ScanDetailService)? = nil,
         notesService: any NotesService,
         shareService: any ShareService,
-        syncService: (any SyncService)? = nil,
         syncEngine: SyncEngine? = nil,
         currentUserID: String,
         accessPolicy: DetailAccessPolicy = .editable,
@@ -51,7 +49,6 @@ struct ProjectDetailView: View {
         self.scanDetailService = scanDetailService
         self.notesService = notesService
         self.shareService = shareService
-        self.syncService = syncService
         self.syncEngine = syncEngine
         self.currentUserID = currentUserID
         self.accessPolicy = accessPolicy
@@ -158,6 +155,8 @@ struct ProjectDetailView: View {
                                 cornerRadius: 16,
                                 accessibilityIdentifier: "projects.detail.shareProject"
                             )
+                            .disabled(!canShareProject)
+                            .opacity(canShareProject ? 1 : 0.6)
                         }
                         .padding(.top, 20)
                     }
@@ -250,7 +249,6 @@ struct ProjectDetailView: View {
                         projectName: displayedProject.name,
                         notesService: notesService,
                         shareService: shareService,
-                        syncService: syncService,
                         accessPolicy: accessPolicy,
                         onScanUpdated: handleScanUpdated,
                         onScanDeleted: {
@@ -261,7 +259,7 @@ struct ProjectDetailView: View {
                 }
             }
             .fullScreenCover(item: $shareInput) { input in
-                ShareView(input: input, service: shareService, syncService: syncService)
+                ShareView(input: input, service: shareService)
             }
         }
         .background(AppColors.background)
@@ -287,7 +285,7 @@ private extension ProjectDetailView {
             DetailMetadataRow(
                 title: "projects.detail.metadata.shared.label",
                 value: sharedUserCountText,
-                showsDisclosure: showsOwnerActions,
+                showsDisclosure: showsOwnerActions && canShareProject,
                 accessibilityIdentifier: "projects.detail.metadata.shared",
                 action: shareMetadataAction
             )
@@ -313,8 +311,15 @@ private extension ProjectDetailView {
         .resolve(localScanCount: roomScans.count, remoteScanCount: displayedProject.scanCount)
     }
 
+    var canShareProject: Bool {
+        ProjectDetailPresentation.canShareProject(
+            localScans: roomScans,
+            displayedScans: displayedProject.roomScans
+        )
+    }
+
     var shareMetadataAction: (() -> Void)? {
-        showsOwnerActions ? { openShareProject() } : nil
+        showsOwnerActions && canShareProject ? { openShareProject() } : nil
     }
 
     var ownerName: String {
@@ -331,7 +336,12 @@ private extension ProjectDetailView {
     }
 
     func openShareProject() {
-        shareInput = .project(id: displayedProject.id, name: displayedProject.name)
+        guard canShareProject else { return }
+        shareInput = .project(
+            id: displayedProject.id,
+            name: displayedProject.name,
+            hasUploadedScan: true
+        )
     }
 
 }
@@ -432,6 +442,13 @@ enum ProjectDetailPresentation {
             String(localized: "projects.detail.scans.title.format"),
             count
         )
+    }
+
+    static func canShareProject(
+        localScans: [RoomScanSummary],
+        displayedScans: [RoomScanSummary]
+    ) -> Bool {
+        localScans.contains { $0.isReadyToShare } || displayedScans.contains { $0.isReadyToShare }
     }
 }
 

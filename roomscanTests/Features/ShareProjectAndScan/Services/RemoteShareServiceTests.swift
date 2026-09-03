@@ -66,7 +66,8 @@ struct RemoteShareServiceTests {
             projectID: nil,
             projectName: nil,
             scanID: "scan-1",
-            scanName: "Living Room"
+            scanName: "Living Room",
+            syncStatus: .synced
         )
 
         _ = try await service.loadInvitedMembers(for: input)
@@ -95,7 +96,8 @@ struct RemoteShareServiceTests {
             projectID: "project-1",
             projectName: "Lakeside Remodel",
             scanID: "scan-1",
-            scanName: "Living Room"
+            scanName: "Living Room",
+            syncStatus: .synced
         )
 
         _ = try await service.sendInvitation(for: input, email: "user@example.com")
@@ -118,7 +120,8 @@ struct RemoteShareServiceTests {
             projectID: nil,
             projectName: nil,
             scanID: "scan-1",
-            scanName: "Living Room"
+            scanName: "Living Room",
+            syncStatus: .synced
         )
 
         let url = try await service.copyInvitationLink(for: input)
@@ -313,7 +316,8 @@ struct RemoteShareServiceTests {
             projectID: "project-1",
             projectName: "Lakeside Remodel",
             scanID: "scan-1",
-            scanName: "Living Room"
+            scanName: "Living Room",
+            syncStatus: .synced
         )
 
         _ = try await service.loadInvitedMembers(for: input)

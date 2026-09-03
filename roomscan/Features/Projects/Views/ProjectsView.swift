@@ -14,7 +14,6 @@ struct ProjectsView: View {
     let scanDetailService: (any ScanDetailService)?
     let notesService: any NotesService
     let shareService: any ShareService
-    let syncService: (any SyncService)?
     let syncEngine: SyncEngine?
     var currentUserID: String
     var showsNavigationTitle = true
@@ -41,7 +40,6 @@ struct ProjectsView: View {
         scanDetailService: (any ScanDetailService)? = nil,
         notesService: any NotesService,
         shareService: any ShareService,
-        syncService: (any SyncService)? = nil,
         syncEngine: SyncEngine? = nil,
         currentUserID: String,
         showsNavigationTitle: Bool = true,
@@ -53,7 +51,6 @@ struct ProjectsView: View {
         self.scanDetailService = scanDetailService
         self.notesService = notesService
         self.shareService = shareService
-        self.syncService = syncService
         self.syncEngine = syncEngine
         self.currentUserID = currentUserID
         self.showsNavigationTitle = showsNavigationTitle
@@ -83,7 +80,6 @@ struct ProjectsView: View {
                 scanDetailService: scanDetailService,
                 notesService: notesService,
                 shareService: shareService,
-                syncService: syncService,
                 syncEngine: syncEngine,
                 currentUserID: currentUserID,
                 showsScanFlow: $showsScanFlow,
@@ -190,7 +186,11 @@ struct ProjectsView: View {
                             selectedProject = project
                         },
                         onShare: { project in
-                            shareInput = .project(id: project.id, name: project.name)
+                            shareInput = .project(
+                                id: project.id,
+                                name: project.name,
+                                hasUploadedScan: project.hasUploadedScan
+                            )
                         },
                         onRoomTap: { project, scan in
                             selectedScanDetail = ScanDetailDestination(

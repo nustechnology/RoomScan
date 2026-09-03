@@ -119,6 +119,47 @@ struct ProjectSummaryScanCountTests {
         #expect(afterDelete.scansContentState == .remoteOnly)
     }
 
+    @Test func hasUploadedScanIsTrueWhenAnyScanIsSynced() {
+        let project = makeProject(
+            remoteScanCount: 2,
+            localScans: [
+                makeScan(id: "pending", syncStatus: .pending),
+                makeScan(id: "uploaded", syncStatus: .synced)
+            ]
+        )
+
+        #expect(project.hasUploadedScan)
+    }
+
+    @Test func hasUploadedScanIsTrueWhenPendingScanHasUploadedAssets() {
+        let project = makeProject(
+            remoteScanCount: 1,
+            localScans: [
+                makeScan(id: "uploaded", syncStatus: .pending, assetStatus: "UPLOADED")
+            ]
+        )
+
+        #expect(project.hasUploadedScan)
+    }
+
+    @Test func hasUploadedScanIsFalseWhenEveryScanIsPendingOrFailed() {
+        let project = makeProject(
+            remoteScanCount: 2,
+            localScans: [
+                makeScan(id: "pending", syncStatus: .pending),
+                makeScan(id: "failed", syncStatus: .failed)
+            ]
+        )
+
+        #expect(!project.hasUploadedScan)
+    }
+
+    @Test func hasUploadedScanIsFalseWhenThereAreNoScans() {
+        let project = makeProject(remoteScanCount: 0, localScans: [])
+
+        #expect(!project.hasUploadedScan)
+    }
+
     private func makeProject(
         remoteScanCount: Int,
         localScans: [RoomScanSummary]
@@ -131,14 +172,20 @@ struct ProjectSummaryScanCountTests {
         )
     }
 
-    private func makeScan(id: String, name: String = "Room") -> RoomScanSummary {
+    private func makeScan(
+        id: String,
+        name: String = "Room",
+        syncStatus: RoomScanSyncStatus = .synced,
+        assetStatus: String? = nil
+    ) -> RoomScanSummary {
         RoomScanSummary(
             id: id,
             name: name,
             createdAt: Date(timeIntervalSince1970: 1_000),
             thumbnailName: "thumbnail-0",
-            syncStatus: .synced,
-            notes: []
+            syncStatus: syncStatus,
+            notes: [],
+            assetStatus: assetStatus
         )
     }
 }

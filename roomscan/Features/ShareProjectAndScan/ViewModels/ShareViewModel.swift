@@ -21,14 +21,12 @@ final class ShareViewModel {
     let input: ShareScreenInput
 
     private let service: any ShareService
-    private let syncService: (any SyncService)?
 
     private(set) var viewState: ViewState = .idle
     private(set) var members: [InvitedMember] = []
     private(set) var isRefreshing = false
     private(set) var isInviteSheetPresented = false
     private(set) var isOffline = false
-    private(set) var isShareReady: Bool
     private(set) var toastStyle: ToastStyle = .error
     private(set) var toastMessage: String?
     private(set) var errorMessage: String?
@@ -41,13 +39,14 @@ final class ShareViewModel {
 
     init(
         input: ShareScreenInput,
-        service: any ShareService,
-        syncService: (any SyncService)? = nil
+        service: any ShareService
     ) {
         self.input = input
         self.service = service
-        self.syncService = syncService
-        self.isShareReady = syncService == nil
+    }
+
+    var isShareReady: Bool {
+        input.isShareReady
     }
 
     var invitedPeopleTitle: String {
@@ -222,10 +221,7 @@ final class ShareViewModel {
         defer { self.isRefreshing = false }
 
         do {
-            async let membersSnapshot = service.loadInvitedMembers(for: input)
-            async let readiness = refreshShareReadiness()
-            let snapshot = try await membersSnapshot
-            _ = await readiness
+            let snapshot = try await service.loadInvitedMembers(for: input)
             members = snapshot.members
             self.isOffline = snapshot.isOffline
             errorMessage = nil
@@ -240,32 +236,6 @@ final class ShareViewModel {
                 errorMessage = error.userFacingMessage
                 viewState = .failed
             }
-        }
-    }
-
-    private func refreshShareReadiness() async {
-        guard let syncService else {
-            isShareReady = true
-            return
-        }
-        guard let projectID = input.projectIDForSyncStatus else {
-            isShareReady = false
-            return
-        }
-
-        do {
-            let statuses = try await syncService.fetchSyncStatus(projectId: projectID)
-            guard let status = statuses.first else {
-                isShareReady = false
-                return
-            }
-            isShareReady = status.requiredAssetsUploaded
-                && status.syncStatus == .synced
-                && status.unresolvedCount == 0
-        } catch is CancellationError {
-            return
-        } catch {
-            isShareReady = false
         }
     }
 

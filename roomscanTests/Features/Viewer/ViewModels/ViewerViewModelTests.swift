@@ -25,6 +25,41 @@ struct ViewerViewModelTests {
         #expect(viewModel.viewMode == .threeD)
     }
 
+    @Test func canShareMatchesScanShareReadiness() {
+        let pending = ViewerViewModel(
+            input: ViewerInput(
+                scanID: "scan-pending",
+                scanName: "Living Room",
+                syncStatus: .pending
+            ),
+            notesService: MockNotesService(),
+            modelLoadingService: DefaultModelLoadingService()
+        )
+        let uploaded = ViewerViewModel(
+            input: ViewerInput(
+                scanID: "scan-uploaded",
+                scanName: "Living Room",
+                syncStatus: .pending,
+                assetStatus: "UPLOADED"
+            ),
+            notesService: MockNotesService(),
+            modelLoadingService: DefaultModelLoadingService()
+        )
+        let synced = ViewerViewModel(
+            input: ViewerInput(
+                scanID: "scan-synced",
+                scanName: "Living Room",
+                syncStatus: .synced
+            ),
+            notesService: MockNotesService(),
+            modelLoadingService: DefaultModelLoadingService()
+        )
+
+        #expect(!pending.canShare)
+        #expect(uploaded.canShare)
+        #expect(synced.canShare)
+    }
+
     @Test func loadShowsNotesLoadingWhileFetchingNotes() async {
         let notesService = DelayedNotesService(
             delayNanoseconds: 80_000_000,

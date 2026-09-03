@@ -71,6 +71,7 @@ struct ProjectCardView: View {
 
             Menu {
                 Button(String(localized: "projects.card.menu.share"), action: onShare)
+                    .disabled(!project.hasUploadedScan)
                 Button(String(localized: "projects.card.menu.edit"), action: onEdit)
                 Button(String(localized: "projects.card.menu.delete"), role: .destructive, action: onDelete)
             } label: {

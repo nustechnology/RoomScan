@@ -11,7 +11,7 @@ import Testing
 struct ShareViewModelTests {
     @Test func initialLoadPopulatesMembers() async {
         let service = TestShareService()
-        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project"), service: service)
+        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project", hasUploadedScan: true), service: service)
 
         await viewModel.loadIfNeeded()
 
@@ -22,7 +22,7 @@ struct ShareViewModelTests {
 
     @Test func emptyLoadSetsEmptyState() async {
         let service = TestShareService(members: [])
-        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project"), service: service)
+        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project", hasUploadedScan: true), service: service)
 
         await viewModel.loadIfNeeded()
 
@@ -32,7 +32,7 @@ struct ShareViewModelTests {
 
     @Test func duplicateEmailShowsInlineValidation() async {
         let service = TestShareService()
-        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project"), service: service)
+        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project", hasUploadedScan: true), service: service)
         await viewModel.loadIfNeeded()
 
         viewModel.updateInviteEmail("avery@example.com")
@@ -44,7 +44,7 @@ struct ShareViewModelTests {
 
     @Test func sendInviteAddsPendingMemberAndClosesSheet() async {
         let service = TestShareService()
-        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project"), service: service)
+        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project", hasUploadedScan: true), service: service)
         await viewModel.loadIfNeeded()
 
         viewModel.openInviteSheet()
@@ -61,7 +61,7 @@ struct ShareViewModelTests {
 
     @Test func resendUpdatesSentDate() async throws {
         let service = TestShareService()
-        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project"), service: service)
+        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project", hasUploadedScan: true), service: service)
         await viewModel.loadIfNeeded()
         let member = try #require(viewModel.members.first(where: { $0.status == .pending }))
         let originalDate = member.sentAt
@@ -84,7 +84,7 @@ struct ShareViewModelTests {
 
     @Test func resendReplacesMemberWhenServiceReturnsANewInvitationID() async throws {
         let service = TestShareService()
-        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project"), service: service)
+        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project", hasUploadedScan: true), service: service)
         await viewModel.loadIfNeeded()
         let member = try #require(viewModel.members.first(where: { $0.status == .pending }))
         await service.setReplacementInvitationID("pending-2")
@@ -101,7 +101,7 @@ struct ShareViewModelTests {
 
     @Test func cancelInvitationRemovesPendingMember() async throws {
         let service = TestShareService()
-        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project"), service: service)
+        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project", hasUploadedScan: true), service: service)
         await viewModel.loadIfNeeded()
         let member = try #require(viewModel.members.first(where: { $0.status == .pending }))
 
@@ -117,7 +117,7 @@ struct ShareViewModelTests {
     @Test func memberActionShowsBusyStateUntilServiceReturns() async throws {
         let service = TestShareService()
         await service.enableActionGate()
-        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project"), service: service)
+        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project", hasUploadedScan: true), service: service)
         await viewModel.loadIfNeeded()
         let member = try #require(viewModel.members.first(where: { $0.status == .pending }))
         viewModel.presentActions(for: member)
@@ -143,27 +143,37 @@ struct ShareViewModelTests {
     @Test func offlineDisablesInviteAndShowsOfflineToast() async {
         let service = TestShareService(isOffline: true)
         let viewModel = ShareViewModel(
-            input: .scan(projectID: nil, projectName: nil, scanID: "scan-1", scanName: "Scan"),
-            service: service,
-            syncService: MockSyncService(simulatedDelayNanoseconds: 0)
+            input: .project(id: "project-1", name: "Project", hasUploadedScan: true),
+            service: service
         )
 
         await viewModel.loadIfNeeded()
         viewModel.openInviteSheet()
 
         #expect(viewModel.isOffline)
-        #expect(viewModel.isShareReady == false)
+        #expect(viewModel.isShareReady == true)
         #expect(viewModel.canInvitePeople == false)
         #expect(viewModel.isInviteSheetPresented == false)
         #expect(viewModel.toastStyle == .error)
         #expect(viewModel.toastMessage == String(localized: "share.error.offline"))
     }
 
-    @Test func syncNotReadyShowsSyncToastWhenOnline() async {
+    @Test func projectEnablesInviteWhenItHasAnUploadedScan() async {
         let viewModel = ShareViewModel(
-            input: .project(id: "project-1", name: "Project"),
-            service: TestShareService(),
-            syncService: MockSyncService(items: [], simulatedDelayNanoseconds: 0)
+            input: .project(id: "project-1", name: "Project", hasUploadedScan: true),
+            service: TestShareService()
+        )
+
+        await viewModel.loadIfNeeded()
+
+        #expect(viewModel.isShareReady == true)
+        #expect(viewModel.canInvitePeople == true)
+    }
+
+    @Test func projectWithoutUploadedScanDisablesInvite() async {
+        let viewModel = ShareViewModel(
+            input: .project(id: "project-1", name: "Project", hasUploadedScan: false),
+            service: TestShareService()
         )
 
         await viewModel.loadIfNeeded()
@@ -171,16 +181,45 @@ struct ShareViewModelTests {
 
         #expect(viewModel.isOffline == false)
         #expect(viewModel.isShareReady == false)
+        #expect(viewModel.canInvitePeople == false)
         #expect(viewModel.isInviteSheetPresented == false)
         #expect(viewModel.toastStyle == .error)
         #expect(viewModel.toastMessage == String(localized: "share.error.syncNotReady"))
     }
 
-    @Test func emptySyncStatusDisablesInvite() async {
+    @Test func pendingScanDisablesInviteAndShowsSyncToast() async {
         let viewModel = ShareViewModel(
-            input: .project(id: "project-1", name: "Project"),
-            service: TestShareService(),
-            syncService: MockSyncService(items: [], simulatedDelayNanoseconds: 0)
+            input: .scan(
+                projectID: "project-1",
+                projectName: "Project",
+                scanID: "scan-1",
+                scanName: "Scan",
+                syncStatus: .pending
+            ),
+            service: TestShareService()
+        )
+
+        await viewModel.loadIfNeeded()
+        viewModel.openInviteSheet()
+
+        #expect(viewModel.isOffline == false)
+        #expect(viewModel.isShareReady == false)
+        #expect(viewModel.canInvitePeople == false)
+        #expect(viewModel.isInviteSheetPresented == false)
+        #expect(viewModel.toastStyle == .error)
+        #expect(viewModel.toastMessage == String(localized: "share.error.syncNotReady"))
+    }
+
+    @Test func uploadingScanDisablesInvite() async {
+        let viewModel = ShareViewModel(
+            input: .scan(
+                projectID: "project-1",
+                projectName: "Project",
+                scanID: "scan-1",
+                scanName: "Scan",
+                syncStatus: .uploading
+            ),
+            service: TestShareService()
         )
 
         await viewModel.loadIfNeeded()
@@ -189,51 +228,35 @@ struct ShareViewModelTests {
         #expect(viewModel.canInvitePeople == false)
     }
 
-    @Test func syncStatusFailureDisablesInvite() async {
+    @Test func syncedScanEnablesInvite() async {
         let viewModel = ShareViewModel(
-            input: .project(id: "project-1", name: "Project"),
-            service: TestShareService(),
-            syncService: MockSyncService(scenario: .failLoad, simulatedDelayNanoseconds: 0)
+            input: .scan(
+                projectID: "project-1",
+                projectName: "Project",
+                scanID: "scan-1",
+                scanName: "Scan",
+                syncStatus: .synced
+            ),
+            service: TestShareService()
         )
 
         await viewModel.loadIfNeeded()
 
-        #expect(viewModel.isShareReady == false)
-        #expect(viewModel.canInvitePeople == false)
+        #expect(viewModel.isShareReady == true)
+        #expect(viewModel.canInvitePeople == true)
     }
 
-    @Test func scanWithoutProjectIDDisablesInviteWhenSyncServiceExists() async {
+    @Test func pendingScanWithUploadedAssetsEnablesInvite() async {
         let viewModel = ShareViewModel(
-            input: .scan(projectID: nil, projectName: nil, scanID: "scan-1", scanName: "Scan"),
-            service: TestShareService(),
-            syncService: MockSyncService(simulatedDelayNanoseconds: 0)
-        )
-
-        await viewModel.loadIfNeeded()
-
-        #expect(viewModel.isShareReady == false)
-        #expect(viewModel.canInvitePeople == false)
-    }
-
-    @Test func syncedProjectEnablesInvite() async {
-        let viewModel = ShareViewModel(
-            input: .project(id: "project-1", name: "Project"),
-            service: TestShareService(),
-            syncService: MockSyncService(
-                items: [
-                    ProjectSyncStatusSummary(
-                        projectId: "project-1",
-                        syncStatus: .synced,
-                        pendingCount: 0,
-                        syncingCount: 0,
-                        failedCount: 0,
-                        conflictCount: 0,
-                        lastSyncedAt: Date(),
-                        requiredAssetsUploaded: true
-                    )
-                ],
-                simulatedDelayNanoseconds: 0
-            )
+            input: .scan(
+                projectID: "project-1",
+                projectName: "Project",
+                scanID: "scan-1",
+                scanName: "Scan",
+                syncStatus: .pending,
+                assetStatus: "UPLOADED"
+            ),
+            service: TestShareService()
         )
 
         await viewModel.loadIfNeeded()

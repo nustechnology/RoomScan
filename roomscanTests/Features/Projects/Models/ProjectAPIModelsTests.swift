@@ -405,6 +405,56 @@ struct ProjectAPIModelsTests {
         #expect(summary.scanCount == 0)
     }
 
+    @Test func toRoomScanSummary_nullSyncStatusWithUploadedAssetsIsReadyToShare() throws {
+        let json = Data(
+            """
+            {
+              "id": "project-1",
+              "name": "Project1",
+              "description": null,
+              "owner": { "id": "owner-1", "email": "owner@example.com" },
+              "scanCount": 1,
+              "scans": [
+                {
+                  "id": "scan-a",
+                  "name": "Room A",
+                  "description": null,
+                  "thumbnail": null,
+                  "noteCount": 0,
+                  "assetStatus": "UPLOADED",
+                  "syncStatus": null,
+                  "createdAt": "2026-08-10T07:18:40.458Z"
+                }
+              ],
+              "sharedCount": 0,
+              "thumbnail": null,
+              "syncStatus": null,
+              "createdAt": "2026-08-10T07:18:40.458Z",
+              "updatedAt": "2026-08-10T07:18:40.458Z",
+              "permissions": {
+                "role": "OWNER",
+                "canView": true,
+                "canEdit": true,
+                "canDelete": true,
+                "canShare": true,
+                "canCreateScan": true
+              }
+            }
+            """.utf8
+        )
+
+        let response = try LiveHTTPClient.makeAPIDecoder().decode(ProjectAPIResponse.self, from: json)
+        let summary = ProjectAPIMapping.toProjectSummary(response)
+        let scan = try #require(summary.roomScans.first)
+
+        #expect(response.scans?.first?.syncStatus == nil)
+        #expect(response.scans?.first?.assetStatus == "UPLOADED")
+        #expect(scan.syncStatus == .pending)
+        #expect(scan.assetStatus == "UPLOADED")
+        #expect(scan.isReadyToShare)
+        #expect(summary.hasUploadedScan)
+    }
+
     @Test func decodeProjectsListAPIResponse_itemsAndPagination() throws {
         let json = Data(
             """
