@@ -19,6 +19,8 @@ nonisolated struct ViewerInput: Hashable, Identifiable, Sendable {
     let modelVersion: String?
     /// When nil, model loading fails and the viewer shows its error state.
     let modelURL: URL?
+    let syncStatus: RoomScanSyncStatus
+    let assetStatus: String?
 
     init(
         projectID: String? = nil,
@@ -26,7 +28,9 @@ nonisolated struct ViewerInput: Hashable, Identifiable, Sendable {
         scanID: String,
         scanName: String,
         modelVersion: String? = nil,
-        modelURL: URL? = nil
+        modelURL: URL? = nil,
+        syncStatus: RoomScanSyncStatus = .synced,
+        assetStatus: String? = nil
     ) {
         self.projectID = projectID
         self.projectName = projectName
@@ -34,6 +38,8 @@ nonisolated struct ViewerInput: Hashable, Identifiable, Sendable {
         self.scanName = scanName
         self.modelVersion = modelVersion
         self.modelURL = modelURL
+        self.syncStatus = syncStatus
+        self.assetStatus = assetStatus
     }
 }
 

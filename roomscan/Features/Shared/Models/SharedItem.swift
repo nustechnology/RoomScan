@@ -106,7 +106,9 @@ struct SharedScanItem: Identifiable, Equatable, Sendable {
             projectName: projectName,
             scanID: id,
             scanName: name,
-            modelURL: detailScan?.localModelURL
+            modelURL: detailScan?.localModelURL,
+            syncStatus: detailScan?.syncStatus ?? .synced,
+            assetStatus: detailScan?.assetStatus
         )
     }
 }

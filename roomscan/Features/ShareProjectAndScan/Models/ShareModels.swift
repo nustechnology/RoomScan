@@ -106,6 +106,7 @@ enum ShareTarget: Hashable, Sendable {
 struct ProjectTarget: Hashable, Sendable {
     let projectID: String
     let projectName: String
+    let hasUploadedScan: Bool
 }
 
 struct ScanTarget: Hashable, Sendable {
@@ -113,6 +114,8 @@ struct ScanTarget: Hashable, Sendable {
     let projectName: String?
     let scanID: String
     let scanName: String
+    let syncStatus: RoomScanSyncStatus
+    let assetStatus: String?
 }
 
 struct ShareScreenInput: Identifiable, Hashable, Sendable {
@@ -121,16 +124,16 @@ struct ShareScreenInput: Identifiable, Hashable, Sendable {
     let target: ShareTarget
     let targetID: String
 
-    var projectIDForSyncStatus: String? {
-        let raw: String?
+    var isShareReady: Bool {
         switch target {
         case .project(let project):
-            raw = project.projectID
+            return project.hasUploadedScan
         case .scan(let scan):
-            raw = scan.projectID
+            return RoomScanSummary.isReadyToShare(
+                syncStatus: scan.syncStatus,
+                assetStatus: scan.assetStatus
+            )
         }
-        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return (trimmed?.isEmpty == false) ? trimmed : nil
     }
 
     var titleText: String {
@@ -163,11 +166,13 @@ struct ShareScreenInput: Identifiable, Hashable, Sendable {
         String(localized: "share.empty.message")
     }
 
-    static func project(id: String, name: String) -> ShareScreenInput {
+    static func project(id: String, name: String, hasUploadedScan: Bool = false) -> ShareScreenInput {
         ShareScreenInput(
             id: "\(ShareScope.project.rawValue)-\(id)",
             scope: .project,
-            target: .project(ProjectTarget(projectID: id, projectName: name)),
+            target: .project(
+                ProjectTarget(projectID: id, projectName: name, hasUploadedScan: hasUploadedScan)
+            ),
             targetID: id
         )
     }
@@ -176,7 +181,9 @@ struct ShareScreenInput: Identifiable, Hashable, Sendable {
         projectID: String?,
         projectName: String?,
         scanID: String,
-        scanName: String
+        scanName: String,
+        syncStatus: RoomScanSyncStatus,
+        assetStatus: String? = nil
     ) -> ShareScreenInput {
         ShareScreenInput(
             id: "\(ShareScope.scan.rawValue)-\(scanID)",
@@ -186,7 +193,9 @@ struct ShareScreenInput: Identifiable, Hashable, Sendable {
                     projectID: projectID,
                     projectName: projectName,
                     scanID: scanID,
-                    scanName: scanName
+                    scanName: scanName,
+                    syncStatus: syncStatus,
+                    assetStatus: assetStatus
                 )
             ),
             targetID: scanID

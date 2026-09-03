@@ -9,9 +9,9 @@ struct ShareView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel: ShareViewModel
 
-    init(input: ShareScreenInput, service: any ShareService, syncService: (any SyncService)? = nil) {
+    init(input: ShareScreenInput, service: any ShareService) {
         _viewModel = State(
-            initialValue: ShareViewModel(input: input, service: service, syncService: syncService)
+            initialValue: ShareViewModel(input: input, service: service)
         )
     }
 
@@ -277,21 +277,27 @@ private struct OfflineBanner: View {
 
 #Preview("Project") {
     ShareView(
-        input: .project(id: "project-1", name: "Lakeside Remodel"),
+        input: .project(id: "project-1", name: "Lakeside Remodel", hasUploadedScan: true),
         service: MockShareService()
     )
 }
 
 #Preview("Scan Empty") {
     ShareView(
-        input: .scan(projectID: "project-1", projectName: "Lakeside Remodel", scanID: "scan-1", scanName: "Living Room"),
+        input: .scan(
+            projectID: "project-1",
+            projectName: "Lakeside Remodel",
+            scanID: "scan-1",
+            scanName: "Living Room",
+            syncStatus: .synced
+        ),
         service: MockShareService(scenario: .empty, simulatedDelayNanoseconds: 0)
     )
 }
 
 #Preview("Offline") {
     ShareView(
-        input: .project(id: "project-1", name: "Lakeside Remodel"),
+        input: .project(id: "project-1", name: "Lakeside Remodel", hasUploadedScan: true),
         service: MockShareService(scenario: .offline, simulatedDelayNanoseconds: 0)
     )
 }

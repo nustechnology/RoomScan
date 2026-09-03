@@ -16,7 +16,6 @@ struct ScanDetailView: View {
     let projectName: String?
     let notesService: any NotesService
     let shareService: any ShareService
-    var syncService: (any SyncService)?
     var accessPolicy: DetailAccessPolicy = .editable
     let onScanUpdated: (RoomScanSummary) -> Void
     let onScanDeleted: () -> Void
@@ -83,6 +82,7 @@ struct ScanDetailView: View {
                             showsRenameAlert = true
                         }
                         Button(String(localized: "scanDetail.menu.share"), action: openShare)
+                            .disabled(!viewModel.canShare)
                         Button(String(localized: "scanDetail.menu.delete"), role: .destructive) {
                             showsDeleteConfirmation = true
                         }
@@ -140,7 +140,7 @@ struct ScanDetailView: View {
             )
         }
         .fullScreenCover(item: $shareInput) { input in
-            ShareView(input: input, service: shareService, syncService: syncService)
+            ShareView(input: input, service: shareService)
         }
         .overlay {
             if let loadingAction {
@@ -336,7 +336,9 @@ private extension ScanDetailView {
             scanID: viewModel.scan.id,
             scanName: viewModel.scan.name,
             modelVersion: viewModel.viewerModelVersion,
-            modelURL: viewModel.scan.localModelURL
+            modelURL: viewModel.scan.localModelURL,
+            syncStatus: viewModel.displaySyncStatus,
+            assetStatus: viewModel.shareAssetStatus
         )
     }
 
@@ -345,7 +347,9 @@ private extension ScanDetailView {
             projectID: projectID,
             projectName: projectName,
             scanID: viewModel.scan.id,
-            scanName: viewModel.scan.name
+            scanName: viewModel.scan.name,
+            syncStatus: viewModel.displaySyncStatus,
+            assetStatus: viewModel.shareAssetStatus
         )
     }
 

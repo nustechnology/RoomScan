@@ -178,6 +178,7 @@ struct ViewerView: View {
                                     Label(String(localized: "viewer.menu.shareScan"), systemImage: "square.and.arrow.up")
                                 }
                             )
+                            .disabled(!viewModel.canShare)
                         }
                     } label: {
                         Image(systemName: "ellipsis")
@@ -239,7 +240,9 @@ struct ViewerView: View {
                     projectID: viewModel.input.projectID,
                     projectName: viewModel.input.projectName,
                     scanID: viewModel.input.scanID,
-                    scanName: viewModel.scanTitle
+                    scanName: viewModel.scanTitle,
+                    syncStatus: viewModel.input.syncStatus,
+                    assetStatus: viewModel.input.assetStatus
                 ),
                 service: shareService
             )

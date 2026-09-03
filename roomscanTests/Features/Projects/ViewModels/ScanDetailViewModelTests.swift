@@ -307,7 +307,25 @@ struct ScanDetailViewModelTests {
         await viewModel.loadDetail()
 
         #expect(viewModel.displaySyncStatus == .synced)
+        #expect(viewModel.canShare)
         #expect(!viewModel.showsRetryUpload)
+    }
+
+    @Test func canShareRequiresSyncedStatus() {
+        #expect(makeViewModel(syncStatus: .synced).canShare)
+        #expect(!makeViewModel(syncStatus: .pending).canShare)
+        #expect(!makeViewModel(syncStatus: .uploading).canShare)
+        #expect(!makeViewModel(syncStatus: .failed).canShare)
+        #expect(!makeViewModel(syncStatus: .conflict).canShare)
+    }
+
+    @Test func canShareWhenPendingScanHasUploadedAssets() {
+        #expect(
+            makeViewModel(syncStatus: .pending, assetStatus: "UPLOADED").canShare
+        )
+        #expect(
+            makeViewModel(syncStatus: .pending, assetStatus: "READY").canShare
+        )
     }
 
     @Test func retryUploadIgnoredWhenNotFailed() async {
@@ -386,7 +404,8 @@ struct ScanDetailViewModelTests {
         creatorDisplayName: String = Self.mockCurrentUserDisplayName,
         createdAt: Date = Date(timeIntervalSince1970: 1_781_251_200),
         noteCount: Int = 0,
-        syncStatus: RoomScanSyncStatus = .synced
+        syncStatus: RoomScanSyncStatus = .synced,
+        assetStatus: String? = nil
     ) -> ScanDetailViewModel {
         ScanDetailViewModel(
             projectID: "project-1",
@@ -395,7 +414,8 @@ struct ScanDetailViewModelTests {
                 syncStatus: syncStatus,
                 creatorUserID: creatorUserID,
                 creatorDisplayName: creatorDisplayName,
-                noteCount: noteCount
+                noteCount: noteCount,
+                assetStatus: assetStatus
             ),
             currentUserID: Self.mockCurrentUserID,
             service: MockProjectsService(
@@ -427,7 +447,8 @@ struct ScanDetailViewModelTests {
         syncStatus: RoomScanSyncStatus = .synced,
         creatorUserID: String = Self.mockCurrentUserID,
         creatorDisplayName: String = Self.mockCurrentUserDisplayName,
-        noteCount: Int = 0
+        noteCount: Int = 0,
+        assetStatus: String? = nil
     ) -> RoomScanSummary {
         RoomScanSummary(
             id: "scan-1",
@@ -444,7 +465,8 @@ struct ScanDetailViewModelTests {
                     text: "Note \($0)",
                     createdAt: createdAt
                 )
-            }
+            },
+            assetStatus: assetStatus
         )
     }
 }

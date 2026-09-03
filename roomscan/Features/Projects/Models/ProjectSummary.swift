@@ -73,6 +73,11 @@ nonisolated struct ProjectSummary: Identifiable, Codable, Equatable, Sendable {
         .resolve(localScanCount: roomScans.count, remoteScanCount: scanCount)
     }
 
+    /// Project invitations require at least one scan whose assets are on the server.
+    var hasUploadedScan: Bool {
+        roomScans.contains { $0.isReadyToShare }
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id
         case revision
@@ -177,6 +182,7 @@ nonisolated struct RoomScanSummary: Identifiable, Codable, Equatable, Hashable, 
     let noteCount: Int
     let meshPath: String
     let thumbnailPath: String
+    let assetStatus: String?
 
     nonisolated init(
         id: String,
@@ -190,7 +196,8 @@ nonisolated struct RoomScanSummary: Identifiable, Codable, Equatable, Hashable, 
         notes: [RoomScanNoteSummary],
         meshPath: String? = nil,
         thumbnailPath: String? = nil,
-        noteCount: Int? = nil
+        noteCount: Int? = nil,
+        assetStatus: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -204,6 +211,7 @@ nonisolated struct RoomScanSummary: Identifiable, Codable, Equatable, Hashable, 
         self.noteCount = noteCount ?? notes.count
         self.meshPath = meshPath ?? "Scans/\(id)/mesh.usdz"
         self.thumbnailPath = thumbnailPath ?? "Scans/\(id)/thumbnail.jpg"
+        self.assetStatus = assetStatus
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -219,6 +227,7 @@ nonisolated struct RoomScanSummary: Identifiable, Codable, Equatable, Hashable, 
         case noteCount
         case meshPath
         case thumbnailPath
+        case assetStatus
     }
 
     nonisolated init(from decoder: Decoder) throws {
@@ -237,6 +246,34 @@ nonisolated struct RoomScanSummary: Identifiable, Codable, Equatable, Hashable, 
             ?? "Scans/\(id)/mesh.usdz"
         thumbnailPath = try container.decodeIfPresent(String.self, forKey: .thumbnailPath)
             ?? "Scans/\(id)/thumbnail.jpg"
+        assetStatus = try container.decodeIfPresent(String.self, forKey: .assetStatus)
+    }
+
+    /// True when required scan assets are on the server, even if `syncStatus` is
+    /// missing from the API and mapped to `.pending`.
+    nonisolated var isReadyToShare: Bool {
+        Self.isReadyToShare(syncStatus: syncStatus, assetStatus: assetStatus)
+    }
+
+    /// Share is allowed when the scan is synced or its assets are uploaded.
+    /// Unknown status without uploaded assets fails closed, matching project share.
+    nonisolated static func isReadyToShare(
+        syncStatus: RoomScanSyncStatus?,
+        assetStatus: String?
+    ) -> Bool {
+        if syncStatus == .synced {
+            return true
+        }
+        return isRemoteAssetUploaded(assetStatus)
+    }
+
+    nonisolated static func isRemoteAssetUploaded(_ assetStatus: String?) -> Bool {
+        switch assetStatus?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
+        case "READY", "UPLOADED":
+            return true
+        default:
+            return false
+        }
     }
 
     /// True when this device has a retained local mesh (upload/retry candidate).
@@ -266,7 +303,7 @@ nonisolated struct RoomScanNoteSummary: Identifiable, Codable, Equatable, Hashab
     let createdAt: Date
 }
 
-nonisolated enum RoomScanSyncStatus: String, CaseIterable, Codable, Equatable, Sendable {
+nonisolated enum RoomScanSyncStatus: String, CaseIterable, Codable, Equatable, Hashable, Sendable {
     case pending
     case synced
     case uploading

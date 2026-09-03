@@ -101,6 +101,17 @@ final class ScanDetailViewModel {
         )
     }
 
+    var canShare: Bool {
+        RoomScanSummary.isReadyToShare(
+            syncStatus: displaySyncStatus,
+            assetStatus: shareAssetStatus
+        )
+    }
+
+    var shareAssetStatus: String? {
+        detail?.assetStatus ?? scan.assetStatus
+    }
+
     func loadDetail() async {
         guard let scanDetailService else { return }
         guard !isLoadingDetail else { return }
@@ -127,8 +138,7 @@ final class ScanDetailViewModel {
 
     var hasRemoteModelDownload: Bool {
         guard scanDetailService != nil else { return false }
-        let assetStatus = detail?.assetStatus.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        return assetStatus == "READY" || assetStatus == "UPLOADED"
+        return RoomScanSummary.isRemoteAssetUploaded(detail?.assetStatus)
     }
 
     var canOpen3DModel: Bool {
@@ -283,7 +293,8 @@ final class ScanDetailViewModel {
             notes: scan.notes,
             meshPath: scan.meshPath,
             thumbnailPath: scan.thumbnailPath,
-            noteCount: scan.noteCount
+            noteCount: scan.noteCount,
+            assetStatus: scan.assetStatus
         )
     }
 

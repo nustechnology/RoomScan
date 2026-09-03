@@ -27,7 +27,6 @@ struct ProjectsPresentationModifier: ViewModifier {
     let scanDetailService: (any ScanDetailService)?
     let notesService: any NotesService
     let shareService: any ShareService
-    let syncService: (any SyncService)?
     let syncEngine: SyncEngine?
     var currentUserID: String
 
@@ -57,7 +56,7 @@ struct ProjectsPresentationModifier: ViewModifier {
                 }
             )
             .fullScreenCover(item: $shareInput) { input in
-                ShareView(input: input, service: shareService, syncService: syncService)
+                ShareView(input: input, service: shareService)
             }
             .fullScreenCover(item: $selectedScanDetail) { destination in
                 NavigationStack {
@@ -197,7 +196,6 @@ struct ProjectsPresentationModifier: ViewModifier {
             projectName: destination.projectName,
             notesService: notesService,
             shareService: shareService,
-            syncService: syncService,
             onScanUpdated: { updatedScan in
                 viewModel.applyUpdatedScan(
                     projectID: destination.projectID,
@@ -221,7 +219,6 @@ struct ProjectsPresentationModifier: ViewModifier {
             scanDetailService: scanDetailService,
             notesService: notesService,
             shareService: shareService,
-            syncService: syncService,
             syncEngine: syncEngine,
             currentUserID: currentUserID,
             onScanUpdated: { updatedScan in

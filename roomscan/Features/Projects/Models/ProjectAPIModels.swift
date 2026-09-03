@@ -268,7 +268,8 @@ enum ProjectAPIMapping {
             syncStatus: RoomScanSyncStatus.fromAPI(scan.syncStatus),
             notes: [],
             thumbnailPath: scan.thumbnail ?? "",
-            noteCount: max(0, scan.noteCount)
+            noteCount: max(0, scan.noteCount),
+            assetStatus: scan.assetStatus
         )
     }
 
@@ -310,7 +311,8 @@ enum ProjectAPIMapping {
                     local.notes.count,
                     remote.notes.count,
                     notes.count
-                )
+                ),
+                assetStatus: preferredAssetStatus(local: local.assetStatus, remote: remote.assetStatus)
             )
         }
 
@@ -360,6 +362,18 @@ enum ProjectAPIMapping {
             return local
         }
         return remote
+    }
+
+    nonisolated private static func preferredAssetStatus(local: String?, remote: String?) -> String? {
+        let trimmedRemote = remote?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmedRemote, !trimmedRemote.isEmpty {
+            return trimmedRemote
+        }
+        let trimmedLocal = local?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmedLocal, !trimmedLocal.isEmpty {
+            return trimmedLocal
+        }
+        return nil
     }
 }
 

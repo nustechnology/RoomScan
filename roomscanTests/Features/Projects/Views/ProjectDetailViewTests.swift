@@ -46,4 +46,63 @@ struct ProjectDetailViewTests {
                 == "owner@example.com"
         )
     }
+
+    @Test func canShareProjectRequiresAtLeastOneSyncedScan() {
+        let pending = makeScan(id: "pending", syncStatus: .pending)
+        let failed = makeScan(id: "failed", syncStatus: .failed)
+        let synced = makeScan(id: "synced", syncStatus: .synced)
+
+        #expect(
+            ProjectDetailPresentation.canShareProject(
+                localScans: [pending, failed],
+                displayedScans: []
+            ) == false
+        )
+        #expect(
+            ProjectDetailPresentation.canShareProject(
+                localScans: [pending, synced],
+                displayedScans: []
+            )
+        )
+        #expect(
+            ProjectDetailPresentation.canShareProject(
+                localScans: [],
+                displayedScans: [synced]
+            )
+        )
+        #expect(
+            ProjectDetailPresentation.canShareProject(
+                localScans: [pending],
+                displayedScans: [synced]
+            )
+        )
+        #expect(
+            ProjectDetailPresentation.canShareProject(
+                localScans: [],
+                displayedScans: [pending]
+            ) == false
+        )
+        #expect(
+            ProjectDetailPresentation.canShareProject(
+                localScans: [makeScan(id: "assets", syncStatus: .pending, assetStatus: "UPLOADED")],
+                displayedScans: []
+            )
+        )
+    }
+
+    private func makeScan(
+        id: String,
+        syncStatus: RoomScanSyncStatus,
+        assetStatus: String? = nil
+    ) -> RoomScanSummary {
+        RoomScanSummary(
+            id: id,
+            name: "Room",
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            thumbnailName: "thumbnail-0",
+            syncStatus: syncStatus,
+            notes: [],
+            assetStatus: assetStatus
+        )
+    }
 }
