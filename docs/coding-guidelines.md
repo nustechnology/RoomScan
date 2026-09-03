@@ -51,7 +51,7 @@ This document describes **how code should be written**, not product requirements
   - Typography (`AppTypography`)
   - Colors (`AppColors`)
   - Spacing (`AppSpacing`)
-  - Corner Radius (`AppRadius`)
+  - Corner Radius (`AppCornerRadius`)
 - Extend the shared design system instead of introducing duplicate styles.
 - Use semantic names (for example, `bodyLarge`, `headingMedium`, `primary`) instead of size-based names (for example, `font16`, `text17`, `blue500`).
 - Use the bundled Inter variable font through `AppTypography`.
