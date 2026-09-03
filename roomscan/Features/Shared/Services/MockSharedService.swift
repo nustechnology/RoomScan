@@ -114,8 +114,10 @@ actor MockSharedService: SharedService {
     func ingestSharedProject(_ project: SharedProjectItem) async throws {
         try await simulateDelay()
         try throwIfFailed()
+        let existing = projects.first { $0.id == project.id }
+        let merged = SharedProjectItem.coalescing(existing: existing, incoming: project)
         projects.removeAll { $0.id == project.id }
-        projects.insert(project, at: 0)
+        projects.insert(merged, at: 0)
         if scenario == .empty {
             scenario = .success
         }
@@ -124,8 +126,10 @@ actor MockSharedService: SharedService {
     func ingestSharedScan(_ scan: SharedScanItem) async throws {
         try await simulateDelay()
         try throwIfFailed()
+        let existing = scans.first { $0.id == scan.id }
+        let merged = SharedScanItem.coalescing(existing: existing, incoming: scan)
         scans.removeAll { $0.id == scan.id }
-        scans.insert(scan, at: 0)
+        scans.insert(merged, at: 0)
         if scenario == .empty {
             scenario = .success
         }

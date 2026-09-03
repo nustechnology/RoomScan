@@ -419,3 +419,66 @@ struct SharedProjectThumbnailTests {
         #expect(active?.thumbnailName == "ScanThumbnail")
     }
 }
+
+struct SharedProjectItemCoalescingTests {
+    @Test func activeStubDoesNotWipeAcceptedDetail() {
+        let accepted = SharedProjectItem.make(
+            from: ProjectSummary(
+                id: "accepted-project",
+                name: "Accepted Villa",
+                ownerName: "owner@example.com",
+                createdAt: Date(timeIntervalSince1970: 1),
+                updatedAt: Date(timeIntervalSince1970: 2),
+                description: "",
+                sharedUserCount: 1,
+                roomScans: []
+            ),
+            status: .active,
+            statusChangedAt: Date(timeIntervalSince1970: 2)
+        )
+        let syncStub = SharedProjectItem(
+            id: "accepted-project",
+            name: "",
+            ownerName: "",
+            scanCount: 0,
+            thumbnailName: nil,
+            status: .active,
+            statusChangedAt: Date(timeIntervalSince1970: 3),
+            detailProject: nil
+        )
+
+        let merged = SharedProjectItem.coalescing(existing: accepted, incoming: syncStub)
+
+        #expect(merged.name == "Accepted Villa")
+        #expect(merged.detailProject != nil)
+        #expect(merged.statusChangedAt == Date(timeIntervalSince1970: 3))
+    }
+
+    @Test func newerRevocationReplacesAcceptedDetail() {
+        let accepted = SharedProjectItem.make(
+            from: ProjectSummary(
+                id: "accepted-project",
+                name: "Accepted Villa",
+                ownerName: "owner@example.com",
+                roomScans: []
+            ),
+            status: .active,
+            statusChangedAt: Date(timeIntervalSince1970: 2)
+        )
+        let revoked = SharedProjectItem(
+            id: "accepted-project",
+            name: "",
+            ownerName: "",
+            scanCount: 0,
+            thumbnailName: nil,
+            status: .accessRevoked,
+            statusChangedAt: Date(timeIntervalSince1970: 4),
+            detailProject: nil
+        )
+
+        let merged = SharedProjectItem.coalescing(existing: accepted, incoming: revoked)
+
+        #expect(merged.status == .accessRevoked)
+        #expect(merged.detailProject == nil)
+    }
+}
