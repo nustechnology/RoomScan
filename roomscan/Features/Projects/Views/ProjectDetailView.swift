@@ -409,10 +409,12 @@ private struct ProjectDetailScanDestination: Identifiable {
 
 enum ProjectDetailPresentation {
     static func ownerName(_ ownerName: String, accessPolicy: DetailAccessPolicy) -> String {
-        if accessPolicy.allowsOwnerActions {
-            return String(localized: "projects.detail.metadata.owner.you")
-        }
-        return ownerName
+        let trimmed = ownerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty else { return trimmed }
+
+        return accessPolicy.allowsOwnerActions
+            ? String(localized: "projects.detail.metadata.owner.you")
+            : String(localized: "shared.owner.unknown")
     }
 
     static func showsOwnerActions(for accessPolicy: DetailAccessPolicy) -> Bool {

@@ -3672,6 +3672,18 @@
         }
       }
     },
+    "shared.owner.unknown" : {
+      "comment" : "Fallback owner name when no display name or email is available for a Shared With Me item.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unknown"
+          }
+        }
+      }
+    },
     "shared.project.placeholderName" : {
       "comment" : "Fallback title when a shared project name is not yet available locally.",
       "extractionState" : "manual",

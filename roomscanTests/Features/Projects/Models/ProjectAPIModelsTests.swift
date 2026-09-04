@@ -56,7 +56,7 @@ struct ProjectAPIModelsTests {
               "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
               "name": "Lakeside Remodel",
               "description": null,
-              "owner": { "id": "owner-1", "email": "owner@example.com" },
+              "owner": { "id": "owner-1", "email": "owner@example.com", "displayName": "Project Owner" },
               "scanCount": 0,
               "scans": [],
               "sharedCount": 2,
@@ -81,11 +81,25 @@ struct ProjectAPIModelsTests {
         #expect(summary.id == response.id)
         #expect(summary.name == "Lakeside Remodel")
         #expect(summary.description == "")
-        #expect(summary.ownerName == "owner@example.com")
+        #expect(summary.ownerName == "Project Owner")
         #expect(summary.sharedUserCount == 2)
         #expect(summary.roomScans.isEmpty)
         #expect(response.syncStatus == "PENDING")
         #expect(response.scans == [])
+
+        let missingOwnerJSON = Data(
+            String(decoding: json, as: UTF8.self)
+                .replacingOccurrences(
+                    of: "\"email\": \"owner@example.com\", \"displayName\": \"Project Owner\"",
+                    with: "\"email\": null, \"displayName\": null"
+                )
+                .utf8
+        )
+        let missingOwnerResponse = try LiveHTTPClient.makeAPIDecoder().decode(
+            ProjectAPIResponse.self,
+            from: missingOwnerJSON
+        )
+        #expect(ProjectAPIMapping.toProjectSummary(missingOwnerResponse).ownerName.isEmpty)
     }
 
     @Test func decodeProjectAPIResponse_withNestedScans() throws {

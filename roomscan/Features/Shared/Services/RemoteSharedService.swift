@@ -45,6 +45,12 @@ actor RemoteSharedService: SharedService {
                     locallyIngestedProjects.removeValue(forKey: id)
                     continue
                 }
+
+                guard item.status.isActive else {
+                    locallyIngestedProjects.removeValue(forKey: id)
+                    continue
+                }
+
                 itemsByID[id] = item
             }
 
@@ -94,6 +100,13 @@ actor RemoteSharedService: SharedService {
                     locallyIngestedScans.removeValue(forKey: id)
                     continue
                 }
+
+                // See the equivalent project merge above.
+                guard item.status.isActive else {
+                    locallyIngestedScans.removeValue(forKey: id)
+                    continue
+                }
+
                 itemsByID[id] = item
             }
 
@@ -243,7 +256,7 @@ private struct SharedProjectAPIItem: Decodable, Sendable {
     let permissions: SharedPermissionsDTO
 
     static func toSharedProjectItem(_ item: SharedProjectAPIItem) -> SharedProjectItem {
-        let ownerName = item.owner.email?.isEmpty == false ? item.owner.email! : "Unknown"
+        let ownerName = item.owner.sharedDisplayName
         let accessStatus = SharedAccessStatus.fromAPI(item.status)
         return SharedProjectItem(
             id: item.id,
@@ -277,7 +290,7 @@ private struct SharedScanAPIItem: Decodable, Sendable {
     let permissions: SharedPermissionsDTO
 
     static func toSharedScanItem(_ item: SharedScanAPIItem, projectName: String) -> SharedScanItem {
-        let ownerName = item.creator.email?.isEmpty == false ? item.creator.email! : "Unknown"
+        let ownerName = item.creator.sharedDisplayName
         let accessStatus = SharedAccessStatus.fromAPI(item.status)
         let scan = RoomScanSummary(
             id: item.id,
@@ -304,6 +317,18 @@ private struct SharedScanAPIItem: Decodable, Sendable {
             statusChangedAt: item.updatedAt,
             detailScan: accessStatus.isActive ? scan : nil
         )
+    }
+}
+
+private extension ProjectOwnerDTO {
+    var sharedDisplayName: String {
+        for value in [displayName, email] {
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let trimmed, !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+        return String(localized: "shared.owner.unknown")
     }
 }
 

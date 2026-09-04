@@ -29,16 +29,24 @@ struct RemoteSharedServiceTests {
 
         #expect(projects.count == 3)
         #expect(projects[0].id == "shared-project-1")
+        #expect(projects[0].ownerName == "Project Owner")
         #expect(projects[0].detailProject?.id == "shared-project-1")
         #expect(projects.first { $0.id == "shared-project-revoked" }?.status == .accessRevoked)
+        #expect(projects.first { $0.id == "shared-project-revoked" }?.ownerName == "owner@example.com")
         #expect(projects.first { $0.id == "shared-project-deleted" }?.status == .itemDeleted)
+        #expect(
+            projects.first { $0.id == "shared-project-deleted" }?.ownerName
+                == String(localized: "shared.owner.unknown")
+        )
         #expect(scans.count == 2)
         #expect(scans[0].id == "shared-scan-1")
+        #expect(scans[0].ownerName == "Scan Creator")
         #expect(scans[0].projectID == "shared-project-1")
         #expect(scans[0].projectName == "Shared Project")
         #expect(scans[0].noteCount == 2)
         #expect(scans[0].detailScan?.syncStatus == .synced)
         #expect(scans.first { $0.id == "shared-scan-revoked" }?.status == .accessRevoked)
+        #expect(scans.first { $0.id == "shared-scan-revoked" }?.ownerName == "owner@example.com")
     }
 
     @Test func removeSharedItem_callsScopeSpecificEndpoints() async throws {
@@ -192,6 +200,52 @@ struct RemoteSharedServiceTests {
         #expect(item?.detailProject != nil)
     }
 
+    @Test func fetchSharedItems_dropsInactiveLocalStubsMissingFromAPI() async throws {
+        let client = SharedHTTPClient { endpoint in
+            switch endpoint.path {
+            case "/api/v1/shared-projects", "/api/v1/shared-scans":
+                return .success(Self.emptySharedProjectsPageJSON)
+            default:
+                Issue.record("Unexpected endpoint: \(endpoint.path)")
+                return .failure(.networkError)
+            }
+        }
+        let service = RemoteSharedService(httpClient: client, now: { Self.fixtureNow })
+
+        try await service.ingestSharedProject(
+            SharedProjectItem(
+                id: "locally-revoked-project",
+                name: "Revoked Project",
+                ownerName: "Owner",
+                scanCount: 0,
+                thumbnailName: nil,
+                status: .accessRevoked,
+                statusChangedAt: Self.fixtureNow,
+                detailProject: nil
+            )
+        )
+        try await service.ingestSharedScan(
+            SharedScanItem(
+                id: "locally-deleted-scan",
+                name: "Deleted Scan",
+                ownerName: "Owner",
+                noteCount: 0,
+                projectID: "project-id",
+                projectName: "Project",
+                thumbnailName: nil,
+                status: .itemDeleted,
+                statusChangedAt: Self.fixtureNow,
+                detailScan: nil
+            )
+        )
+
+        let projects = try await service.fetchSharedProjects()
+        let scans = try await service.fetchSharedScans()
+
+        #expect(projects.isEmpty)
+        #expect(scans.isEmpty)
+    }
+
     private static let fixtureNow = Date(timeIntervalSince1970: 1_786_768_170)
 
     private static let sharedProjectsJSON = Data(
@@ -200,7 +254,7 @@ struct RemoteSharedServiceTests {
           "items": [{
             "id": "shared-project-1",
             "name": "Shared Project",
-            "owner": { "id": "owner-1", "email": "owner@example.com" },
+            "owner": { "id": "owner-1", "email": "owner@example.com", "displayName": "Project Owner" },
             "scanCount": 1,
             "thumbnail": null,
             "updatedAt": "2026-08-13T04:29:30.089Z",
@@ -218,7 +272,7 @@ struct RemoteSharedServiceTests {
           }, {
             "id": "shared-project-deleted",
             "name": "Deleted Project",
-            "owner": { "id": "owner-1", "email": "owner@example.com" },
+            "owner": { "id": "owner-1", "email": null, "displayName": null },
             "scanCount": 0,
             "thumbnail": null,
             "updatedAt": "2026-08-11T04:29:30.089Z",
@@ -272,7 +326,7 @@ struct RemoteSharedServiceTests {
             "projectId": "shared-project-1",
             "name": "Shared Scan",
             "thumbnail": "https://example.com/thumbnail",
-            "creator": { "id": "owner-1", "email": "owner@example.com" },
+            "creator": { "id": "owner-1", "email": "owner@example.com", "displayName": "Scan Creator" },
             "noteCount": 2,
             "syncStatus": "SYNCED",
             "updatedAt": "2026-08-13T04:29:30.089Z",
