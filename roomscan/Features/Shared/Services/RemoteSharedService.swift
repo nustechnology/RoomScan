@@ -37,17 +37,14 @@ actor RemoteSharedService: SharedService {
                 }
             )
 
+            // Remote list is source of truth once the item appears there.
+            // Local ingest only fills the gap before the shared-projects API includes it
+            // (e.g. right after invitation accept).
             for (id, item) in locallyIngestedProjects {
-                guard let remoteItem = itemsByID[id] else {
-                    itemsByID[id] = item
+                if itemsByID[id] != nil {
+                    locallyIngestedProjects.removeValue(forKey: id)
                     continue
                 }
-
-                guard remoteItem.status.isActive,
-                      item.statusChangedAt > remoteItem.statusChangedAt else {
-                    continue
-                }
-
                 itemsByID[id] = item
             }
 
@@ -93,16 +90,10 @@ actor RemoteSharedService: SharedService {
             )
 
             for (id, item) in locallyIngestedScans {
-                guard let remoteItem = itemsByID[id] else {
-                    itemsByID[id] = item
+                if itemsByID[id] != nil {
+                    locallyIngestedScans.removeValue(forKey: id)
                     continue
                 }
-
-                guard remoteItem.status.isActive,
-                      item.statusChangedAt > remoteItem.statusChangedAt else {
-                    continue
-                }
-
                 itemsByID[id] = item
             }
 
@@ -154,11 +145,17 @@ actor RemoteSharedService: SharedService {
     }
 
     func ingestSharedProject(_ project: SharedProjectItem) async throws {
-        locallyIngestedProjects[project.id] = project
+        locallyIngestedProjects[project.id] = SharedProjectItem.coalescing(
+            existing: locallyIngestedProjects[project.id],
+            incoming: project
+        )
     }
 
     func ingestSharedScan(_ scan: SharedScanItem) async throws {
-        locallyIngestedScans[scan.id] = scan
+        locallyIngestedScans[scan.id] = SharedScanItem.coalescing(
+            existing: locallyIngestedScans[scan.id],
+            incoming: scan
+        )
     }
 
     private func fetchAllSharedProjects() async throws -> [SharedProjectAPIItem] {

@@ -164,6 +164,11 @@ extension SyncChangeApplier {
                 statusChangedAt: statusChangedAt,
                 includeDetail: status.isActive
             )
+        } else if status.isActive {
+            // Avoid Active stubs with empty name / nil detail. Those overwrite a prior
+            // invitation-accept ingest and make Shared With Me cards silently untappable.
+            // Remote shared-projects fetch (or the accept destination) supplies openable detail.
+            return
         } else {
             item = SharedProjectItem(
                 id: projectId,

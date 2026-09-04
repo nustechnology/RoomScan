@@ -18,7 +18,22 @@ enum SharedAccessStatus: String, Equatable, CaseIterable, Sendable {
     nonisolated var isActive: Bool { self == .active }
 }
 
-struct SharedProjectItem: Identifiable, Equatable, Sendable {
+private protocol SharedAccessTimed {
+    var status: SharedAccessStatus { get }
+    var statusChangedAt: Date { get }
+}
+
+/// When either side is inactive, picks by `statusChangedAt` so a stale active event
+/// cannot resurrect a revoked share. Returns `nil` when both are active.
+private func preferredItemResolvingInactiveStatusConflict<Item: SharedAccessTimed>(
+    existing: Item,
+    incoming: Item
+) -> Item? {
+    guard !incoming.status.isActive || !existing.status.isActive else { return nil }
+    return incoming.statusChangedAt >= existing.statusChangedAt ? incoming : existing
+}
+
+struct SharedProjectItem: Identifiable, Equatable, Sendable, SharedAccessTimed {
     let id: String
     let name: String
     let ownerName: String
@@ -48,12 +63,46 @@ struct SharedProjectItem: Identifiable, Equatable, Sendable {
             id: project.id,
             name: project.name,
             ownerName: project.ownerName,
-            scanCount: project.roomScans.count,
+            scanCount: max(project.scanCount, project.roomScans.count),
             thumbnailName: thumbnailName(from: project.roomScans),
             status: status,
             statusChangedAt: statusChangedAt,
             detailProject: includeDetail && status.isActive ? project : nil
         )
+    }
+
+    /// Merges a prior local ingest with an incoming upsert without wiping openable detail.
+    /// Active stubs (`detailProject == nil`) must not replace an active item that can open.
+    nonisolated static func coalescing(
+        existing: SharedProjectItem?,
+        incoming: SharedProjectItem
+    ) -> SharedProjectItem {
+        guard let existing else { return incoming }
+
+        if let resolved = preferredItemResolvingInactiveStatusConflict(
+            existing: existing,
+            incoming: incoming
+        ) {
+            return resolved
+        }
+
+        switch (existing.detailProject != nil, incoming.detailProject != nil) {
+        case (true, false):
+            return SharedProjectItem(
+                id: existing.id,
+                name: existing.name.isEmpty ? incoming.name : existing.name,
+                ownerName: existing.ownerName.isEmpty ? incoming.ownerName : existing.ownerName,
+                scanCount: max(existing.scanCount, incoming.scanCount),
+                thumbnailName: existing.thumbnailName ?? incoming.thumbnailName,
+                status: .active,
+                statusChangedAt: max(existing.statusChangedAt, incoming.statusChangedAt),
+                detailProject: existing.detailProject
+            )
+        case (false, true):
+            return incoming
+        case (true, true), (false, false):
+            return incoming.statusChangedAt >= existing.statusChangedAt ? incoming : existing
+        }
     }
 }
 
@@ -63,7 +112,7 @@ struct SharedScanParent: Equatable, Sendable {
     let projectName: String
 }
 
-struct SharedScanItem: Identifiable, Equatable, Sendable {
+struct SharedScanItem: Identifiable, Equatable, Sendable, SharedAccessTimed {
     let id: String
     let name: String
     let ownerName: String
@@ -98,6 +147,41 @@ struct SharedScanItem: Identifiable, Equatable, Sendable {
             statusChangedAt: statusChangedAt,
             detailScan: includeDetail && status.isActive ? scan : nil
         )
+    }
+
+    /// Merges a prior local ingest with an incoming upsert without wiping openable detail.
+    nonisolated static func coalescing(
+        existing: SharedScanItem?,
+        incoming: SharedScanItem
+    ) -> SharedScanItem {
+        guard let existing else { return incoming }
+
+        if let resolved = preferredItemResolvingInactiveStatusConflict(
+            existing: existing,
+            incoming: incoming
+        ) {
+            return resolved
+        }
+
+        switch (existing.detailScan != nil, incoming.detailScan != nil) {
+        case (true, false):
+            return SharedScanItem(
+                id: existing.id,
+                name: existing.name.isEmpty ? incoming.name : existing.name,
+                ownerName: existing.ownerName.isEmpty ? incoming.ownerName : existing.ownerName,
+                noteCount: max(existing.noteCount, incoming.noteCount),
+                projectID: existing.projectID.isEmpty ? incoming.projectID : existing.projectID,
+                projectName: existing.projectName.isEmpty ? incoming.projectName : existing.projectName,
+                thumbnailName: existing.thumbnailName ?? incoming.thumbnailName,
+                status: .active,
+                statusChangedAt: max(existing.statusChangedAt, incoming.statusChangedAt),
+                detailScan: existing.detailScan
+            )
+        case (false, true):
+            return incoming
+        case (true, true), (false, false):
+            return incoming.statusChangedAt >= existing.statusChangedAt ? incoming : existing
+        }
     }
 
     nonisolated var viewerInput: ViewerInput {

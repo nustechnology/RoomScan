@@ -323,6 +323,64 @@ struct SyncChangeApplierTests {
         #expect(shared.contains(where: { $0.id == "shared-project" && $0.status == .active }))
     }
 
+    @Test func projectAccessUpsertWithoutLocalProjectDoesNotWipeAcceptedIngest() async throws {
+        let localStore = SyncTestFixtures.makeLocalStore()
+        let sharedService = MockSharedService(projects: [], scans: [], simulatedDelayNanoseconds: 0)
+        let defaults = UserDefaults(suiteName: "SyncEngineTests.\(UUID().uuidString)")!
+        let applier = SyncChangeApplier(
+            localCache: localStore,
+            sharedService: sharedService,
+            currentUserID: "user-1",
+            defaults: defaults
+        )
+        let accepted = SharedProjectItem.make(
+            from: ProjectSummary(
+                id: "accepted-project",
+                name: "Accepted Villa",
+                ownerName: "owner@example.com",
+                createdAt: Date(timeIntervalSince1970: 1),
+                updatedAt: Date(timeIntervalSince1970: 2),
+                description: "",
+                sharedUserCount: 1,
+                roomScans: []
+            ),
+            status: .active,
+            statusChangedAt: Date(timeIntervalSince1970: 2)
+        )
+        try await sharedService.ingestSharedProject(accepted)
+
+        try await applier.apply([
+            SyncChange(
+                resourceId: "access-1",
+                operation: .upsert,
+                revision: 1,
+                syncStatus: nil,
+                changedAt: Date(timeIntervalSince1970: 5),
+                cursor: "c-access",
+                deletedAt: nil,
+                resourceType: .projectAccess,
+                payload: .projectAccess(
+                    SyncProjectAccessPayload(
+                        id: "access-1",
+                        projectId: "accepted-project",
+                        userId: "user-1",
+                        userEmail: "me@example.com",
+                        role: "EDITOR",
+                        acceptedAt: Date(timeIntervalSince1970: 5),
+                        createdAt: Date(timeIntervalSince1970: 5),
+                        updatedAt: Date(timeIntervalSince1970: 5)
+                    )
+                )
+            )
+        ])
+
+        let shared = try await sharedService.fetchSharedProjects()
+        let item = shared.first { $0.id == "accepted-project" }
+        #expect(item?.name == "Accepted Villa")
+        #expect(item?.status == .active)
+        #expect(item?.detailProject != nil)
+    }
+
     @Test func projectAccessOwnerDeleteWithPayloadDoesNotIngestShared() async throws {
         let localStore = SyncTestFixtures.makeLocalStore()
         let sharedService = MockSharedService(projects: [], scans: [], simulatedDelayNanoseconds: 0)
@@ -525,6 +583,18 @@ struct SyncChangeApplierTests {
             sharedService: sharedService,
             currentUserID: "user-1",
             defaults: defaults
+        )
+        try await localStore.cacheProject(
+            ProjectSummary(
+                id: "shared-project",
+                name: "Shared Villa",
+                ownerName: "owner@example.com",
+                createdAt: Date(timeIntervalSince1970: 1),
+                updatedAt: Date(timeIntervalSince1970: 2),
+                description: "",
+                sharedUserCount: 1,
+                roomScans: []
+            )
         )
 
         try await applier.apply([

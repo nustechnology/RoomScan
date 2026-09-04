@@ -162,6 +162,36 @@ struct RemoteSharedServiceTests {
         #expect(scans.first { $0.id == locallyAcceptedScan.id }?.status == .accessRevoked)
     }
 
+    @Test func fetchSharedProjects_prefersRemoteDetailOverNewerLocalStub() async throws {
+        let client = SharedHTTPClient { endpoint in
+            switch endpoint.path {
+            case "/api/v1/shared-projects":
+                return .success(Self.sharedProjectsJSON)
+            default:
+                Issue.record("Unexpected endpoint: \(endpoint.path)")
+                return .failure(.networkError)
+            }
+        }
+        let service = RemoteSharedService(httpClient: client, now: { Self.fixtureNow })
+        let localStub = SharedProjectItem(
+            id: "shared-project-1",
+            name: "",
+            ownerName: "",
+            scanCount: 0,
+            thumbnailName: nil,
+            status: .active,
+            statusChangedAt: Self.fixtureNow.addingTimeInterval(3_600),
+            detailProject: nil
+        )
+        try await service.ingestSharedProject(localStub)
+
+        let projects = try await service.fetchSharedProjects()
+        let item = projects.first { $0.id == "shared-project-1" }
+
+        #expect(item?.name == "Shared Project")
+        #expect(item?.detailProject != nil)
+    }
+
     private static let fixtureNow = Date(timeIntervalSince1970: 1_786_768_170)
 
     private static let sharedProjectsJSON = Data(
