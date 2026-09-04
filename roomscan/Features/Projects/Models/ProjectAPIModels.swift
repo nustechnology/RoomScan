@@ -220,6 +220,7 @@ struct ProjectScanDTO: Decodable, Sendable, Equatable {
 struct ProjectOwnerDTO: Decodable, Sendable, Equatable {
     let id: String
     let email: String?
+    let displayName: String?
 }
 
 struct ProjectPermissionsDTO: Decodable, Sendable, Equatable {
@@ -243,7 +244,7 @@ enum ProjectAPIMapping {
             id: response.id,
             revision: revision ?? response.revision ?? 1,
             name: response.name,
-            ownerName: response.owner.email.flatMap { $0.isEmpty ? nil : $0 } ?? "You",
+            ownerName: ownerName(from: response.owner),
             createdAt: response.createdAt,
             updatedAt: response.updatedAt,
             description: response.description ?? "",
@@ -257,6 +258,16 @@ enum ProjectAPIMapping {
         let projects = response.items.map { toProjectSummary($0) }
         let hasMore = response.pagination.page < response.pagination.totalPages
         return ProjectPage(projects: projects, hasMore: hasMore)
+    }
+
+    private nonisolated static func ownerName(from owner: ProjectOwnerDTO) -> String {
+        for value in [owner.displayName, owner.email] {
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let trimmed, !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+        return ""
     }
 
     nonisolated static func toRoomScanSummary(_ scan: ProjectScanDTO) -> RoomScanSummary {

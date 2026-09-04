@@ -37,13 +37,19 @@ struct ProjectDetailViewTests {
         #expect(DetailAccessPolicy.readOnly.allowsOwnerActions == false)
     }
 
-    @Test func ownerNameUsesYouForEditableProject() {
+    @Test func ownerNameUsesProjectOwnerAndUsesTheAccessPolicyForMissingValues() {
         #expect(
-            ProjectDetailPresentation.ownerName("owner@example.com", accessPolicy: .editable) == "You"
+            ProjectDetailPresentation.ownerName("Project Owner", accessPolicy: .editable) == "Project Owner"
         )
         #expect(
-            ProjectDetailPresentation.ownerName("owner@example.com", accessPolicy: .readOnly)
-                == "owner@example.com"
+            ProjectDetailPresentation.ownerName("owner@example.com", accessPolicy: .readOnly) == "owner@example.com"
+        )
+        #expect(
+            ProjectDetailPresentation.ownerName("   ", accessPolicy: .editable) == "You"
+        )
+        #expect(
+            ProjectDetailPresentation.ownerName("   ", accessPolicy: .readOnly)
+                == String(localized: "shared.owner.unknown")
         )
     }
 

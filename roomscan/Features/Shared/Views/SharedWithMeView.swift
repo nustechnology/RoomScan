@@ -290,11 +290,12 @@ private struct SharedProjectsContentView: View {
                     )
                     .sharedListRowStyle()
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) {
+                        Button {
                             onRemove(project.id)
                         } label: {
-                            Text("shared.remove.action")
+                            Text(String(localized: "shared.remove.action"))
                         }
+                        .tint(.red)
                         .accessibilityIdentifier("shared.project.remove.\(project.id)")
                     }
                 }
@@ -352,11 +353,12 @@ private struct SharedScansContentView: View {
                     )
                     .sharedListRowStyle()
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) {
+                        Button {
                             onRemove(scan.id)
                         } label: {
-                            Text("shared.remove.action")
+                            Text(String(localized: "shared.remove.action"))
                         }
+                        .tint(.red)
                         .accessibilityIdentifier("shared.scan.remove.\(scan.id)")
                     }
                 }
