@@ -214,37 +214,39 @@ struct ReviewScanView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(viewModel.projectSelectError == nil ? .secondary : .red)
 
-            Menu {
-                Button {
-                    viewModel.openCreateProjectModal()
-                } label: {
-                    Label(String(localized: "review.action.create_project"), systemImage: "plus")
-                }
+            ZStack {
+                projectDropdownFieldLabel
+                    .accessibilityHidden(true)
 
-                Divider()
-
-                ForEach(viewModel.projects) { project in
+                Menu {
                     Button {
-                        viewModel.selectedProjectID = project.id
+                        viewModel.openCreateProjectModal()
                     } label: {
-                        HStack {
-                            Text(project.name)
-                            if viewModel.selectedProjectID == project.id {
-                                Image(systemName: "checkmark")
+                        Label(String(localized: "review.action.create_project"), systemImage: "plus")
+                    }
+
+                    Divider()
+
+                    ForEach(viewModel.projects) { project in
+                        Button {
+                            viewModel.selectedProjectID = project.id
+                        } label: {
+                            HStack {
+                                Text(project.name)
+                                if viewModel.selectedProjectID == project.id {
+                                    Image(systemName: "checkmark")
+                                }
                             }
                         }
+                        .accessibilityIdentifier("review.projectOption.\(project.id)")
                     }
-                    .accessibilityIdentifier("review.projectOption.\(project.id)")
+                } label: {
+                    MenuTouchDownDetector(onTouchDown: dismissScanNameField)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .accessibilityLabel(selectedProjectName)
                 }
-            } label: {
-                projectDropdownFieldLabel
+                .accessibilityIdentifier("review.selectProjectDropdown")
             }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0).onChanged { _ in
-                    dismissScanNameField()
-                }
-            )
-            .accessibilityIdentifier("review.selectProjectDropdown")
 
             if let error = viewModel.projectSelectError {
                 Text(error)
@@ -272,8 +274,8 @@ struct ReviewScanView: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(
                     viewModel.projectSelectError == nil
-                        ? Color(uiColor: UIColor.systemGray4)
-                        : Color.red,
+                    ? Color(uiColor: UIColor.systemGray4)
+                    : Color.red,
                     lineWidth: 1.5
                 )
         )
@@ -295,5 +297,82 @@ struct ReviewScanView: View {
             from: nil,
             for: nil
         )
+    }
+}
+
+/// `Menu` swallows SwiftUI tap gestures, so detect press on the underlying UIControl instead.
+private struct MenuTouchDownDetector: UIViewRepresentable {
+    var onTouchDown: () -> Void
+
+    func makeUIView(context: Context) -> MenuTouchDownView {
+        let view = MenuTouchDownView()
+        view.onTouchDown = onTouchDown
+        return view
+    }
+
+    func updateUIView(_ uiView: MenuTouchDownView, context: Context) {
+        uiView.onTouchDown = onTouchDown
+    }
+}
+
+private final class MenuTouchDownView: UIView, UIGestureRecognizerDelegate {
+    var onTouchDown: (() -> Void)?
+
+    private lazy var pressRecognizer: UILongPressGestureRecognizer = {
+        let recognizer = UILongPressGestureRecognizer(
+            target: self,
+            action: #selector(handlePress)
+        )
+        recognizer.minimumPressDuration = 0
+        recognizer.cancelsTouchesInView = false
+        recognizer.delegate = self
+        return recognizer
+    }()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isUserInteractionEnabled = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        attachRecognizerToControl()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        attachRecognizerToControl()
+    }
+
+    private func attachRecognizerToControl() {
+        pressRecognizer.view?.removeGestureRecognizer(pressRecognizer)
+        var ancestor = superview
+        while let view = ancestor {
+            if view is UIControl {
+                view.addGestureRecognizer(pressRecognizer)
+                return
+            }
+            ancestor = view.superview
+        }
+        addGestureRecognizer(pressRecognizer)
+    }
+
+    @objc private func handlePress(_ gesture: UILongPressGestureRecognizer) {
+        if gesture.state == .began {
+            onTouchDown?()
+        }
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        true
     }
 }
