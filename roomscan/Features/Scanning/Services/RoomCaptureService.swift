@@ -17,6 +17,7 @@ protocol RoomCaptureService: AnyObject {
     var minimalStructurePublisher: AnyPublisher<Bool, Never> { get }
     var storageFullPublisher: AnyPublisher<Bool, Never> { get }
     var instructionPublisher: AnyPublisher<String?, Never> { get }
+    var sessionEndedUnexpectedlyPublisher: AnyPublisher<Void, Never> { get }
 
     func startSession()
     func pauseSession()
@@ -34,6 +35,14 @@ final class MockRoomCaptureService: RoomCaptureService {
 
     private let simulateStructureDelay: TimeInterval
     private var timer: Timer?
+    private var isSessionActive = false
+    private var isPaused = false
+    private var isWaitingForStopCallback = false
+    private var isStartQueued = false
+    private var shouldDeferNextStopCallback = false
+    private let sessionEndedUnexpectedlySubject = PassthroughSubject<Void, Never>()
+
+    private(set) var stopCallCount = 0
 
     var minimalStructurePublisher: AnyPublisher<Bool, Never> {
         $hasMinimalStructure.eraseToAnyPublisher()
@@ -47,6 +56,10 @@ final class MockRoomCaptureService: RoomCaptureService {
         $currentInstruction.eraseToAnyPublisher()
     }
 
+    var sessionEndedUnexpectedlyPublisher: AnyPublisher<Void, Never> {
+        sessionEndedUnexpectedlySubject.eraseToAnyPublisher()
+    }
+
     private let storageService: ScanStorageService?
 
     init(simulateStructureDelay: TimeInterval? = nil, storageService: ScanStorageService? = nil) {
@@ -56,33 +69,90 @@ final class MockRoomCaptureService: RoomCaptureService {
     }
 
     func startSession() {
+        if isWaitingForStopCallback {
+            isStartQueued = true
+            isScanning = true
+            isPaused = false
+            hasMinimalStructure = false
+            isStorageFull = false
+            return
+        }
+        beginSession()
+    }
+
+    private func beginSession() {
         isScanning = true
+        isSessionActive = true
+        isPaused = false
+        isWaitingForStopCallback = false
+        isStartQueued = false
         hasMinimalStructure = false
         isStorageFull = false
-
         ScanTelemetry.shared.recordSessionRunCalled()
         startStructureTimer()
     }
 
+    func deferNextStopTerminalCallback() {
+        shouldDeferNextStopCallback = true
+    }
+
+    func simulateStaleSessionEnd() {
+        guard isWaitingForStopCallback else { return }
+        isWaitingForStopCallback = false
+        guard isStartQueued else { return }
+        isStartQueued = false
+        beginSession()
+    }
+
     func stopSession() {
+        guard isSessionActive || isStartQueued || isWaitingForStopCallback else { return }
+        if isSessionActive {
+            stopCallCount += 1
+        }
+        isSessionActive = false
         isScanning = false
+        isPaused = false
         timer?.invalidate()
         timer = nil
+
+        if shouldDeferNextStopCallback {
+            shouldDeferNextStopCallback = false
+            isWaitingForStopCallback = true
+            return
+        }
+
+        isWaitingForStopCallback = false
+        isStartQueued = false
     }
 
     func pauseSession() {
-        guard isScanning else { return }
+        guard isSessionActive, isScanning else { return }
         isScanning = false
+        isPaused = true
         timer?.invalidate()
         timer = nil
     }
 
     func resumeSession() {
-        guard !isScanning else { return }
+        guard isSessionActive, isPaused else { return }
+        isPaused = false
         isScanning = true
         if !hasMinimalStructure {
             startStructureTimer()
         }
+    }
+
+    func simulateUnexpectedSessionEnd() {
+        guard isSessionActive else { return }
+        if isPaused {
+            sessionEndedUnexpectedlySubject.send()
+            return
+        }
+        isSessionActive = false
+        isScanning = false
+        timer?.invalidate()
+        timer = nil
+        sessionEndedUnexpectedlySubject.send()
     }
 
     private func startStructureTimer() {

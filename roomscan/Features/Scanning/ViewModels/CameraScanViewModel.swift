@@ -13,6 +13,8 @@ final class CameraScanViewModel: ObservableObject {
     @Published private(set) var hasMinimalStructure: Bool = false
     @Published private(set) var isPaused: Bool = false
     @Published var showCancelConfirmation: Bool = false
+    @Published var showTrackingLostAlert: Bool = false
+    @Published var showFinishError: Bool = false
     @Published private(set) var isStorageFull: Bool = false
     @Published private(set) var isProcessingFinish: Bool = false
     @Published private(set) var capturedDraft: RoomScanDraft?
@@ -59,6 +61,13 @@ final class CameraScanViewModel: ObservableObject {
                 self?.currentInstruction = instruction
             }
             .store(in: &cancellables)
+
+        captureService.sessionEndedUnexpectedlyPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in
+                self?.handleUnexpectedSessionEnd()
+            }
+            .store(in: &cancellables)
     }
 
     func startScanning() {
@@ -68,6 +77,9 @@ final class CameraScanViewModel: ObservableObject {
 
         isScanning = true
         isPaused = false
+        showTrackingLostAlert = false
+        showFinishError = false
+        errorMessage = nil
         if previousIdleTimerDisabled == nil {
             previousIdleTimerDisabled = UIApplication.shared.isIdleTimerDisabled
         }
@@ -86,7 +98,7 @@ final class CameraScanViewModel: ObservableObject {
     }
 
     func handleCancelTapped() {
-        guard isScanning else { return }
+        guard isScanning, !isProcessingFinish else { return }
         captureService.pauseSession()
         isPaused = true
         showCancelConfirmation = true
@@ -140,6 +152,7 @@ final class CameraScanViewModel: ObservableObject {
             return draft
         } catch {
             self.errorMessage = error.localizedDescription
+            self.showFinishError = true
             return nil
         }
     }
@@ -151,6 +164,29 @@ final class CameraScanViewModel: ObservableObject {
         checkStorageSpace()
         guard !isStorageFull else { return }
         startScanning()
+    }
+
+    func retryAfterTrackingLost() {
+        showTrackingLostAlert = false
+        errorMessage = nil
+        startScanning()
+    }
+
+    private func handleUnexpectedSessionEnd() {
+        guard !isProcessingFinish, !isPaused else { return }
+        showCancelConfirmation = false
+        isPaused = false
+
+        guard hasMinimalStructure else {
+            errorMessage = String(localized: "scanning.error.tracking_lost")
+            showTrackingLostAlert = true
+            stopScanning()
+            return
+        }
+
+        Task {
+            _ = await finishScan()
+        }
     }
 
     private func checkStorageSpace() {

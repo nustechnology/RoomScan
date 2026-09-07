@@ -89,6 +89,123 @@ final class CameraScanViewModelTests: XCTestCase {
         XCTAssertNotNil(draft)
         XCTAssertFalse(viewModel.isScanning)
         XCTAssertFalse(UIApplication.shared.isIdleTimerDisabled)
+        XCTAssertEqual(mockCaptureService.stopCallCount, 1)
+    }
+
+    func testPauseThenResume_doesNotFinishScan() async {
+        viewModel.startScanning()
+        await waitUntil { viewModel.hasMinimalStructure }
+
+        viewModel.togglePause()
+        XCTAssertTrue(viewModel.isPaused)
+        XCTAssertNil(viewModel.capturedDraft)
+
+        viewModel.togglePause()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertFalse(viewModel.isPaused)
+        XCTAssertTrue(viewModel.isScanning)
+        XCTAssertNil(viewModel.capturedDraft)
+        XCTAssertFalse(viewModel.isProcessingFinish)
+        XCTAssertTrue(mockCaptureService.isScanning)
+    }
+
+    func testUnexpectedSessionEnd_whilePaused_doesNotFinishScan() async {
+        viewModel.startScanning()
+        await waitUntil { viewModel.hasMinimalStructure }
+
+        viewModel.togglePause()
+        mockCaptureService.simulateUnexpectedSessionEnd()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertTrue(viewModel.isPaused)
+        XCTAssertTrue(viewModel.isScanning)
+        XCTAssertNil(viewModel.capturedDraft)
+        XCTAssertFalse(viewModel.isProcessingFinish)
+
+        viewModel.togglePause()
+        XCTAssertFalse(viewModel.isPaused)
+        XCTAssertTrue(mockCaptureService.isScanning)
+        XCTAssertNil(viewModel.capturedDraft)
+    }
+
+    func testUnexpectedSessionEnd_afterResumeBeforeFirstUpdate_finishesScan() async {
+        viewModel.startScanning()
+        await waitUntil { viewModel.hasMinimalStructure }
+
+        viewModel.togglePause()
+        viewModel.togglePause()
+        XCTAssertFalse(viewModel.isPaused)
+        XCTAssertNil(viewModel.capturedDraft)
+
+        mockCaptureService.simulateUnexpectedSessionEnd()
+        await waitUntil { viewModel.capturedDraft != nil }
+
+        XCTAssertNotNil(viewModel.capturedDraft)
+        XCTAssertFalse(viewModel.isScanning)
+        XCTAssertFalse(viewModel.isPaused)
+        XCTAssertFalse(viewModel.showTrackingLostAlert)
+    }
+
+    func testUnexpectedSessionEnd_withStructure_finishesScanAutomatically() async {
+        viewModel.startScanning()
+        await waitUntil { viewModel.hasMinimalStructure }
+
+        mockCaptureService.simulateUnexpectedSessionEnd()
+        await waitUntil { viewModel.capturedDraft != nil }
+
+        XCTAssertNotNil(viewModel.capturedDraft)
+        XCTAssertFalse(viewModel.isScanning)
+        XCTAssertFalse(viewModel.isPaused)
+        XCTAssertFalse(viewModel.showTrackingLostAlert)
+        XCTAssertEqual(mockCaptureService.stopCallCount, 0)
+
+        viewModel.togglePause()
+        viewModel.resumeScanning()
+        XCTAssertFalse(mockCaptureService.isScanning)
+        XCTAssertFalse(viewModel.isScanning)
+    }
+
+    func testStopThenStart_staleSessionEndDoesNotFinishScan() async {
+        viewModel.startScanning()
+        await waitUntil { viewModel.hasMinimalStructure }
+
+        mockCaptureService.deferNextStopTerminalCallback()
+        viewModel.stopScanning()
+        viewModel.startScanning()
+        mockCaptureService.simulateStaleSessionEnd()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertNil(viewModel.capturedDraft)
+        XCTAssertTrue(viewModel.isScanning)
+        XCTAssertFalse(viewModel.isProcessingFinish)
+        XCTAssertFalse(viewModel.showTrackingLostAlert)
+    }
+
+    func testUnexpectedSessionEnd_withoutStructure_showsTrackingLostAlert() async {
+        let delayedService = MockRoomCaptureService(simulateStructureDelay: 10)
+        let delayedViewModel = makeViewModel(captureService: delayedService)
+
+        delayedViewModel.startScanning()
+        XCTAssertFalse(delayedViewModel.hasMinimalStructure)
+
+        delayedService.simulateUnexpectedSessionEnd()
+        await waitUntil { delayedViewModel.showTrackingLostAlert }
+
+        XCTAssertTrue(delayedViewModel.showTrackingLostAlert)
+        XCTAssertFalse(delayedViewModel.isScanning)
+        XCTAssertNil(delayedViewModel.capturedDraft)
+        XCTAssertEqual(delayedService.stopCallCount, 0)
+
+        delayedViewModel.togglePause()
+        XCTAssertFalse(delayedService.isScanning)
+
+        delayedViewModel.retryAfterTrackingLost()
+        XCTAssertTrue(delayedViewModel.isScanning)
+        XCTAssertTrue(delayedService.isScanning)
+        XCTAssertFalse(delayedViewModel.showTrackingLostAlert)
+
+        delayedViewModel.stopScanning()
     }
 
     func testFinishScan_persistsSourceProjectForRecovery() async {
