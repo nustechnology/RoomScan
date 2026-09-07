@@ -9,30 +9,91 @@ import Testing
 
 @MainActor
 struct RealAccountStorageMeasuringTests {
-    @Test func usedBytesSumsAllocatedFilesAcrossDirectories() async throws {
+    @Test func usedBytesSumsSelectedScanFoldersAndSharedDirectories() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let first = root.appendingPathComponent("first")
-        let second = root.appendingPathComponent("second/nested")
-        try FileManager.default.createDirectory(at: first, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: second, withIntermediateDirectories: true)
-        try Data(repeating: 0, count: 100).write(to: first.appendingPathComponent("mesh.usdz"))
-        try Data(repeating: 0, count: 50).write(to: second.appendingPathComponent("thumb.png"))
+        let scansRoot = root.appendingPathComponent("Scans")
+        let currentUserScan = scansRoot.appendingPathComponent("user-b-scan")
+        let otherUserScan = scansRoot.appendingPathComponent("user-a-scan")
+        let caches = root.appendingPathComponent("Caches")
+        let drafts = root.appendingPathComponent("Drafts")
+        let ignoredSupport = root.appendingPathComponent("Application Support")
 
-        let measuring = RealAccountStorageMeasuring(directories: [first, second])
-        let bytes = await measuring.usedBytes()
+        for directory in [currentUserScan, otherUserScan, caches, drafts, ignoredSupport] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
 
-        #expect(bytes >= 150)
+        try Data(repeating: 0, count: 100).write(to: currentUserScan.appendingPathComponent("mesh.usdz"))
+        try Data(repeating: 0, count: 50).write(to: otherUserScan.appendingPathComponent("mesh.usdz"))
+        try Data(repeating: 0, count: 20).write(to: caches.appendingPathComponent("cache.dat"))
+        try Data(repeating: 0, count: 10).write(to: drafts.appendingPathComponent("draft.usdz"))
+        try Data(repeating: 0, count: 500).write(to: ignoredSupport.appendingPathComponent("projects.json"))
+
+        let measuring = RealAccountStorageMeasuring(
+            scansRoot: scansRoot,
+            sharedDirectories: [caches, drafts]
+        )
+        let sharedOnlyBytes = await measuring.usedBytes(forScanIDs: [])
+        let currentUserBytes = await measuring.usedBytes(forScanIDs: ["user-b-scan"])
+        let bothUsersBytes = await measuring.usedBytes(forScanIDs: ["user-b-scan", "user-a-scan"])
+
+        #expect(currentUserBytes > sharedOnlyBytes)
+        #expect(bothUsersBytes > currentUserBytes)
+    }
+
+    @Test func usedBytesIgnoresScanFoldersNotInTheRequestedIDs() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let scansRoot = root.appendingPathComponent("Scans")
+        let included = scansRoot.appendingPathComponent("included")
+        let excluded = scansRoot.appendingPathComponent("excluded")
+        try FileManager.default.createDirectory(at: included, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: excluded, withIntermediateDirectories: true)
+        try Data(repeating: 0, count: 40).write(to: included.appendingPathComponent("mesh.usdz"))
+        try Data(repeating: 0, count: 400).write(to: excluded.appendingPathComponent("mesh.usdz"))
+
+        let measuring = RealAccountStorageMeasuring(
+            scansRoot: scansRoot,
+            sharedDirectories: []
+        )
+        let includedOnly = await measuring.usedBytes(forScanIDs: ["included"])
+        let both = await measuring.usedBytes(forScanIDs: ["included", "excluded"])
+
+        #expect(includedOnly >= 40)
+        #expect(both > includedOnly)
     }
 
     @Test func usedBytesIsZeroWhenDirectoryDoesNotExist() async {
         let missing = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
 
-        let measuring = RealAccountStorageMeasuring(directories: [missing])
-        let bytes = await measuring.usedBytes()
+        let measuring = RealAccountStorageMeasuring(
+            scansRoot: missing.appendingPathComponent("Scans"),
+            sharedDirectories: [missing]
+        )
+        let bytes = await measuring.usedBytes(forScanIDs: ["scan-1"])
+
+        #expect(bytes == 0)
+    }
+
+    @Test func usedBytesIgnoresUnsafeScanIDs() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let scansRoot = root.appendingPathComponent("Scans")
+        try FileManager.default.createDirectory(at: scansRoot, withIntermediateDirectories: true)
+        try Data(repeating: 0, count: 80).write(to: root.appendingPathComponent("escaped.usdz"))
+
+        let measuring = RealAccountStorageMeasuring(
+            scansRoot: scansRoot,
+            sharedDirectories: []
+        )
+        let bytes = await measuring.usedBytes(forScanIDs: ["..", "", "foo/bar"])
 
         #expect(bytes == 0)
     }

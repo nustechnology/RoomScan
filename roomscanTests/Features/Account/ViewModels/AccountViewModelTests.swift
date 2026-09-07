@@ -64,12 +64,13 @@ struct AccountViewModelTests {
                 simulatedDelayNanoseconds: 0
             ),
             syncService: MockSyncService(simulatedDelayNanoseconds: 0),
+            scanStorageService: MockScanStorageService(existingMeshScanIDs: ["s3"]),
             storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 1_800_000_000)
         )
 
         await viewModel.loadMetrics()
 
-        #expect(viewModel.metrics?.localScanCount == 3)
+        #expect(viewModel.metrics?.localScanCount == 1)
         #expect(viewModel.metrics?.pendingSyncCount == 2)
         #expect(viewModel.metrics?.sharedProjectCount == 2)
         #expect(viewModel.metrics?.storageUsedBytes == 1_800_000_000)
@@ -118,6 +119,7 @@ struct AccountViewModelTests {
                 ],
                 simulatedDelayNanoseconds: 0
             ),
+            scanStorageService: MockScanStorageService(),
             storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 0)
         )
 
@@ -125,7 +127,7 @@ struct AccountViewModelTests {
 
         #expect(viewModel.metrics?.pendingSyncCount == 4)
         #expect(viewModel.metrics?.showsSyncPendingBanner == true)
-        #expect(viewModel.metrics?.localScanCount == 2)
+        #expect(viewModel.metrics?.localScanCount == 0)
     }
 
     @Test func loadMetricsUsesLocalPendingWhenHigherThanServer() async {
@@ -174,6 +176,7 @@ struct AccountViewModelTests {
                 ],
                 simulatedDelayNanoseconds: 0
             ),
+            scanStorageService: MockScanStorageService(),
             storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 0)
         )
 
@@ -221,6 +224,7 @@ struct AccountViewModelTests {
                 simulatedDelayNanoseconds: 0
             ),
             syncService: syncService,
+            scanStorageService: MockScanStorageService(),
             storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 0)
         )
 
@@ -273,6 +277,7 @@ struct AccountViewModelTests {
                 ],
                 simulatedDelayNanoseconds: 0
             ),
+            scanStorageService: MockScanStorageService(),
             storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 0)
         )
 
@@ -308,6 +313,9 @@ struct AccountViewModelTests {
                 simulatedDelayNanoseconds: 0
             ),
             syncService: MockSyncService(simulatedDelayNanoseconds: 0),
+            scanStorageService: MockScanStorageService(
+                existingMeshScanIDs: Set((0..<projectCount).map { "page-scan-\($0)" })
+            ),
             storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 0)
         )
 
@@ -344,6 +352,7 @@ struct AccountViewModelTests {
                 simulatedDelayNanoseconds: 0
             ),
             syncService: MockSyncService(simulatedDelayNanoseconds: 0),
+            scanStorageService: MockScanStorageService(),
             storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 0)
         )
 
@@ -351,6 +360,47 @@ struct AccountViewModelTests {
 
         #expect(viewModel.metrics?.pendingSyncCount == 0)
         #expect(viewModel.metrics?.showsSyncPendingBanner == false)
+    }
+
+    @Test func loadMetricsMeasuresStorageUsingLocalScanIDs() async {
+        let measuring = RecordingAccountStorageMeasuring()
+        let projects = [
+            ProjectSummary(
+                id: "p1",
+                name: "One",
+                ownerName: "You",
+                createdAt: Date(),
+                updatedAt: Date(),
+                description: "",
+                sharedUserCount: 0,
+                roomScans: [
+                    makeScan(id: "remote-only", syncStatus: .synced),
+                    makeScan(id: "local-one", syncStatus: .synced),
+                    makeScan(id: "local-two", syncStatus: .pending)
+                ]
+            )
+        ]
+
+        let viewModel = AccountViewModel(
+            projectsService: MockProjectsService(
+                projects: projects,
+                simulatedDelayNanoseconds: 0
+            ),
+            sharedService: MockSharedService(
+                projects: [],
+                scans: [],
+                simulatedDelayNanoseconds: 0
+            ),
+            syncService: MockSyncService(simulatedDelayNanoseconds: 0),
+            scanStorageService: MockScanStorageService(existingMeshScanIDs: ["local-one", "local-two"]),
+            storageMeasuring: measuring
+        )
+
+        await viewModel.loadMetrics()
+
+        #expect(viewModel.metrics?.localScanCount == 2)
+        #expect(Set(measuring.receivedScanIDs) == Set(["local-one", "local-two"]))
+        #expect(viewModel.metrics?.storageUsedBytes == 42)
     }
 
     @Test func initialLoadFailurePreservesMissingState() async {
@@ -361,6 +411,7 @@ struct AccountViewModelTests {
             ),
             sharedService: MockSharedService(simulatedDelayNanoseconds: 0),
             syncService: MockSyncService(simulatedDelayNanoseconds: 0),
+            scanStorageService: MockScanStorageService(),
             storageMeasuring: MockAccountStorageMeasuring()
         )
 
@@ -381,6 +432,7 @@ struct AccountViewModelTests {
             projectsService: MockProjectsService(simulatedDelayNanoseconds: 0),
             sharedService: sharedService,
             syncService: MockSyncService(simulatedDelayNanoseconds: 0),
+            scanStorageService: MockScanStorageService(),
             storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 1_000)
         )
 
@@ -406,6 +458,7 @@ struct AccountViewModelTests {
             projectsService: MockProjectsService(simulatedDelayNanoseconds: 0),
             sharedService: sharedService,
             syncService: MockSyncService(simulatedDelayNanoseconds: 0),
+            scanStorageService: MockScanStorageService(),
             storageMeasuring: MockAccountStorageMeasuring(usedBytesValue: 2_000)
         )
 
@@ -426,6 +479,7 @@ struct AccountViewModelTests {
             projectsService: MockProjectsService(simulatedDelayNanoseconds: 0),
             sharedService: MockSharedService(simulatedDelayNanoseconds: 0),
             syncService: MockSyncService(simulatedDelayNanoseconds: 0),
+            scanStorageService: MockScanStorageService(),
             storageMeasuring: MockAccountStorageMeasuring()
         )
         var didSignOut = false
@@ -443,6 +497,40 @@ struct AccountViewModelTests {
 
         #expect(didSignOut)
         #expect(viewModel.showsSignOutConfirmation == false)
+    }
+}
+
+private final class RecordingAccountStorageMeasuring: AccountStorageMeasuring, @unchecked Sendable {
+    private(set) var receivedScanIDs: [String] = []
+
+    func usedBytes(forScanIDs scanIDs: [String]) async -> Int64 {
+        receivedScanIDs = scanIDs
+        return 42
+    }
+}
+
+private struct MockScanStorageService: ScanStorageService {
+    var meshesOnDisk: Set<String> = []
+
+    init(existingMeshScanIDs: Set<String> = []) {
+        self.meshesOnDisk = existingMeshScanIDs
+    }
+
+    func saveDraftManifest(_ draft: RoomScanDraft) throws {}
+    func loadDraftManifest() -> RoomScanDraft? { nil }
+    func clearDraftManifest() {}
+    func persistSavedScan(
+        draft: RoomScanDraft,
+        scanID: String
+    ) throws -> (meshURL: URL, thumbnailURL: URL) {
+        (URL(fileURLWithPath: "/tmp/mesh.usdz"), URL(fileURLWithPath: "/tmp/thumb.jpg"))
+    }
+    func deleteScanFiles(scanID: String) {}
+    func meshExists(scanID: String) -> Bool {
+        meshesOnDisk.contains(scanID)
+    }
+    func existingMeshScanIDs(in candidates: [String]) async -> Set<String> {
+        meshesOnDisk.intersection(candidates)
     }
 }
 

@@ -17,6 +17,7 @@ struct AccountView: View {
         sharedService: any SharedService,
         syncService: any SyncService,
         usersService: any UsersService,
+        scanStorageService: any ScanStorageService = LocalScanStorageService(),
         storageMeasuring: any AccountStorageMeasuring = MockAccountStorageMeasuring(),
         onUserUpdated: @escaping (AuthenticatedUser) -> Void = { _ in },
         onSignOut: @escaping () -> Void
@@ -29,6 +30,7 @@ struct AccountView: View {
                 sharedService: sharedService,
                 syncService: syncService,
                 usersService: usersService,
+                scanStorageService: scanStorageService,
                 storageMeasuring: storageMeasuring,
                 onUserUpdated: onUserUpdated
             )

@@ -15,7 +15,7 @@ struct MockAccountStorageMeasuring: AccountStorageMeasuring {
         self.usedBytesValue = usedBytesValue
     }
 
-    func usedBytes() async -> Int64 {
+    func usedBytes(forScanIDs scanIDs: [String]) async -> Int64 {
         usedBytesValue
     }
 }
