@@ -21,9 +21,7 @@ final class ViewerViewModel {
             return false
         }
     }
-
     let input: ViewerInput
-
     private(set) var scanTitle: String
     private let accessPolicy: DetailAccessPolicy
     private(set) var loadState: LoadState = .idle
@@ -41,9 +39,7 @@ final class ViewerViewModel {
     private(set) var isBusy = false
     private(set) var operationErrorMessage: String?
     private(set) var placementDraftPosition: SIMD3<Float>?
-
     private static let draftNoteID = "viewer-placement-draft"
-
     var showsDeleteConfirmation: Bool {
         notePendingDeletion != nil
     }
@@ -172,6 +168,9 @@ final class ViewerViewModel {
             if source == .sampleRoom {
                 loadState = .loaded(source)
             }
+        } catch is CancellationError {
+            loadState = .idle
+            return
         } catch let error as ModelLoadingError {
             modelSource = nil
             await keepRetryLoadingVisibleIfNeeded(isRetry: isRetry, startedAt: startedAt)
@@ -183,47 +182,20 @@ final class ViewerViewModel {
             loadState = .failed(.loadFailed)
             return
         }
-
         isLoadingNotes = true
         defer { isLoadingNotes = false }
         do {
             notes = try await notesService.fetchNotes(scanID: input.scanID)
+        } catch is CancellationError {
+            if case .loaded = loadState {
+                return
+            }
+            loadState = .idle
+            return
         } catch {
             notes = []
             operationErrorMessage = String(localized: "viewer.notes.load.error")
         }
-    }
-
-    private func keepRetryLoadingVisibleIfNeeded(isRetry: Bool, startedAt: Date) async {
-        guard isRetry else { return }
-        let remainingDuration = 3 - Date().timeIntervalSince(startedAt)
-        guard remainingDuration > 0 else { return }
-        try? await Task.sleep(nanoseconds: UInt64(remainingDuration * 1_000_000_000))
-    }
-
-    private func resolveModelURL(forceDownload: Bool) async throws -> URL? {
-        let destinationURL = FileManager.default.urls(
-            for: .documentDirectory,
-            in: .userDomainMask
-        )[0]
-        .appendingPathComponent("Scans", isDirectory: true)
-        .appendingPathComponent(input.scanID, isDirectory: true)
-        .appendingPathComponent("mesh.usdz")
-
-        if !forceDownload || modelDownloadService == nil {
-            if let modelURL = input.modelURL,
-               FileManager.default.fileExists(atPath: modelURL.path) {
-                return modelURL
-            }
-
-            if FileManager.default.fileExists(atPath: destinationURL.path) {
-                return destinationURL
-            }
-        }
-
-        guard let modelDownloadService else { return input.modelURL }
-        try await modelDownloadService.downloadModel(scanID: input.scanID, to: destinationURL)
-        return destinationURL
     }
 
     func reportModelLoadFailed() {
@@ -595,5 +567,34 @@ extension ViewerViewModel {
         #if DEBUG
         print("[Notes] \(message)")
         #endif
+    }
+}
+private extension ViewerViewModel {
+    func keepRetryLoadingVisibleIfNeeded(isRetry: Bool, startedAt: Date) async {
+        guard isRetry else { return }
+        let remainingDuration = 3 - Date().timeIntervalSince(startedAt)
+        guard remainingDuration > 0 else { return }
+        try? await Task.sleep(nanoseconds: UInt64(remainingDuration * 1_000_000_000))
+    }
+    func resolveModelURL(forceDownload: Bool) async throws -> URL? {
+        let destinationURL = FileManager.default.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        )[0]
+        .appendingPathComponent("Scans", isDirectory: true)
+        .appendingPathComponent(input.scanID, isDirectory: true)
+        .appendingPathComponent("mesh.usdz")
+        if !forceDownload || modelDownloadService == nil {
+            if let modelURL = input.modelURL,
+               FileManager.default.fileExists(atPath: modelURL.path) {
+                return modelURL
+            }
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                return destinationURL
+            }
+        }
+        guard let modelDownloadService else { return input.modelURL }
+        try await modelDownloadService.downloadModel(scanID: input.scanID, to: destinationURL)
+        return destinationURL
     }
 }
