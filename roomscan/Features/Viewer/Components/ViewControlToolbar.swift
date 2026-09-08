@@ -25,11 +25,13 @@ struct ViewControlToolbar: View {
             toolbarButton(
                 systemName: "plus",
                 accessibilityLabel: String(localized: "viewer.toolbar.zoomIn"),
+                repeatsWhilePressed: true,
                 action: onZoomIn
             )
             toolbarButton(
                 systemName: "minus",
                 accessibilityLabel: String(localized: "viewer.toolbar.zoomOut"),
+                repeatsWhilePressed: true,
                 action: onZoomOut
             )
             toolbarButton(
@@ -47,6 +49,7 @@ struct ViewControlToolbar: View {
     private func toolbarButton(
         systemName: String,
         accessibilityLabel: String,
+        repeatsWhilePressed: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -59,6 +62,7 @@ struct ViewControlToolbar: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .buttonRepeatBehavior(repeatsWhilePressed ? .enabled : .disabled)
         .accessibilityLabel(accessibilityLabel)
     }
 }

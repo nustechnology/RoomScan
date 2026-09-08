@@ -22,7 +22,6 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     var onPinTapped: (String) -> Void
     var onSurfaceTapped: (SIMD3<Float>) -> Void
     var onMoveDraftChanged: (SIMD3<Float>) -> Void
-    var onCameraCommandConsumed: () -> Void
     var onModelLoaded: () -> Void
     var onModelLoadFailed: () -> Void
     var isPlacementMode = false
@@ -37,7 +36,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     var loadedSource: ModelSource?
     var currentViewMode: ViewerMode = .threeD
     var pendingFileSource: ModelSource?
-    var lastAppliedCameraCommand: CameraCommand?
+    var appliedCameraCommandIDs: Set<UUID> = []
 
     private var yaw: Float = 0.55
     private var pitch: Float = 0.38
@@ -59,20 +58,21 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     var pinAppearanceStates: [ObjectIdentifier: PinAppearanceState] = [:]
     private var pinFacingTask: Task<Void, Never>?
     private let cameraAnimationDuration: TimeInterval = 0.35
+    /// Zoom buttons interrupt in-flight motion; easeOut starts moving immediately,
+    /// unlike easeInOut whose first frames have near-zero velocity.
+    private let zoomAnimationDuration: TimeInterval = 0.16
     static var materialCache: [NoteColor: UnlitMaterial] = [:]
 
     init(
         onPinTapped: @escaping (String) -> Void,
         onSurfaceTapped: @escaping (SIMD3<Float>) -> Void,
         onMoveDraftChanged: @escaping (SIMD3<Float>) -> Void,
-        onCameraCommandConsumed: @escaping () -> Void,
         onModelLoaded: @escaping () -> Void,
         onModelLoadFailed: @escaping () -> Void
     ) {
         self.onPinTapped = onPinTapped
         self.onSurfaceTapped = onSurfaceTapped
         self.onMoveDraftChanged = onMoveDraftChanged
-        self.onCameraCommandConsumed = onCameraCommandConsumed
         self.onModelLoaded = onModelLoaded
         self.onModelLoadFailed = onModelLoadFailed
     }
@@ -169,6 +169,44 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
 
     func applyViewMode(_ mode: ViewerMode, animated: Bool) {
         currentViewMode = mode
+        applyViewModePose(for: mode)
+        updateAllPinModePresentations()
+        updateCamera(animated: animated)
+    }
+
+    func applyCameraCommands(_ commands: [CameraCommand]) {
+        guard !commands.isEmpty else { return }
+
+        var isZoomOnly = true
+        for command in commands {
+            switch command {
+            case .zoomIn:
+                distance = max(minDistance, distance * 0.82)
+            case .zoomOut:
+                distance = min(maxDistance, distance * 1.22)
+            case .reset:
+                isZoomOnly = false
+                applyViewModePose(for: currentViewMode)
+                updateAllPinModePresentations()
+            case .focus(let position):
+                isZoomOnly = false
+                target = position
+                distance = max(minDistance, min(distance, 5.5))
+            }
+        }
+
+        if isZoomOnly {
+            updateCamera(
+                animated: true,
+                duration: zoomAnimationDuration,
+                timingFunction: .easeOut
+            )
+        } else {
+            updateCamera(animated: true)
+        }
+    }
+
+    private func applyViewModePose(for mode: ViewerMode) {
         switch mode {
         case .threeD:
             pitch = defaultPitch
@@ -180,27 +218,13 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
             distance = 8.5
         }
         target = defaultTarget
-        updateAllPinModePresentations()
-        updateCamera(animated: animated)
     }
 
-    func applyCameraCommand(_ command: CameraCommand) {
-        switch command {
-        case .zoomIn:
-            distance = max(minDistance, distance * 0.82)
-        case .zoomOut:
-            distance = min(maxDistance, distance * 1.22)
-        case .reset:
-            applyViewMode(currentViewMode, animated: true)
-            return
-        case .focus(let position):
-            target = position
-            distance = max(minDistance, min(distance, 5.5))
-        }
-        updateCamera(animated: true)
-    }
-
-    private func updateCamera(animated: Bool) {
+    private func updateCamera(
+        animated: Bool,
+        duration: TimeInterval? = nil,
+        timingFunction: AnimationTimingFunction = .easeInOut
+    ) {
         guard let camera else { return }
         let offset = SIMD3<Float>(
             distance * cos(pitch) * sin(yaw),
@@ -219,6 +243,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
             return
         }
 
+        let animationDuration = duration ?? cameraAnimationDuration
         let startTransform = camera.transform
         camera.look(at: target, from: eye, relativeTo: nil)
         let endTransform = camera.transform
@@ -227,14 +252,13 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         camera.move(
             to: endTransform,
             relativeTo: camera.parent,
-            duration: cameraAnimationDuration,
-            timingFunction: .easeInOut
+            duration: animationDuration,
+            timingFunction: timingFunction
         )
 
         let destinationEye = eye
-        let duration = cameraAnimationDuration
         pinFacingTask = Task { @MainActor [weak self] in
-            let deadline = Date().addingTimeInterval(duration)
+            let deadline = Date().addingTimeInterval(animationDuration)
             while !Task.isCancelled, Date() < deadline {
                 guard let self, let camera = self.camera else { return }
                 self.facePinsTowardCamera(eye: camera.position(relativeTo: nil))

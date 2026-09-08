@@ -290,4 +290,75 @@ struct ViewerViewModelTests {
         #expect(didSave)
         #expect(viewModel.notes.last?.modelVersion == "1")
     }
+
+    @Test func zoomCommandsQueueWithoutOverwriting() {
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-zoom", scanName: "Living Room"),
+            notesService: MockNotesService(),
+            modelLoadingService: DefaultModelLoadingService()
+        )
+
+        viewModel.zoomIn()
+        viewModel.zoomIn()
+        viewModel.zoomOut()
+
+        #expect(viewModel.cameraCommands.map(\.command) == [.zoomIn, .zoomIn, .zoomOut])
+
+        let ids = Set(viewModel.cameraCommands.map(\.id))
+        viewModel.consumeCameraCommands(ids)
+
+        #expect(viewModel.cameraCommands.isEmpty)
+    }
+
+    /// Regression: deferred consumption may acknowledge only a subset while
+    /// `updateUIView` runs again; already-applied IDs must not re-apply, the
+    /// remaining queue must stay, and `appliedCameraCommandIDs` must stay a
+    /// subset of IDs still present in `cameraCommands`.
+    @Test func partialDeferredCameraCommandConsumptionDoesNotReapply() {
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-zoom-partial", scanName: "Living Room"),
+            notesService: MockNotesService(),
+            modelLoadingService: DefaultModelLoadingService()
+        )
+
+        viewModel.zoomIn()
+        viewModel.zoomIn()
+        viewModel.zoomOut()
+
+        let queued = viewModel.cameraCommands
+        #expect(queued.map(\.command) == [.zoomIn, .zoomIn, .zoomOut])
+
+        // First updateUIView: apply all currently unapplied commands.
+        var appliedCameraCommandIDs: Set<UUID> = []
+        let firstPassUnapplied = queued.filter { !appliedCameraCommandIDs.contains($0.id) }
+        let firstPassIDs = Set(firstPassUnapplied.map(\.id))
+        appliedCameraCommandIDs.formUnion(firstPassIDs)
+        appliedCameraCommandIDs.formIntersection(Set(viewModel.cameraCommands.map(\.id)))
+        #expect(firstPassUnapplied.map(\.command) == [.zoomIn, .zoomIn, .zoomOut])
+        #expect(appliedCameraCommandIDs == firstPassIDs)
+
+        // Deferred consumption acknowledges only a subset; queue stays non-empty.
+        let consumedSubset = Set([queued[0].id])
+        viewModel.consumeCameraCommands(consumedSubset)
+
+        #expect(viewModel.cameraCommands.map(\.command) == [.zoomIn, .zoomOut])
+        #expect(viewModel.cameraCommands.map(\.id) == [queued[1].id, queued[2].id])
+
+        // Second updateUIView before remaining consumption finishes.
+        let secondPassUnapplied = viewModel.cameraCommands.filter {
+            !appliedCameraCommandIDs.contains($0.id)
+        }
+        #expect(secondPassUnapplied.isEmpty)
+
+        appliedCameraCommandIDs.formIntersection(Set(viewModel.cameraCommands.map(\.id)))
+        #expect(appliedCameraCommandIDs == Set(viewModel.cameraCommands.map(\.id)))
+        #expect(!appliedCameraCommandIDs.contains(queued[0].id))
+
+        // Finish consuming; bookkeeping clears with the empty queue.
+        viewModel.consumeCameraCommands(Set(viewModel.cameraCommands.map(\.id)))
+        #expect(viewModel.cameraCommands.isEmpty)
+
+        appliedCameraCommandIDs.formIntersection(Set(viewModel.cameraCommands.map(\.id)))
+        #expect(appliedCameraCommandIDs.isEmpty)
+    }
 }
