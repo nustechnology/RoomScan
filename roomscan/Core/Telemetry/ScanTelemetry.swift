@@ -52,6 +52,10 @@ final class ScanTelemetry: @unchecked Sendable {
         }
     }
 
+    func recordUnexpectedSessionEnd() {
+        logger.error("[Telemetry] ⚠️ RoomCaptureSession ended unexpectedly (tracking lost)")
+    }
+
     func recordDraftManifestSaveFailed(_ error: Error) {
         logger.error("[Telemetry] ⚠️ Failed to save draft manifest: \(error.localizedDescription)")
     }

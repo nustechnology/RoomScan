@@ -152,6 +152,7 @@ struct CameraScanView: View {
                             .background(Color.white)
                             .cornerRadius(30)
                     }
+                    .disabled(viewModel.isProcessingFinish)
                     .accessibilityIdentifier("scanning.cancelButton")
 
                 Spacer()
@@ -179,9 +180,7 @@ struct CameraScanView: View {
                 // Finish Button
                 Button {
                     Task {
-                        if let draft = await viewModel.finishScan() {
-                            onFinish(draft)
-                        }
+                        _ = await viewModel.finishScan()
                     }
                 } label: {
                     Text(String(localized: "scanning.action.finish"))
@@ -213,6 +212,11 @@ struct CameraScanView: View {
         }
         .onDisappear {
             viewModel.stopScanning()
+        }
+        .onChange(of: viewModel.capturedDraft) { _, draft in
+            if let draft {
+                onFinish(draft)
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .background {
@@ -250,6 +254,30 @@ struct CameraScanView: View {
             }
         } message: {
             Text(viewModel.errorMessage ?? String(localized: "scanning.error.storage_full"))
+        }
+        .alert(
+            String(localized: "scanning.tracking_lost.title"),
+            isPresented: $viewModel.showTrackingLostAlert
+        ) {
+            Button(String(localized: "scanning.tracking_lost.exit"), role: .cancel) {
+                viewModel.stopScanning()
+                onCancel()
+            }
+            Button(String(localized: "scanning.tracking_lost.retry")) {
+                viewModel.retryAfterTrackingLost()
+            }
+        } message: {
+            Text(viewModel.errorMessage ?? String(localized: "scanning.error.tracking_lost"))
+        }
+        .alert(
+            String(localized: "scanning.error.finish_failed.title"),
+            isPresented: $viewModel.showFinishError
+        ) {
+            Button(String(localized: "common.action.ok"), role: .cancel) {
+                viewModel.showFinishError = false
+            }
+        } message: {
+            Text(viewModel.errorMessage ?? String(localized: "scanning.error.invalid_export"))
         }
         .sheet(isPresented: $showingInfoSheet) {
             ScanningInfoSheet()

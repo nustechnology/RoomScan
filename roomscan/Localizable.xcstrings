@@ -2713,6 +2713,17 @@
         }
       }
     },
+    "scanning.error.finish_failed.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't finish scan"
+          }
+        }
+      }
+    },
     "scanning.error.invalid_export" : {
       "localizations" : {
         "en" : {
@@ -2749,6 +2760,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Storage full. Please free up space on your device to complete scanning."
+          }
+        }
+      }
+    },
+    "scanning.error.tracking_lost" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tracking was lost before enough of the room was captured. Scan again to continue."
           }
         }
       }
@@ -2956,6 +2978,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Move slowly around the room"
+          }
+        }
+      }
+    },
+    "scanning.tracking_lost.exit" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exit"
+          }
+        }
+      }
+    },
+    "scanning.tracking_lost.retry" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan Again"
+          }
+        }
+      }
+    },
+    "scanning.tracking_lost.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tracking Lost"
           }
         }
       }

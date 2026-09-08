@@ -44,6 +44,11 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
     private var isCaptureSessionRunning = false
     private var isPaused = false
     private var pausedARConfiguration: ARConfiguration?
+    private var isStopRequested = false
+    private var suppressUnexpectedEnd = false
+    private var resumeFrameWaitGeneration = 0
+    private var runLifecycle = CaptureRunLifecycle()
+    private let sessionEndedUnexpectedlySubject = PassthroughSubject<Void, Never>()
 
     var minimalStructurePublisher: AnyPublisher<Bool, Never> {
         $hasMinimalStructure.eraseToAnyPublisher()
@@ -55,6 +60,10 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
 
     var instructionPublisher: AnyPublisher<String?, Never> {
         $currentInstruction.eraseToAnyPublisher()
+    }
+
+    var sessionEndedUnexpectedlyPublisher: AnyPublisher<Void, Never> {
+        sessionEndedUnexpectedlySubject.eraseToAnyPublisher()
     }
 
     init(storageService: ScanStorageService? = nil) {
@@ -69,45 +78,34 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
            isCaptureSessionRunning {
             previousSession.stop()
             isCaptureSessionRunning = false
+            runLifecycle.requestStop()
+            isStopRequested = true
         }
 
         session.delegate = self
         self.roomCaptureSession = session
         ScanTelemetry.shared.recordSessionAttached()
+        guard !runLifecycle.isWaitingForStopCallback else { return }
         if isSessionPendingStart || isScanning {
-            let config = RoomCaptureSession.Configuration()
-            session.run(configuration: config)
-            ScanTelemetry.shared.recordSessionRunCalled()
-            isSessionPendingStart = false
-            isCaptureSessionRunning = true
+            runAttachedSession()
         }
     }
 
     func startSession() {
-        isScanning = true
-        hasMinimalStructure = false
-        isStorageFull = false
-        isSessionPendingStart = true
-        isPaused = false
-        pausedARConfiguration = nil
-        hasRecordedFirstFrame = false
-        lastStorageCheckDate = nil
-        isCheckingStorage = false
-        finalCapturedRoomData = nil
-        captureEndError = nil
-
-        if let session = roomCaptureSession {
-            let config = RoomCaptureSession.Configuration()
-            session.run(configuration: config)
-            ScanTelemetry.shared.recordSessionRunCalled()
-            isSessionPendingStart = false
-            isCaptureSessionRunning = true
+        resetStateForNewRun()
+        switch runLifecycle.requestStart() {
+        case .queueUntilPreviousStop:
+            isSessionPendingStart = true
+        case .beginNow:
+            runAttachedSession()
         }
     }
 
     func pauseSession() {
         guard isCaptureSessionRunning, !isPaused, let arSession = roomCaptureSession?.arSession else { return }
         pausedARConfiguration = arSession.configuration
+        suppressUnexpectedEnd = true
+        resumeFrameWaitGeneration += 1
         arSession.pause()
         isPaused = true
         isScanning = false
@@ -124,18 +122,33 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
         pausedARConfiguration = nil
         isPaused = false
         isScanning = true
+        resumeFrameWaitGeneration += 1
+        // Keep `suppressUnexpectedEnd` until the first resumed `didUpdate`. Clearing it
+        // here would treat a delayed pause `didEndWith` as a live tracking failure.
+        if finalCapturedRoomData != nil || captureEndError != nil {
+            confirmUnexpectedEndIfResumeDoesNotRecover()
+        }
     }
 
     func stopSession() {
         guard isCaptureSessionRunning || isSessionPendingStart else { return }
+        let stopDecision = runLifecycle.requestStop()
+        isStopRequested = true
+        suppressUnexpectedEnd = false
+        resumeFrameWaitGeneration += 1
         isScanning = false
-        if isCaptureSessionRunning {
+        let shouldWaitForRoomPlanStop = stopDecision == .waitForCallback && isCaptureSessionRunning
+        if shouldWaitForRoomPlanStop {
             roomCaptureSession?.stop()
         }
         isCaptureSessionRunning = false
         isSessionPendingStart = false
         isPaused = false
         pausedARConfiguration = nil
+
+        if stopDecision == .waitForCallback, !shouldWaitForRoomPlanStop {
+            applyTerminalDecision(runLifecycle.handleTerminalCallback())
+        }
     }
 
     func finishScan() async throws -> RoomScanDraft {
@@ -145,11 +158,20 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
             try await Task.sleep(nanoseconds: 50_000_000)
         }
 
-        if let captureEndError {
-            throw captureEndError
+        let capturedRoom: CapturedRoom
+        do {
+            capturedRoom = try await withTimeout(
+                nanoseconds: Self.finishProcessingTimeoutNanoseconds,
+                timeoutError: RoomPlanCaptureError.missingCapturedRoom
+            ) {
+                try await self.roomForExport()
+            }
+        } catch {
+            if currentCapturedRoom == nil, finalCapturedRoomData == nil, let captureEndError {
+                throw captureEndError
+            }
+            throw error
         }
-
-        let capturedRoom = try await roomForExport()
 
         let draftID = UUID().uuidString
         let draftDirectory = try LocalScanStorageService.makeCaptureDraftDirectory(id: draftID)
@@ -158,20 +180,30 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
 
         let roomToExport = capturedRoom
         let exportURL = meshURL
-        try await Task.detached(priority: .userInitiated) {
-            // `.model` substitutes object bounding boxes with catalog meshes. Scan-time
-            // RoomCaptureView still draws parametric boxes; that overlay is unchanged.
-            if #available(iOS 17.0, *) {
-                let modelProvider = try RoomPlanModelCatalog.makeProvider()
-                try roomToExport.export(
-                    to: exportURL,
-                    modelProvider: modelProvider,
-                    exportOptions: .model
-                )
-            } else {
-                try roomToExport.export(to: exportURL, exportOptions: .mesh)
+        do {
+            try await withTimeout(
+                nanoseconds: Self.finishProcessingTimeoutNanoseconds,
+                timeoutError: RoomPlanCaptureError.invalidExport
+            ) {
+                try await Task.detached(priority: .userInitiated) {
+                    // `.model` substitutes object bounding boxes with catalog meshes. Scan-time
+                    // RoomCaptureView still draws parametric boxes; that overlay is unchanged.
+                    if #available(iOS 17.0, *) {
+                        let modelProvider = try RoomPlanModelCatalog.makeProvider()
+                        try roomToExport.export(
+                            to: exportURL,
+                            modelProvider: modelProvider,
+                            exportOptions: .model
+                        )
+                    } else {
+                        try roomToExport.export(to: exportURL, exportOptions: .mesh)
+                    }
+                }.value
             }
-        }.value
+        } catch {
+            try? FileManager.default.removeItem(at: draftDirectory)
+            throw error
+        }
 
         let meshSize = (try? FileManager.default.attributesOfItem(atPath: meshURL.path)[.size] as? Int64) ?? 0
         guard meshSize > 0 else {
@@ -200,14 +232,24 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
     private var isCheckingStorage = false
     nonisolated private static let midScanStorageCheckInterval: TimeInterval = 5
     nonisolated private static let midScanMinimumAvailableBytes: Int64 = 50_000_000
+    nonisolated private static let finishProcessingTimeoutNanoseconds: UInt64 = 15_000_000_000
+    nonisolated private static let resumeLivenessTimeoutNanoseconds: UInt64 = 1_000_000_000
 
     // MARK: - RoomCaptureSessionDelegate
     nonisolated func captureSession(_ session: RoomCaptureSession, didUpdate room: CapturedRoom) {
         Task { @MainActor in
+            guard session === self.roomCaptureSession else { return }
             if !self.hasRecordedFirstFrame {
                 self.hasRecordedFirstFrame = true
                 ScanTelemetry.shared.recordFirstFrameReceived()
             }
+            if self.suppressUnexpectedEnd {
+                self.resumeFrameWaitGeneration += 1
+                self.suppressUnexpectedEnd = false
+                self.finalCapturedRoomData = nil
+                self.captureEndError = nil
+            }
+            self.runLifecycle.markRunLive()
             self.currentCapturedRoom = room
             let hasStructure = !room.walls.isEmpty && !room.floors.isEmpty
             if hasStructure && !self.hasMinimalStructure {
@@ -219,22 +261,79 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
 
     nonisolated func captureSession(_ session: RoomCaptureSession, didProvide instruction: RoomCaptureSession.Instruction) {
         Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self, session === self.roomCaptureSession else { return }
             self.currentInstruction = Self.localizedInstruction(for: instruction)
         }
     }
 
     nonisolated func captureSession(_ session: RoomCaptureSession, didEndWith data: CapturedRoomData, error: (any Error)?) {
         Task { @MainActor in
-            self.isScanning = false
+            guard session === self.roomCaptureSession else {
+                applyTerminalDecision(runLifecycle.handleStaleTerminal())
+                return
+            }
             self.finalCapturedRoomData = data
             self.captureEndError = error
+            self.runLifecycle.noteTerminalReceived()
+
+            if self.isPaused {
+                return
+            }
+
+            if self.suppressUnexpectedEnd {
+                self.confirmUnexpectedEndIfResumeDoesNotRecover()
+                return
+            }
+
+            applyTerminalDecision(runLifecycle.handleTerminalCallback())
         }
     }
 }
 
 @available(iOS 16.0, *)
 private extension RoomPlanCaptureService {
+    func applyTerminalDecision(_ decision: CaptureRunLifecycle.TerminalDecision) {
+        switch decision {
+        case .ignoreStale:
+            return
+        case .expectedStop:
+            markCaptureSessionEnded(publishUnexpectedEnd: false)
+        case .expectedStopThenBeginQueuedRun:
+            markCaptureSessionEnded(publishUnexpectedEnd: false)
+            resetStateForNewRun()
+            runAttachedSession()
+        case .unexpectedEnd:
+            markCaptureSessionEnded(publishUnexpectedEnd: true)
+        }
+    }
+
+    func resetStateForNewRun() {
+        isScanning = true
+        hasMinimalStructure = false
+        isStorageFull = false
+        isSessionPendingStart = true
+        isPaused = false
+        pausedARConfiguration = nil
+        isStopRequested = false
+        suppressUnexpectedEnd = false
+        resumeFrameWaitGeneration += 1
+        hasRecordedFirstFrame = false
+        lastStorageCheckDate = nil
+        isCheckingStorage = false
+        currentCapturedRoom = nil
+        finalCapturedRoomData = nil
+        captureEndError = nil
+    }
+
+    func runAttachedSession() {
+        guard let session = roomCaptureSession else { return }
+        let config = RoomCaptureSession.Configuration()
+        session.run(configuration: config)
+        ScanTelemetry.shared.recordSessionRunCalled()
+        isSessionPendingStart = false
+        isCaptureSessionRunning = true
+    }
+
     nonisolated static func localizedInstruction(
         for instruction: RoomCaptureSession.Instruction
     ) -> String? {
@@ -254,6 +353,34 @@ private extension RoomPlanCaptureService {
         default:
             nil
         }
+    }
+
+    func confirmUnexpectedEndIfResumeDoesNotRecover() {
+        resumeFrameWaitGeneration += 1
+        let generation = resumeFrameWaitGeneration
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: Self.resumeLivenessTimeoutNanoseconds)
+            guard generation == self.resumeFrameWaitGeneration,
+                  self.suppressUnexpectedEnd,
+                  !self.isPaused,
+                  !self.isStopRequested else {
+                return
+            }
+            self.markCaptureSessionEnded(publishUnexpectedEnd: true)
+        }
+    }
+
+    func markCaptureSessionEnded(publishUnexpectedEnd: Bool) {
+        suppressUnexpectedEnd = false
+        resumeFrameWaitGeneration += 1
+        isScanning = false
+        isCaptureSessionRunning = false
+        isSessionPendingStart = false
+        isPaused = false
+        pausedARConfiguration = nil
+        guard publishUnexpectedEnd else { return }
+        ScanTelemetry.shared.recordUnexpectedSessionEnd()
+        sessionEndedUnexpectedlySubject.send()
     }
 
     func scheduleMidScanStorageCheckIfNeeded() {
@@ -333,6 +460,30 @@ private extension RoomPlanCaptureService {
         }
     }
 
+    func withTimeout<T: Sendable>(
+        nanoseconds: UInt64,
+        timeoutError: @autoclosure @escaping @Sendable () -> Error,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            let box = TimeoutResumeBox(continuation)
+
+            let work = Task {
+                do {
+                    box.resume(with: .success(try await operation()))
+                } catch {
+                    box.resume(with: .failure(error))
+                }
+            }
+
+            Task {
+                try? await Task.sleep(nanoseconds: nanoseconds)
+                work.cancel()
+                box.resume(with: .failure(timeoutError()))
+            }
+        }
+    }
+
     func contentSummary(of room: CapturedRoom) -> CapturedRoomContentSummary {
         CapturedRoomContentSummary(
             wallCount: room.walls.count,
@@ -387,7 +538,7 @@ private extension RoomPlanCaptureService {
 }
 
 @available(iOS 16.0, *)
-private enum RoomPlanCaptureError: LocalizedError {
+private enum RoomPlanCaptureError: LocalizedError, Sendable {
     case missingCapturedRoom
     case invalidExport
 
@@ -398,6 +549,26 @@ private enum RoomPlanCaptureError: LocalizedError {
         case .invalidExport:
             String(localized: "scanning.error.invalid_export")
         }
+    }
+}
+
+/// Resumes a continuation at most once so a timeout can return without waiting
+/// for non-cancellable work such as RoomPlan USDZ export.
+@available(iOS 16.0, *)
+private final class TimeoutResumeBox<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Value, Error>?
+
+    init(_ continuation: CheckedContinuation<Value, Error>) {
+        self.continuation = continuation
+    }
+
+    func resume(with result: Result<Value, Error>) {
+        lock.lock()
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume(with: result)
     }
 }
 #endif
