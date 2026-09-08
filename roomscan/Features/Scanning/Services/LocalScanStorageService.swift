@@ -64,6 +64,15 @@ protocol ScanStorageService: Sendable {
     func clearDraftManifest()
     func persistSavedScan(draft: RoomScanDraft, scanID: String) throws -> (meshURL: URL, thumbnailURL: URL)
     func deleteScanFiles(scanID: String)
+    func meshExists(scanID: String) -> Bool
+    /// Returns the subset of `candidates` that have a local `mesh.usdz` on disk.
+    /// Performs filesystem work off the caller's actor; prefer this over repeated `meshExists` calls.
+    func existingMeshScanIDs(in candidates: [String]) async -> Set<String>
+}
+
+extension ScanStorageService {
+    func meshExists(scanID: String) -> Bool { false }
+    func existingMeshScanIDs(in candidates: [String]) async -> Set<String> { [] }
 }
 
 final class LocalScanStorageService: ScanStorageService, @unchecked Sendable {
@@ -260,6 +269,35 @@ final class LocalScanStorageService: ScanStorageService, @unchecked Sendable {
     func deleteScanFiles(scanID: String) {
         let targetDir = scansDirectory.appendingPathComponent(scanID, isDirectory: true)
         try? fileManager.removeItem(at: targetDir)
+    }
+
+    func meshExists(scanID: String) -> Bool {
+        guard isSafeScanID(scanID) else { return false }
+        let meshURL = scansDirectory
+            .appendingPathComponent(scanID, isDirectory: true)
+            .appendingPathComponent("mesh.usdz")
+        return fileManager.fileExists(atPath: meshURL.path)
+    }
+
+    nonisolated func existingMeshScanIDs(in candidates: [String]) async -> Set<String> {
+        let safeCandidates = Set(candidates.filter(isSafeScanID))
+        guard !safeCandidates.isEmpty else { return [] }
+
+        let present = Set((try? fileManager.contentsOfDirectory(atPath: scansDirectory.path)) ?? [])
+        let matchingDirectories = safeCandidates.intersection(present)
+        guard !matchingDirectories.isEmpty else { return [] }
+
+        return matchingDirectories.filter { scanID in
+            let meshURL = scansDirectory
+                .appendingPathComponent(scanID, isDirectory: true)
+                .appendingPathComponent("mesh.usdz")
+            return fileManager.fileExists(atPath: meshURL.path)
+        }
+    }
+
+    private nonisolated func isSafeScanID(_ scanID: String) -> Bool {
+        guard !scanID.isEmpty, scanID != ".", scanID != ".." else { return false }
+        return !scanID.contains("/") && !scanID.contains("\\")
     }
 
     // MARK: - Private helpers

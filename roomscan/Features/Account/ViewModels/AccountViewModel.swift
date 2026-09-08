@@ -13,6 +13,7 @@ final class AccountViewModel {
     private let sharedService: any SharedService
     private let syncService: any SyncService
     private let usersService: any UsersService
+    private let scanStorageService: any ScanStorageService
     private let storageMeasuring: any AccountStorageMeasuring
     private let onUserUpdated: (AuthenticatedUser) -> Void
 
@@ -37,6 +38,7 @@ final class AccountViewModel {
         sharedService: any SharedService,
         syncService: any SyncService,
         usersService: any UsersService = MockUsersService(),
+        scanStorageService: any ScanStorageService = LocalScanStorageService(),
         storageMeasuring: any AccountStorageMeasuring = MockAccountStorageMeasuring(),
         onUserUpdated: @escaping (AuthenticatedUser) -> Void = { _ in }
     ) {
@@ -44,6 +46,7 @@ final class AccountViewModel {
         self.sharedService = sharedService
         self.syncService = syncService
         self.usersService = usersService
+        self.scanStorageService = scanStorageService
         self.storageMeasuring = storageMeasuring
         self.onUserUpdated = onUserUpdated
     }
@@ -64,16 +67,22 @@ final class AccountViewModel {
             async let projectsTask = fetchAllProjects()
             async let sharedProjectsTask = sharedService.fetchSharedProjects()
             async let syncStatusTask = fetchPendingSyncCountFromServer()
-            async let storageTask = storageMeasuring.usedBytes()
 
             let projects = try await projectsTask
             let sharedProjects = try await sharedProjectsTask
             let serverPendingCount = try await syncStatusTask
-            let storageUsedBytes = await storageTask
 
             guard generation == loadGeneration else { return }
 
             let allScans = projects.flatMap(\.roomScans)
+            let localScanIDs = await scanStorageService.existingMeshScanIDs(in: allScans.map(\.id))
+
+            guard generation == loadGeneration else { return }
+
+            let storageUsedBytes = await storageMeasuring.usedBytes(forScanIDs: Array(localScanIDs))
+
+            guard generation == loadGeneration else { return }
+
             let localPendingCount = allScans.filter(\.contributesToLocalUnresolvedCount).count
             let pendingSyncCount: Int
             if let serverPendingCount {
@@ -83,7 +92,7 @@ final class AccountViewModel {
             }
 
             metrics = AccountMetrics(
-                localScanCount: allScans.count,
+                localScanCount: localScanIDs.count,
                 pendingSyncCount: pendingSyncCount,
                 sharedProjectCount: sharedProjects.count,
                 storageUsedBytes: storageUsedBytes
