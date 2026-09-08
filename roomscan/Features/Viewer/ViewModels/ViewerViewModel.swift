@@ -22,7 +22,7 @@ final class ViewerViewModel {
         }
     }
     let input: ViewerInput
-    private(set) var scanTitle: String
+    var scanTitle: String
     private let accessPolicy: DetailAccessPolicy
     private(set) var loadState: LoadState = .idle
     private(set) var modelSource: ModelSource?
@@ -36,7 +36,7 @@ final class ViewerViewModel {
     private(set) var cameraCommand: CameraCommand?
     private(set) var editorMode: NoteEditorMode?
     private(set) var notePendingDeletion: SpatialNote?
-    private(set) var isBusy = false
+    var isBusy = false
     private(set) var operationErrorMessage: String?
     private(set) var placementDraftPosition: SIMD3<Float>?
     private static let draftNoteID = "viewer-placement-draft"
@@ -121,7 +121,7 @@ final class ViewerViewModel {
 
     private let notesService: any NotesService
     private let modelLoadingService: any ModelLoadingService
-    private let modelDownloadService: (any ScanDetailService)?
+    let modelDownloadService: (any ScanDetailService)?
     private var scanModelVersion: String?
     private let noteDetailRequest = NoteDetailRequest()
 
@@ -306,6 +306,10 @@ final class ViewerViewModel {
         operationErrorMessage = nil
     }
 
+    func reportOperationError(_ message: String) {
+        operationErrorMessage = message
+    }
+
     func openEditor(for note: SpatialNote) {
         guard allowsOwnerActions else { return }
         Task {
@@ -348,14 +352,6 @@ extension ViewerViewModel {
 
     func toggleFullscreen() {
         isFullscreen.toggle()
-    }
-
-    func renameScan(to title: String) -> Bool {
-        guard allowsOwnerActions else { return false }
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty else { return false }
-        scanTitle = trimmedTitle
-        return true
     }
 
     func saveEditor(title: String, description: String, color: NoteColor) async -> Bool {

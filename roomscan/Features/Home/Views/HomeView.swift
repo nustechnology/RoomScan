@@ -215,7 +215,10 @@ struct HomeView: View {
                 modelDownloadService: scanDetailService,
                 accessPolicy: .readOnly,
                 shareService: shareService,
-                onBack: { acceptedViewerInput = nil }
+                onBack: { acceptedViewerInput = nil },
+                onScanRenamed: { updatedDetail in
+                    acceptedInvitations.applyRenamedScan(scanID: input.scanID, name: updatedDetail.name)
+                }
             )
         }
         .onChange(of: pendingInvitation) { _, invitation in
@@ -386,7 +389,6 @@ private extension HomeView {
         requestedScanSourceProjectID = scanRequestAfterProjectCreation
         self.scanRequestAfterProjectCreation = nil
     }
-
     func createdProjectDetailCover(for project: ProjectSummary) -> some View {
         ProjectDetailView(
             project: project,

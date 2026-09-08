@@ -299,3 +299,10 @@ final class ScanDetailViewModel {
     }
 
 }
+
+extension ScanDetailViewModel {
+    func applyViewerRename(_ updatedDetail: ScanDetail) {
+        detail = updatedDetail
+        scan = scanWithUpdatedName(updatedDetail.name)
+    }
+}

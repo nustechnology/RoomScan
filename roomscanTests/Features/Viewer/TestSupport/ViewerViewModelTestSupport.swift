@@ -43,6 +43,30 @@ struct ScanDetailVersionStub: ScanDetailService {
     func deleteScanDetail(id: String) async throws {}
 }
 
+struct FailingScanDetailRenameStub: ScanDetailService {
+    func fetchScanDetail(id: String) async throws -> ScanDetail {
+        try await ScanDetailVersionStub().fetchScanDetail(id: id)
+    }
+
+    func updateScanDetail(id: String, name: String, description: String?) async throws -> ScanDetail {
+        throw HTTPClientError.networkError
+    }
+
+    func deleteScanDetail(id: String) async throws {}
+}
+
+struct CancelledScanDetailRenameStub: ScanDetailService {
+    func fetchScanDetail(id: String) async throws -> ScanDetail {
+        try await ScanDetailVersionStub().fetchScanDetail(id: id)
+    }
+
+    func updateScanDetail(id: String, name: String, description: String?) async throws -> ScanDetail {
+        throw CancellationError()
+    }
+
+    func deleteScanDetail(id: String) async throws {}
+}
+
 @MainActor
 final class FailingNotesService: NotesService {
     enum Operation {

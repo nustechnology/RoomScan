@@ -80,30 +80,76 @@ struct ViewerViewModelTests {
         #expect(!viewModel.isLoadingNotes)
     }
 
-    @Test func renameScanUpdatesTitle() {
+    @Test func renameScanUpdatesTitle() async {
         let viewModel = ViewerViewModel(
             input: ViewerInput(scanID: "scan-1", scanName: "Living Room"),
             notesService: MockNotesService(),
-            modelLoadingService: DefaultModelLoadingService()
+            modelLoadingService: DefaultModelLoadingService(),
+            modelDownloadService: ScanDetailVersionStub()
         )
 
-        let didRename = viewModel.renameScan(to: "  Dining Room  ")
+        let updatedDetail = await viewModel.renameScan(to: "  Dining Room  ")
 
-        #expect(didRename)
-        #expect(viewModel.scanTitle == "Dining Room")
+        #expect(updatedDetail?.name == "Kitchen")
+        #expect(viewModel.scanTitle == "Kitchen")
     }
 
-    @Test func renameScanRejectsEmptyName() {
+    @Test func renameScanRejectsEmptyName() async {
         let viewModel = ViewerViewModel(
             input: ViewerInput(scanID: "scan-1", scanName: "Living Room"),
             notesService: MockNotesService(),
             modelLoadingService: DefaultModelLoadingService()
         )
 
-        let didRename = viewModel.renameScan(to: "   ")
+        let updatedDetail = await viewModel.renameScan(to: "   ")
 
-        #expect(!didRename)
+        #expect(updatedDetail?.name == nil)
         #expect(viewModel.scanTitle == "Living Room")
+        #expect(viewModel.operationErrorMessage == String(localized: "viewer.scan.rename.error"))
+    }
+
+    @Test func renameScanFailureSurfacesErrorAndPreservesTitle() async {
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-1", scanName: "Living Room"),
+            notesService: MockNotesService(),
+            modelLoadingService: DefaultModelLoadingService(),
+            modelDownloadService: FailingScanDetailRenameStub()
+        )
+
+        let updatedDetail = await viewModel.renameScan(to: "Kitchen")
+
+        #expect(updatedDetail == nil)
+        #expect(viewModel.scanTitle == "Living Room")
+        #expect(viewModel.operationErrorMessage == String(localized: "viewer.scan.rename.error"))
+    }
+
+    @Test func renameScanCancellationDoesNotSurfaceError() async {
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-1", scanName: "Living Room"),
+            notesService: MockNotesService(),
+            modelLoadingService: DefaultModelLoadingService(),
+            modelDownloadService: CancelledScanDetailRenameStub()
+        )
+
+        let updatedDetail = await viewModel.renameScan(to: "Kitchen")
+
+        #expect(updatedDetail == nil)
+        #expect(viewModel.scanTitle == "Living Room")
+        #expect(viewModel.operationErrorMessage == nil)
+    }
+
+    @Test func renameScanWithoutDetailServiceSurfacesError() async {
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-1", scanName: "Living Room"),
+            notesService: MockNotesService(),
+            modelLoadingService: DefaultModelLoadingService()
+        )
+
+        let updatedDetail = await viewModel.renameScan(to: "Kitchen")
+
+        #expect(updatedDetail == nil)
+        #expect(viewModel.scanTitle == "Living Room")
+        #expect(viewModel.operationErrorMessage == String(localized: "viewer.scan.rename.error"))
     }
 
     @Test func switchingViewModeKeepsNotes() async {
