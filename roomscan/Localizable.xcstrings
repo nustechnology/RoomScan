@@ -4541,6 +4541,17 @@
         }
       }
     },
+    "viewer.scan.rename.error" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't rename the scan. Please try again."
+          }
+        }
+      }
+    },
     "viewer.scan.rename.placeholder" : {
       "extractionState" : "manual",
       "localizations" : {

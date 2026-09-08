@@ -136,7 +136,8 @@ struct ScanDetailView: View {
                 modelDownloadService: viewModel.modelDownloadService,
                 accessPolicy: accessPolicy,
                 shareService: shareService,
-                onBack: { viewerInput = nil }
+                onBack: { viewerInput = nil },
+                onScanRenamed: { detail in applyViewerRename(detail) }
             )
         }
         .fullScreenCover(item: $shareInput) { input in
@@ -150,8 +151,7 @@ struct ScanDetailView: View {
             }
         }
         .task {
-            await viewModel.loadDetail()
-            onScanUpdated(viewModel.scan)
+            await loadDetailAndPropagateScanUpdate()
         }
         .modifier(RetryScanPresentationModifier(
             showsMissingScanAlert: $showsMissingScanAlert,
@@ -401,6 +401,16 @@ private extension ScanDetailView {
                     dismiss()
                 }
             }
+        }
+    }
+}
+
+private extension ScanDetailView {
+    func loadDetailAndPropagateScanUpdate() async {
+        let scanBeforeDetailLoad = viewModel.scan
+        await viewModel.loadDetail()
+        if viewModel.scan != scanBeforeDetailLoad {
+            onScanUpdated(viewModel.scan)
         }
     }
 }

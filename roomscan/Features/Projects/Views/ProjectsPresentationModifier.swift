@@ -63,9 +63,6 @@ struct ProjectsPresentationModifier: ViewModifier {
                     scanDetailView(for: destination)
                 }
             }
-            .onChange(of: selectedScanDetail) { _, destination in
-                isShowingDetail = destination != nil
-            }
             .task {
                 await viewModel.loadInitialProjects()
                 checkDraftRecovery()

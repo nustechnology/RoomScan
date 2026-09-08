@@ -3,6 +3,7 @@
 //  roomscan
 //
 
+import Foundation
 import SwiftUI
 
 enum ScanFlowStep: Equatable {
@@ -31,7 +32,11 @@ struct ScanFlowCoordinatorView: View {
         self.projectsService = projectsService
         self.onComplete = onComplete
         self.onCancel = onCancel
-        let initialStep = ScanFlowStep.initialStep(for: recoveredDraft)
+        let bypassReadiness = ProcessInfo.processInfo.arguments.contains("-SkipScanReadiness")
+        let initialStep = ScanFlowStep.initialStep(
+            for: recoveredDraft,
+            bypassingReadiness: bypassReadiness
+        )
         _step = State(initialValue: initialStep)
         _prewarmedService = State(initialValue: RoomCaptureServiceFactory.makeService())
     }
@@ -88,10 +93,13 @@ struct ScanFlowCoordinatorView: View {
 }
 
 extension ScanFlowStep {
-    static func initialStep(for recoveredDraft: RoomScanDraft?) -> ScanFlowStep {
+    static func initialStep(
+        for recoveredDraft: RoomScanDraft?,
+        bypassingReadiness: Bool = false
+    ) -> ScanFlowStep {
         if let draft = recoveredDraft {
             return .review(draft)
         }
-        return .readiness
+        return bypassingReadiness ? .camera : .readiness
     }
 }

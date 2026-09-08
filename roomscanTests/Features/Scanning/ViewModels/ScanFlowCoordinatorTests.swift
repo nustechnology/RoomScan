@@ -14,6 +14,11 @@ struct ScanFlowCoordinatorTests {
         #expect(step == .readiness)
     }
 
+    @Test func initialStep_bypassingReadiness_returnsCamera() {
+        let step = ScanFlowStep.initialStep(for: nil, bypassingReadiness: true)
+        #expect(step == .camera)
+    }
+
     @Test func initialStep_withRecoveredDraft_returnsReviewWithDraft() {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let meshURL = tempDir.appendingPathComponent("mesh.usdz")

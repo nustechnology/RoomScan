@@ -12,7 +12,7 @@ struct ViewerView: View {
     @State private var isRenamePresented = false
     @State private var isSharePresented = false
     var onBack: (() -> Void)?
-    var onScanRenamed: ((String) -> Void)?
+    var onScanRenamed: ((ScanDetail) -> Void)?
 
     init(
         input: ViewerInput,
@@ -22,7 +22,7 @@ struct ViewerView: View {
         accessPolicy: DetailAccessPolicy = .editable,
         shareService: any ShareService,
         onBack: (() -> Void)? = nil,
-        onScanRenamed: ((String) -> Void)? = nil
+        onScanRenamed: ((ScanDetail) -> Void)? = nil
     ) {
         _viewModel = State(
             initialValue: ViewerViewModel(
@@ -45,7 +45,7 @@ struct ViewerView: View {
         accessPolicy: DetailAccessPolicy = .editable,
         shareService: any ShareService,
         onBack: (() -> Void)? = nil,
-        onScanRenamed: ((String) -> Void)? = nil
+        onScanRenamed: ((ScanDetail) -> Void)? = nil
     ) {
         self.init(
             input: input,
@@ -63,7 +63,7 @@ struct ViewerView: View {
         viewModel: ViewerViewModel,
         shareService: any ShareService,
         onBack: (() -> Void)? = nil,
-        onScanRenamed: ((String) -> Void)? = nil
+        onScanRenamed: ((ScanDetail) -> Void)? = nil
     ) {
         _viewModel = State(initialValue: viewModel)
         self.shareService = shareService
@@ -229,8 +229,10 @@ struct ViewerView: View {
             TextField(String(localized: "viewer.scan.rename.placeholder"), text: $renameTitle)
             Button(String(localized: "viewer.scan.rename.cancel"), role: .cancel) {}
             Button(String(localized: "viewer.scan.rename.save")) {
-                if viewModel.renameScan(to: renameTitle) {
-                    onScanRenamed?(viewModel.scanTitle)
+                Task {
+                    if let updatedDetail = await viewModel.renameScan(to: renameTitle) {
+                        onScanRenamed?(updatedDetail)
+                    }
                 }
             }
         }
