@@ -33,28 +33,21 @@ final class ViewerViewModel {
     private(set) var isFullscreen = false
     private(set) var areNotesVisible = true
     private(set) var placementMode: ViewerPlacementMode = .idle
-    private(set) var cameraCommand: CameraCommand?
+    private(set) var cameraCommands: [PendingCameraCommand] = []
     private(set) var editorMode: NoteEditorMode?
     private(set) var notePendingDeletion: SpatialNote?
     var isBusy = false
     private(set) var operationErrorMessage: String?
     private(set) var placementDraftPosition: SIMD3<Float>?
     private static let draftNoteID = "viewer-placement-draft"
-    var showsDeleteConfirmation: Bool {
-        notePendingDeletion != nil
-    }
 
-    var showsOperationError: Bool {
-        operationErrorMessage != nil
-    }
+    var showsDeleteConfirmation: Bool { notePendingDeletion != nil }
 
-    var isPlacementActive: Bool {
-        placementMode != .idle
-    }
+    var showsOperationError: Bool { operationErrorMessage != nil }
 
-    var allowsOwnerActions: Bool {
-        accessPolicy.allowsOwnerActions
-    }
+    var isPlacementActive: Bool { placementMode != .idle }
+
+    var allowsOwnerActions: Bool { accessPolicy.allowsOwnerActions }
 
     var canShare: Bool { RoomScanSummary.isReadyToShare(syncStatus: input.syncStatus, assetStatus: input.assetStatus) }
 
@@ -223,19 +216,24 @@ final class ViewerViewModel {
     }
 
     func zoomIn() {
-        cameraCommand = .zoomIn
+        enqueueCameraCommand(.zoomIn)
     }
 
     func zoomOut() {
-        cameraCommand = .zoomOut
+        enqueueCameraCommand(.zoomOut)
     }
 
     func resetCamera() {
-        cameraCommand = .reset
+        enqueueCameraCommand(.reset)
     }
 
-    func consumeCameraCommand() {
-        cameraCommand = nil
+    func consumeCameraCommands(_ ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        cameraCommands.removeAll { ids.contains($0.id) }
+    }
+
+    private func enqueueCameraCommand(_ command: CameraCommand) {
+        cameraCommands.append(PendingCameraCommand(command))
     }
 
     func beginAddNote() {
@@ -334,7 +332,7 @@ extension ViewerViewModel {
         guard let id else { return }
 
         if let note = notes.first(where: { $0.id == id }) {
-            cameraCommand = .focus(note.position)
+            enqueueCameraCommand(.focus(note.position))
         }
 
         let notesService = notesService
@@ -421,7 +419,7 @@ extension ViewerViewModel {
         )
         notes.append(note)
         selectedNoteID = note.id
-        cameraCommand = .focus(note.position)
+        enqueueCameraCommand(.focus(note.position))
         logNote("create succeeded scanID=\(input.scanID) noteID=\(note.id)")
         return true
     }
@@ -496,7 +494,7 @@ extension ViewerViewModel {
                 notes[index] = updated
             }
             selectedNoteID = updated.id
-            cameraCommand = .focus(updated.position)
+            enqueueCameraCommand(.focus(updated.position))
         } catch {
             operationErrorMessage = String(localized: "viewer.note.move.error")
         }
@@ -518,11 +516,12 @@ extension ViewerViewModel {
     }
 
     func applyFetchedNote(_ note: SpatialNote) {
+        let cachedPosition = notes.first(where: { $0.id == note.id })?.position
         if let index = notes.firstIndex(where: { $0.id == note.id }) {
             notes[index] = note
         }
-        if selectedNoteID == note.id {
-            cameraCommand = .focus(note.position)
+        if selectedNoteID == note.id, cachedPosition != note.position {
+            enqueueCameraCommand(.focus(note.position))
         }
     }
 

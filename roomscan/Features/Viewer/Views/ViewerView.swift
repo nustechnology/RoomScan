@@ -314,8 +314,8 @@ private extension ViewerView {
                     isPlacementMode: viewModel.isPlacementActive,
                     movingNoteID: viewModel.draggableNoteID,
                     movePreviewPosition: viewModel.placementDraftPosition,
-                    cameraCommand: viewModel.cameraCommand,
-                    onCameraCommandConsumed: { viewModel.consumeCameraCommand() },
+                    cameraCommands: viewModel.cameraCommands,
+                    onCameraCommandsConsumed: { viewModel.consumeCameraCommands($0) },
                     onPinTapped: { viewModel.handlePinTap(noteID: $0) },
                     onSurfaceTapped: { viewModel.handleCanvasTap(position: $0) },
                     onMoveDraftChanged: { viewModel.updateMoveDraft(position: $0) },
@@ -352,6 +352,7 @@ private extension ViewerView {
                 )
                 .padding(AppSpacing.medium)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .zIndex(1)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

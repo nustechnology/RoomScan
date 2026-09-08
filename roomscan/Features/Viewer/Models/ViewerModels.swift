@@ -155,6 +155,16 @@ enum CameraCommand: Equatable, Sendable {
     case focus(SIMD3<Float>)
 }
 
+struct PendingCameraCommand: Equatable, Identifiable, Sendable {
+    let id: UUID
+    let command: CameraCommand
+
+    init(_ command: CameraCommand) {
+        self.id = UUID()
+        self.command = command
+    }
+}
+
 enum NoteContentLimits {
     static let title = 50
     static let description = 2_000

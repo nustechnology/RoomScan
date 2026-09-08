@@ -17,7 +17,7 @@ struct ViewerViewModelNoteOperationTests {
         viewModel.selectNote(id: note.id)
 
         #expect(viewModel.selectedNoteID == note.id)
-        #expect(viewModel.cameraCommand == .focus(note.position))
+        #expect(viewModel.cameraCommands.map(\.command) == [.focus(note.position)])
     }
 
     @Test func selectingAnotherNoteCancelsThePreviousDetailFetch() async throws {

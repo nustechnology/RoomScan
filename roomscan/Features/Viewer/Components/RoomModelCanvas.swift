@@ -17,8 +17,8 @@ struct RoomModelCanvas: UIViewRepresentable {
     var isPlacementMode: Bool
     var movingNoteID: String?
     var movePreviewPosition: SIMD3<Float>?
-    var cameraCommand: CameraCommand?
-    var onCameraCommandConsumed: () -> Void
+    var cameraCommands: [PendingCameraCommand]
+    var onCameraCommandsConsumed: (Set<UUID>) -> Void
     var onPinTapped: (String) -> Void
     var onSurfaceTapped: (SIMD3<Float>) -> Void
     var onMoveDraftChanged: (SIMD3<Float>) -> Void
@@ -34,7 +34,6 @@ struct RoomModelCanvas: UIViewRepresentable {
             onPinTapped: onPinTapped,
             onSurfaceTapped: onSurfaceTapped,
             onMoveDraftChanged: onMoveDraftChanged,
-            onCameraCommandConsumed: onCameraCommandConsumed,
             onModelLoaded: onModelLoaded,
             onModelLoadFailed: onModelLoadFailed
         )
@@ -73,7 +72,6 @@ extension RoomModelCanvas {
         coordinator.onPinTapped = onPinTapped
         coordinator.onSurfaceTapped = onSurfaceTapped
         coordinator.onMoveDraftChanged = onMoveDraftChanged
-        coordinator.onCameraCommandConsumed = onCameraCommandConsumed
         coordinator.onModelLoaded = onModelLoaded
         coordinator.onModelLoadFailed = onModelLoadFailed
         coordinator.isPlacementMode = isPlacementMode
@@ -92,14 +90,17 @@ extension RoomModelCanvas {
             coordinator.applyViewMode(viewMode, animated: true)
         }
 
-        if let cameraCommand {
-            if coordinator.lastAppliedCameraCommand != cameraCommand {
-                coordinator.applyCameraCommand(cameraCommand)
-                coordinator.lastAppliedCameraCommand = cameraCommand
-                deferToNextViewUpdate(onCameraCommandConsumed)
+        let commandIDs = Set(cameraCommands.map(\.id))
+        let unapplied = cameraCommands.filter { !coordinator.appliedCameraCommandIDs.contains($0.id) }
+        if !unapplied.isEmpty {
+            coordinator.applyCameraCommands(unapplied.map(\.command))
+            let ids = Set(unapplied.map(\.id))
+            coordinator.appliedCameraCommandIDs.formUnion(ids)
+            deferToNextViewUpdate {
+                onCameraCommandsConsumed(ids)
             }
-        } else {
-            coordinator.lastAppliedCameraCommand = nil
         }
+
+        coordinator.appliedCameraCommandIDs.formIntersection(commandIDs)
     }
 }
