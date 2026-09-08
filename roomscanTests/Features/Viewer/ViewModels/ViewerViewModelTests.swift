@@ -25,6 +25,22 @@ struct ViewerViewModelTests {
         #expect(viewModel.viewMode == .threeD)
     }
 
+    @Test func keepRetryLoadingVisibleReturnsFalseWhenCancelled() async {
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-retry-cancel", scanName: "Living Room"),
+            notesService: MockNotesService(),
+            modelLoadingService: DefaultModelLoadingService()
+        )
+
+        let delayTask = Task { @MainActor in
+            await viewModel.keepRetryLoadingVisibleIfNeeded(isRetry: true, startedAt: .now)
+        }
+        delayTask.cancel()
+
+        let didFinishNormally = await delayTask.value
+        #expect(!didFinishNormally)
+    }
+
     @Test func canShareMatchesScanShareReadiness() {
         let pending = ViewerViewModel(
             input: ViewerInput(
@@ -189,6 +205,55 @@ struct ViewerViewModelTests {
             return
         }
         #expect(position == SIMD3(0.5, 1.0, -0.2))
+    }
+
+    @Test func hidingNotesKeepsPlacementDraftVisible() async {
+        let viewModel = await ViewerViewModelTestHelpers.loadedViewModel(scanID: "scan-hide-draft")
+        let savedNoteCount = viewModel.notes.count
+        #expect(savedNoteCount > 0)
+
+        viewModel.beginAddNote()
+        viewModel.handleCanvasTap(position: SIMD3(0.5, 1.0, -0.2))
+        viewModel.toggleNotesVisibility()
+
+        #expect(!viewModel.areNotesVisible)
+        #expect(viewModel.visibleNotes.count == 1)
+        #expect(viewModel.visibleNotes.first?.id == "viewer-placement-draft")
+        #expect(viewModel.visibleNotes.first?.position == SIMD3(0.5, 1.0, -0.2))
+    }
+
+    @Test func hidingNotesKeepsMovingNoteVisibleBeforeFirstDrag() async {
+        let viewModel = await ViewerViewModelTestHelpers.loadedViewModel(scanID: "scan-hide-move")
+        guard let note = viewModel.notes.first else {
+            Issue.record("Expected seeded notes")
+            return
+        }
+
+        viewModel.beginMoveNote(note)
+        viewModel.toggleNotesVisibility()
+
+        #expect(viewModel.placementDraftPosition == note.position)
+        #expect(!viewModel.areNotesVisible)
+        #expect(viewModel.visibleNotes.count == 1)
+        #expect(viewModel.visibleNotes.first?.id == note.id)
+        #expect(viewModel.visibleNotes.first?.position == note.position)
+    }
+
+    @Test func hidingNotesKeepsMovingNoteVisibleAfterDrag() async {
+        let viewModel = await ViewerViewModelTestHelpers.loadedViewModel(scanID: "scan-hide-move-drag")
+        guard let note = viewModel.notes.first else {
+            Issue.record("Expected seeded notes")
+            return
+        }
+
+        viewModel.beginMoveNote(note)
+        viewModel.updateMoveDraft(position: SIMD3(2, 2, 2))
+        viewModel.toggleNotesVisibility()
+
+        #expect(!viewModel.areNotesVisible)
+        #expect(viewModel.visibleNotes.count == 1)
+        #expect(viewModel.visibleNotes.first?.id == note.id)
+        #expect(viewModel.visibleNotes.first?.position == SIMD3(2, 2, 2))
     }
 
     @Test func saveCreateAddsNote() async {

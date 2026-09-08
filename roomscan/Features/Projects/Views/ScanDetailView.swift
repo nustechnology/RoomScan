@@ -129,17 +129,25 @@ struct ScanDetailView: View {
                 viewModel.dismissActionError()
             }
         }
-        .fullScreenCover(item: $viewerInput) { input in
-            ViewerView(
-                input: input,
-                notesService: notesService,
-                modelDownloadService: viewModel.modelDownloadService,
-                accessPolicy: accessPolicy,
-                shareService: shareService,
-                onBack: { viewerInput = nil },
-                onScanRenamed: { detail in applyViewerRename(detail) }
-            )
-        }
+        .fullScreenCover(
+            item: $viewerInput,
+            onDismiss: {
+                Task {
+                    await loadDetailAndPropagateScanUpdate(showsLoadingIndicator: false)
+                }
+            },
+            content: { input in
+                ViewerView(
+                    input: input,
+                    notesService: notesService,
+                    modelDownloadService: viewModel.modelDownloadService,
+                    accessPolicy: accessPolicy,
+                    shareService: shareService,
+                    onBack: { viewerInput = nil },
+                    onScanRenamed: { detail in applyViewerRename(detail) }
+                )
+            }
+        )
         .fullScreenCover(item: $shareInput) { input in
             ShareView(input: input, service: shareService)
         }
@@ -260,67 +268,6 @@ struct ScanDetailView: View {
             statusRow
         }
     }
-
-    private func metadataRow(
-        label: LocalizedStringKey,
-        value: String,
-        accessibilityIdentifier: String,
-        isLoading: Bool
-    ) -> some View {
-        HStack {
-            Text(label)
-                .foregroundStyle(AppColors.secondaryText)
-                .appTypography(AppTypography.bodySmall)
-
-            Spacer(minLength: AppSpacing.small)
-
-            if isLoading {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityIdentifier("\(accessibilityIdentifier).loading")
-            } else {
-                Text(value)
-                    .appTypography(AppTypography.bodySmallStrong)
-                    .foregroundStyle(AppColors.primaryText)
-                    .multilineTextAlignment(.trailing)
-                    .accessibilityIdentifier(accessibilityIdentifier)
-            }
-        }
-        .padding(.vertical, AppSpacing.medium)
-    }
-
-    private var statusRow: some View {
-        HStack {
-            Text("scanDetail.status")
-                .appTypography(AppTypography.labelBadge)
-                .foregroundStyle(AppColors.secondaryText)
-
-            Spacer(minLength: AppSpacing.small)
-
-            if viewModel.isLoadingDetail {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityIdentifier("scanDetail.status.loading")
-            } else {
-                ScanSyncStatusBadge(
-                    syncStatus: viewModel.displaySyncStatus,
-                    showsRetry: viewModel.showsRetryUpload,
-                    onRetry: {
-                        Task {
-                            let didRetry = await viewModel.retryUpload()
-                            if didRetry {
-                                onScanUpdated(viewModel.scan)
-                            } else if viewModel.needsRescanForRetry {
-                                showsMissingScanAlert = true
-                            }
-                        }
-                    }
-                )
-            }
-        }
-        .padding(.vertical, AppSpacing.medium)
-        .accessibilityIdentifier("scanDetail.status")
-    }
 }
 
 private extension ScanDetailView {
@@ -403,12 +350,73 @@ private extension ScanDetailView {
             }
         }
     }
+
+    func metadataRow(
+        label: LocalizedStringKey,
+        value: String,
+        accessibilityIdentifier: String,
+        isLoading: Bool
+    ) -> some View {
+        HStack {
+            Text(label)
+                .foregroundStyle(AppColors.secondaryText)
+                .appTypography(AppTypography.bodySmall)
+
+            Spacer(minLength: AppSpacing.small)
+
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityIdentifier("\(accessibilityIdentifier).loading")
+            } else {
+                Text(value)
+                    .appTypography(AppTypography.bodySmallStrong)
+                    .foregroundStyle(AppColors.primaryText)
+                    .multilineTextAlignment(.trailing)
+                    .accessibilityIdentifier(accessibilityIdentifier)
+            }
+        }
+        .padding(.vertical, AppSpacing.medium)
+    }
+
+    var statusRow: some View {
+        HStack {
+            Text("scanDetail.status")
+                .appTypography(AppTypography.labelBadge)
+                .foregroundStyle(AppColors.secondaryText)
+
+            Spacer(minLength: AppSpacing.small)
+
+            if viewModel.isLoadingDetail {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityIdentifier("scanDetail.status.loading")
+            } else {
+                ScanSyncStatusBadge(
+                    syncStatus: viewModel.displaySyncStatus,
+                    showsRetry: viewModel.showsRetryUpload,
+                    onRetry: {
+                        Task {
+                            let didRetry = await viewModel.retryUpload()
+                            if didRetry {
+                                onScanUpdated(viewModel.scan)
+                            } else if viewModel.needsRescanForRetry {
+                                showsMissingScanAlert = true
+                            }
+                        }
+                    }
+                )
+            }
+        }
+        .padding(.vertical, AppSpacing.medium)
+        .accessibilityIdentifier("scanDetail.status")
+    }
 }
 
 private extension ScanDetailView {
-    func loadDetailAndPropagateScanUpdate() async {
+    func loadDetailAndPropagateScanUpdate(showsLoadingIndicator: Bool = true) async {
         let scanBeforeDetailLoad = viewModel.scan
-        await viewModel.loadDetail()
+        await viewModel.loadDetail(showsLoadingIndicator: showsLoadingIndicator)
         if viewModel.scan != scanBeforeDetailLoad {
             onScanUpdated(viewModel.scan)
         }

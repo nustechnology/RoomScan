@@ -23,6 +23,10 @@ final class ScanDetailViewModel {
     private(set) var didDeleteScan = false
     private(set) var detail: ScanDetail?
     private(set) var isLoadingDetail = false
+    /// Bumped on every detail fetch so only the newest in-flight response can update state.
+    private var detailLoadGeneration = 0
+    /// Set when a silent refresh is requested while a visible load is still in flight.
+    private var needsSilentDetailRefresh = false
 
     var renameDraft = ""
 
@@ -89,7 +93,7 @@ final class ScanDetailViewModel {
     }
 
     var notesCountText: String {
-        String(detail?.noteCount ?? scan.notes.count)
+        String(detail?.noteCount ?? scan.noteCount)
     }
 
     var displaySyncStatus: RoomScanSyncStatus {
@@ -112,24 +116,51 @@ final class ScanDetailViewModel {
         detail?.assetStatus ?? scan.assetStatus
     }
 
-    func loadDetail() async {
+    func loadDetail(showsLoadingIndicator: Bool = true) async {
         guard let scanDetailService else { return }
-        guard !isLoadingDetail else { return }
-        isLoadingDetail = true
-        defer { isLoadingDetail = false }
+        guard !isLoadingDetail else {
+            if !showsLoadingIndicator {
+                needsSilentDetailRefresh = true
+            }
+            return
+        }
+        if showsLoadingIndicator {
+            isLoadingDetail = true
+        }
+
+        detailLoadGeneration += 1
+        let loadGeneration = detailLoadGeneration
 
         do {
             let fetched = try await scanDetailService.fetchScanDetail(id: scan.id)
+            guard loadGeneration == detailLoadGeneration else {
+                await finishDetailLoad(showsLoadingIndicator: showsLoadingIndicator)
+                return
+            }
             let mergedStatus = ProjectAPIMapping.preferredSyncStatus(
                 local: scan.syncStatus,
                 remote: fetched.syncStatus,
                 hasLocalUploadArtifacts: scan.hasLocalUploadArtifacts
             )
             detail = fetched.updating(syncStatus: mergedStatus)
-            scan = scanReplacing(syncStatus: mergedStatus)
+            scan = scanReplacing(
+                syncStatus: mergedStatus,
+                noteCount: fetched.noteCount
+            )
         } catch {
             // Keep list-row scan metadata when detail fetch fails.
         }
+
+        await finishDetailLoad(showsLoadingIndicator: showsLoadingIndicator)
+    }
+
+    private func finishDetailLoad(showsLoadingIndicator: Bool) async {
+        if showsLoadingIndicator {
+            isLoadingDetail = false
+        }
+        guard needsSilentDetailRefresh else { return }
+        needsSilentDetailRefresh = false
+        await loadDetail(showsLoadingIndicator: false)
     }
 
     var showsRetryUpload: Bool {
@@ -178,6 +209,7 @@ final class ScanDetailViewModel {
                     name: trimmedName,
                     description: detail?.description
                 )
+                invalidateInFlightDetailLoads()
                 detail = updatedDetail
                 scan = scanWithUpdatedName(updatedDetail.name)
             } else {
@@ -186,6 +218,7 @@ final class ScanDetailViewModel {
                     scanID: scan.id,
                     name: trimmedName
                 )
+                invalidateInFlightDetailLoads()
             }
             renameDraft = scan.name
             showsActionError = false
@@ -205,6 +238,7 @@ final class ScanDetailViewModel {
 
         do {
             try await service.deleteScan(projectID: projectID, scanID: scan.id)
+            invalidateInFlightDetailLoads()
             didDeleteScan = true
             showsActionError = false
             return true
@@ -228,6 +262,7 @@ final class ScanDetailViewModel {
                 projectID: projectID,
                 scanID: scan.id
             )
+            invalidateInFlightDetailLoads()
             detail = detail?.updating(syncStatus: scan.syncStatus)
             showsActionError = false
             return true
@@ -259,6 +294,7 @@ final class ScanDetailViewModel {
                 meshURL: draft.meshFileURL,
                 thumbnailURL: draft.thumbnailFileURL
             )
+            invalidateInFlightDetailLoads()
             detail = detail?.updating(syncStatus: scan.syncStatus)
             needsRescanForRetry = false
             showsActionError = false
@@ -273,13 +309,19 @@ final class ScanDetailViewModel {
         showsActionError = false
     }
 
+    /// Bumps the shared generation so any in-flight `loadDetail` response is ignored.
+    private func invalidateInFlightDetailLoads() {
+        detailLoadGeneration += 1
+    }
+
     private func scanWithUpdatedName(_ name: String) -> RoomScanSummary {
         scanReplacing(name: name)
     }
 
     private func scanReplacing(
         name: String? = nil,
-        syncStatus: RoomScanSyncStatus? = nil
+        syncStatus: RoomScanSyncStatus? = nil,
+        noteCount: Int? = nil
     ) -> RoomScanSummary {
         RoomScanSummary(
             id: scan.id,
@@ -293,7 +335,7 @@ final class ScanDetailViewModel {
             notes: scan.notes,
             meshPath: scan.meshPath,
             thumbnailPath: scan.thumbnailPath,
-            noteCount: scan.noteCount,
+            noteCount: noteCount ?? scan.noteCount,
             assetStatus: scan.assetStatus
         )
     }
@@ -302,6 +344,7 @@ final class ScanDetailViewModel {
 
 extension ScanDetailViewModel {
     func applyViewerRename(_ updatedDetail: ScanDetail) {
+        invalidateInFlightDetailLoads()
         detail = updatedDetail
         scan = scanWithUpdatedName(updatedDetail.name)
     }
