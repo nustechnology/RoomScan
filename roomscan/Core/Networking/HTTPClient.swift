@@ -132,6 +132,7 @@ struct APIEndpoint: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = method.rawValue
         request.httpBody = body
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)
         }
@@ -196,9 +197,17 @@ struct LiveHTTPClient: HTTPClient {
     private let urlSession: URLSession
     private let decoder: JSONDecoder
 
+    /// Ephemeral session so API GETs never reuse `URLSession.shared`'s disk cache.
+    private static let uncachedSession: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.urlCache = nil
+        return URLSession(configuration: configuration)
+    }()
+
     init(
         baseURL: URL = URL(string: "https://roomscan.nustechnology.com")!,
-        urlSession: URLSession = .shared,
+        urlSession: URLSession = LiveHTTPClient.uncachedSession,
         decoder: JSONDecoder = LiveHTTPClient.makeAPIDecoder()
     ) {
         self.baseURL = baseURL
@@ -298,9 +307,11 @@ struct LiveHTTPClient: HTTPClient {
         let url = request.url?.absoluteString ?? "<nil>"
         let headers = redactedHeaders(from: request.allHTTPHeaderFields ?? [:])
         let bodyBytes = request.httpBody?.count ?? 0
+        let cachePolicy = request.cachePolicy.rawValue
         print(
             """
             [HTTP] → \(method) \(url)
+            cachePolicy=\(cachePolicy)
             headers=\(headers)
             bodyBytes=\(bodyBytes)
             """

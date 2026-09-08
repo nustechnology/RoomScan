@@ -96,7 +96,7 @@ struct HomeView: View {
                 HomeHeader(
                     title: selectedTab.headerTitle,
                     showsCreateProjectButton: selectedTab == .projects,
-                    trailingStyle: selectedTab == .share ? .refresh : .settings,
+                    showsRefreshButton: selectedTab == .share,
                     onCreateProject: {
                         showsNewProject = true
                     },
@@ -520,14 +520,9 @@ extension HomeView.Tab: CaseIterable {
 }
 
 private struct HomeHeader: View {
-    enum TrailingStyle {
-        case settings
-        case refresh
-    }
-
     let title: String
     let showsCreateProjectButton: Bool
-    var trailingStyle: TrailingStyle = .settings
+    let showsRefreshButton: Bool
     let onCreateProject: () -> Void
     var onRefresh: (() -> Void)?
 
@@ -551,20 +546,7 @@ private struct HomeHeader: View {
 
             Spacer()
 
-            switch trailingStyle {
-            case .settings:
-                Button(
-                    action: {},
-                    label: {
-                        Image(systemName: "gearshape")
-                            .frame(width: 44, height: 44)
-                    }
-                )
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "home.settings.accessibility"))
-                .accessibilityIdentifier("home.settings")
-
-            case .refresh:
+            if showsRefreshButton {
                 Button(
                     action: { onRefresh?() },
                     label: {
