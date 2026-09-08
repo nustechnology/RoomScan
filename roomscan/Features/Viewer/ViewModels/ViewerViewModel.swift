@@ -85,12 +85,12 @@ final class ViewerViewModel {
     }
 
     var visibleNotes: [SpatialNote] {
-        guard areNotesVisible else { return [] }
         switch placementMode {
         case .idle:
-            return notes
+            return areNotesVisible ? notes : []
         case .placingNew:
-            guard let placementDraftPosition else { return notes }
+            let savedNotes = areNotesVisible ? notes : []
+            guard let placementDraftPosition else { return savedNotes }
             let draftNote = SpatialNote(
                 id: Self.draftNoteID,
                 title: String(localized: "viewer.note.draft.title"),
@@ -102,15 +102,22 @@ final class ViewerViewModel {
                 updatedAt: .now,
                 modelVersion: "draft"
             )
-            return notes + [draftNote]
+            return savedNotes + [draftNote]
         case .moving:
-            guard let movingNote, let placementDraftPosition else { return notes }
-            return notes.map { note in
-                guard note.id == movingNote.id else { return note }
-                var updated = note
-                updated.position = placementDraftPosition
-                return updated
+            guard let movingNote else {
+                return areNotesVisible ? notes : []
             }
+            guard let placementDraftPosition else {
+                return areNotesVisible ? notes : [movingNote]
+            }
+            var relocated = movingNote
+            relocated.position = placementDraftPosition
+            if areNotesVisible {
+                return notes.map { note in
+                    note.id == movingNote.id ? relocated : note
+                }
+            }
+            return [relocated]
         }
     }
 
@@ -173,12 +180,26 @@ final class ViewerViewModel {
             return
         } catch let error as ModelLoadingError {
             modelSource = nil
-            await keepRetryLoadingVisibleIfNeeded(isRetry: isRetry, startedAt: startedAt)
+            let didFinishRetryDelay = await keepRetryLoadingVisibleIfNeeded(
+                isRetry: isRetry,
+                startedAt: startedAt
+            )
+            guard didFinishRetryDelay, !Task.isCancelled else {
+                loadState = .idle
+                return
+            }
             loadState = .failed(error)
             return
         } catch {
             modelSource = nil
-            await keepRetryLoadingVisibleIfNeeded(isRetry: isRetry, startedAt: startedAt)
+            let didFinishRetryDelay = await keepRetryLoadingVisibleIfNeeded(
+                isRetry: isRetry,
+                startedAt: startedAt
+            )
+            guard didFinishRetryDelay, !Task.isCancelled else {
+                loadState = .idle
+                return
+            }
             loadState = .failed(.loadFailed)
             return
         }
@@ -563,34 +584,5 @@ extension ViewerViewModel {
         #if DEBUG
         print("[Notes] \(message)")
         #endif
-    }
-}
-private extension ViewerViewModel {
-    func keepRetryLoadingVisibleIfNeeded(isRetry: Bool, startedAt: Date) async {
-        guard isRetry else { return }
-        let remainingDuration = 3 - Date().timeIntervalSince(startedAt)
-        guard remainingDuration > 0 else { return }
-        try? await Task.sleep(nanoseconds: UInt64(remainingDuration * 1_000_000_000))
-    }
-    func resolveModelURL(forceDownload: Bool) async throws -> URL? {
-        let destinationURL = FileManager.default.urls(
-            for: .documentDirectory,
-            in: .userDomainMask
-        )[0]
-        .appendingPathComponent("Scans", isDirectory: true)
-        .appendingPathComponent(input.scanID, isDirectory: true)
-        .appendingPathComponent("mesh.usdz")
-        if !forceDownload || modelDownloadService == nil {
-            if let modelURL = input.modelURL,
-               FileManager.default.fileExists(atPath: modelURL.path) {
-                return modelURL
-            }
-            if FileManager.default.fileExists(atPath: destinationURL.path) {
-                return destinationURL
-            }
-        }
-        guard let modelDownloadService else { return input.modelURL }
-        try await modelDownloadService.downloadModel(scanID: input.scanID, to: destinationURL)
-        return destinationURL
     }
 }

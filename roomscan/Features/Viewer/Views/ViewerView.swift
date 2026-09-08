@@ -524,7 +524,7 @@ private struct PinPlacementBanner: View {
         switch mode {
         case .add:
             if hasDraftPosition {
-                return String(localized: "viewer.placement.drag.banner")
+                return String(localized: "viewer.placement.add.adjust.banner")
             }
             return String(localized: "viewer.placement.banner")
         case .move:

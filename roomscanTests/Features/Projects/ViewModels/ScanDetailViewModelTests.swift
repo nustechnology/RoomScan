@@ -47,6 +47,142 @@ struct ScanDetailViewModelTests {
         #expect(viewModel.notesCountText == "3")
     }
 
+    @Test func loadDetailUpdatesNotesCountFromRemote() async {
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(noteCount: 1),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(projects: [makeProject()], simulatedDelayNanoseconds: 0),
+            scanDetailService: ScanDetailRenameStub(noteCount: 4)
+        )
+
+        await viewModel.loadDetail()
+
+        #expect(viewModel.notesCountText == "4")
+        #expect(viewModel.scan.noteCount == 4)
+    }
+
+    @Test func silentLoadDetailRefreshesNotesCountWithoutLoadingFlag() async {
+        let service = ScanDetailNoteCountStub(noteCounts: [1, 3])
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(noteCount: 1),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(projects: [makeProject()], simulatedDelayNanoseconds: 0),
+            scanDetailService: service
+        )
+
+        await viewModel.loadDetail()
+        #expect(viewModel.notesCountText == "1")
+
+        await viewModel.loadDetail(showsLoadingIndicator: false)
+
+        #expect(!viewModel.isLoadingDetail)
+        #expect(viewModel.notesCountText == "3")
+        #expect(viewModel.scan.noteCount == 3)
+    }
+
+    @Test func silentLoadDetailSkippedWhileVisibleLoadIsInFlight() async {
+        let service = DeferredSilentRefreshScanDetailStub(
+            firstNoteCount: 1,
+            refreshedNoteCount: 5
+        )
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(name: "Living Room", noteCount: 0),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(projects: [makeProject()], simulatedDelayNanoseconds: 0),
+            scanDetailService: service
+        )
+
+        let visibleLoad = Task { await viewModel.loadDetail(showsLoadingIndicator: true) }
+        await service.waitUntilFirstFetchIsSuspended()
+        #expect(viewModel.isLoadingDetail)
+
+        await viewModel.loadDetail(showsLoadingIndicator: false)
+        #expect(await service.fetchCount() == 1)
+
+        await service.releaseFirstFetch()
+        await visibleLoad.value
+
+        #expect(!viewModel.isLoadingDetail)
+        #expect(await service.fetchCount() == 2)
+        #expect(viewModel.notesCountText == "5")
+        #expect(viewModel.scan.noteCount == 5)
+    }
+
+    @Test func loadDetailIgnoresSupersededResponseWhenLaterLoadFinishesFirst() async {
+        let service = ReverseCompletionScanDetailStub(
+            staleNoteCount: 2,
+            latestNoteCount: 7
+        )
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(noteCount: 1),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(projects: [makeProject()], simulatedDelayNanoseconds: 0),
+            scanDetailService: service
+        )
+
+        let firstLoad = Task { await viewModel.loadDetail(showsLoadingIndicator: false) }
+        await service.waitUntilFirstFetchIsSuspended()
+        await viewModel.loadDetail(showsLoadingIndicator: false)
+        await firstLoad.value
+
+        #expect(viewModel.notesCountText == "7")
+        #expect(viewModel.scan.noteCount == 7)
+    }
+
+    @Test func successfulRenameInvalidatesInFlightDetailLoad() async {
+        let service = SuspendedFetchScanDetailStub(staleName: "Living Room")
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(name: "Living Room"),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(projects: [makeProject()], simulatedDelayNanoseconds: 0),
+            scanDetailService: service
+        )
+
+        let inFlightLoad = Task { await viewModel.loadDetail(showsLoadingIndicator: false) }
+        await service.waitUntilFetchIsSuspended()
+
+        viewModel.renameDraft = "Dining Room"
+        let didRename = await viewModel.renameScan()
+        #expect(didRename)
+        #expect(viewModel.title == "Dining Room")
+
+        await service.releaseSuspendedFetch()
+        await inFlightLoad.value
+
+        #expect(viewModel.title == "Dining Room")
+        #expect(viewModel.scan.name == "Dining Room")
+    }
+
+    @Test func successfulDeleteInvalidatesInFlightDetailLoad() async {
+        let service = SuspendedFetchScanDetailStub(staleName: "Living Room")
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(name: "Living Room"),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(projects: [makeProject()], simulatedDelayNanoseconds: 0),
+            scanDetailService: service
+        )
+
+        let inFlightLoad = Task { await viewModel.loadDetail(showsLoadingIndicator: false) }
+        await service.waitUntilFetchIsSuspended()
+
+        let didDelete = await viewModel.deleteScan()
+        #expect(didDelete)
+        #expect(viewModel.didDeleteScan)
+        #expect(viewModel.detail == nil)
+
+        await service.releaseSuspendedFetch()
+        await inFlightLoad.value
+
+        #expect(viewModel.didDeleteScan)
+        #expect(viewModel.detail == nil)
+    }
+
     @Test func thumbnailPathUsesThumbnailFromDetail() async {
         let viewModel = ScanDetailViewModel(
             projectID: "project-1",
@@ -517,10 +653,12 @@ struct ScanDetailAssetAvailabilityTests {
 private struct ScanDetailRenameStub: ScanDetailService {
     let assetStatus: String
     let thumbnail: String?
+    let noteCount: Int
 
-    init(assetStatus: String = "NONE", thumbnail: String? = nil) {
+    init(assetStatus: String = "NONE", thumbnail: String? = nil, noteCount: Int = 0) {
         self.assetStatus = assetStatus
         self.thumbnail = thumbnail
+        self.noteCount = noteCount
     }
 
     func fetchScanDetail(id: String) async throws -> ScanDetail {
@@ -542,7 +680,7 @@ private struct ScanDetailRenameStub: ScanDetailService {
             thumbnail: thumbnail,
             creatorID: "mock-user-apple",
             creatorEmail: nil,
-            noteCount: 0,
+            noteCount: noteCount,
             assetStatus: assetStatus,
             syncStatus: .synced,
             modelVersion: 1,
@@ -556,6 +694,194 @@ private struct ScanDetailRenameStub: ScanDetailService {
             )
         )
     }
+}
+
+private final class ScanDetailNoteCountStub: ScanDetailService, @unchecked Sendable {
+    private var remainingCounts: [Int]
+
+    init(noteCounts: [Int]) {
+        remainingCounts = noteCounts
+    }
+
+    func fetchScanDetail(id: String) async throws -> ScanDetail {
+        let count = remainingCounts.isEmpty ? 0 : remainingCounts.removeFirst()
+        return ScanDetailRenameStub(noteCount: count).makeDetail(
+            id: id,
+            name: "Living Room",
+            description: nil
+        )
+    }
+
+    func updateScanDetail(id: String, name: String, description: String?) async throws -> ScanDetail {
+        ScanDetailRenameStub().makeDetail(id: id, name: name, description: description)
+    }
+
+    func deleteScanDetail(id: String) async throws {}
+}
+
+/// Completes the second fetch before releasing the first so callers can verify
+/// that a superseded response does not overwrite newer detail state.
+private actor ReverseCompletionScanDetailStub: ScanDetailService {
+    private let staleNoteCount: Int
+    private let latestNoteCount: Int
+    private var fetchCount = 0
+    private var firstContinuation: CheckedContinuation<ScanDetail, Never>?
+    private var firstFetchSuspendedContinuation: CheckedContinuation<Void, Never>?
+
+    init(staleNoteCount: Int, latestNoteCount: Int) {
+        self.staleNoteCount = staleNoteCount
+        self.latestNoteCount = latestNoteCount
+    }
+
+    func waitUntilFirstFetchIsSuspended() async {
+        if firstContinuation != nil { return }
+        await withCheckedContinuation { continuation in
+            firstFetchSuspendedContinuation = continuation
+        }
+    }
+
+    func fetchScanDetail(id: String) async throws -> ScanDetail {
+        fetchCount += 1
+        if fetchCount == 1 {
+            return await withCheckedContinuation { continuation in
+                firstContinuation = continuation
+                firstFetchSuspendedContinuation?.resume()
+                firstFetchSuspendedContinuation = nil
+            }
+        }
+
+        let latest = ScanDetailRenameStub(noteCount: latestNoteCount).makeDetail(
+            id: id,
+            name: "Living Room",
+            description: nil
+        )
+        if let firstContinuation {
+            self.firstContinuation = nil
+            firstContinuation.resume(
+                returning: ScanDetailRenameStub(noteCount: staleNoteCount).makeDetail(
+                    id: id,
+                    name: "Living Room",
+                    description: nil
+                )
+            )
+        }
+        return latest
+    }
+
+    func updateScanDetail(id: String, name: String, description: String?) async throws -> ScanDetail {
+        ScanDetailRenameStub().makeDetail(id: id, name: name, description: description)
+    }
+
+    func deleteScanDetail(id: String) async throws {}
+}
+
+/// Suspends the first visible fetch, then serves an immediate refreshed payload for a deferred silent load.
+private actor DeferredSilentRefreshScanDetailStub: ScanDetailService {
+    private let firstNoteCount: Int
+    private let refreshedNoteCount: Int
+    private var startedFetchCount = 0
+    private var firstContinuation: CheckedContinuation<ScanDetail, Never>?
+    private var firstFetchSuspendedContinuation: CheckedContinuation<Void, Never>?
+
+    init(firstNoteCount: Int, refreshedNoteCount: Int) {
+        self.firstNoteCount = firstNoteCount
+        self.refreshedNoteCount = refreshedNoteCount
+    }
+
+    func fetchCount() -> Int {
+        startedFetchCount
+    }
+
+    func waitUntilFirstFetchIsSuspended() async {
+        if firstContinuation != nil { return }
+        await withCheckedContinuation { continuation in
+            firstFetchSuspendedContinuation = continuation
+        }
+    }
+
+    func releaseFirstFetch() {
+        guard let firstContinuation else { return }
+        self.firstContinuation = nil
+        firstContinuation.resume(
+            returning: ScanDetailRenameStub(noteCount: firstNoteCount).makeDetail(
+                id: "scan-1",
+                name: "Living Room",
+                description: nil
+            )
+        )
+    }
+
+    func fetchScanDetail(id: String) async throws -> ScanDetail {
+        startedFetchCount += 1
+        if startedFetchCount == 1 {
+            return await withCheckedContinuation { continuation in
+                firstContinuation = continuation
+                firstFetchSuspendedContinuation?.resume()
+                firstFetchSuspendedContinuation = nil
+            }
+        }
+        return ScanDetailRenameStub(noteCount: refreshedNoteCount).makeDetail(
+            id: id,
+            name: "Living Room",
+            description: nil
+        )
+    }
+
+    func updateScanDetail(id: String, name: String, description: String?) async throws -> ScanDetail {
+        ScanDetailRenameStub().makeDetail(id: id, name: name, description: description)
+    }
+
+    func deleteScanDetail(id: String) async throws {}
+}
+
+/// Holds a detail fetch until explicitly released so a mutation can win over a stale response.
+private actor SuspendedFetchScanDetailStub: ScanDetailService {
+    private let staleName: String
+    private var fetchContinuation: CheckedContinuation<ScanDetail, Never>?
+    private var fetchSuspendedContinuation: CheckedContinuation<Void, Never>?
+    private var startedFetchCount = 0
+
+    init(staleName: String) {
+        self.staleName = staleName
+    }
+
+    func fetchCount() -> Int {
+        startedFetchCount
+    }
+
+    func waitUntilFetchIsSuspended() async {
+        if fetchContinuation != nil { return }
+        await withCheckedContinuation { continuation in
+            fetchSuspendedContinuation = continuation
+        }
+    }
+
+    func releaseSuspendedFetch() {
+        guard let fetchContinuation else { return }
+        self.fetchContinuation = nil
+        fetchContinuation.resume(
+            returning: ScanDetailRenameStub().makeDetail(
+                id: "scan-1",
+                name: staleName,
+                description: nil
+            )
+        )
+    }
+
+    func fetchScanDetail(id: String) async throws -> ScanDetail {
+        startedFetchCount += 1
+        return await withCheckedContinuation { continuation in
+            fetchContinuation = continuation
+            fetchSuspendedContinuation?.resume()
+            fetchSuspendedContinuation = nil
+        }
+    }
+
+    func updateScanDetail(id: String, name: String, description: String?) async throws -> ScanDetail {
+        ScanDetailRenameStub().makeDetail(id: id, name: name, description: description)
+    }
+
+    func deleteScanDetail(id: String) async throws {}
 }
 
 private actor ScanDetailRenameSpy: ScanDetailService {
