@@ -67,7 +67,8 @@ struct ProjectViewerDTO: Decodable, Sendable {
 
 struct ProjectShareUserDTO: Decodable, Sendable {
     let id: String
-    let email: String
+    let email: String?
+    let displayName: String?
 }
 
 enum ShareAPIMapping {
@@ -96,16 +97,34 @@ enum ShareAPIMapping {
     }
 
     static func toInvitedMember(_ viewer: ProjectViewerDTO) -> InvitedMember {
-        let email = viewer.recipientUser.email
+        let email = nonBlank(viewer.recipientUser.email) ?? ""
+        let displayName = nonBlank(viewer.recipientUser.displayName)
+        let initials: String
+        if !email.isEmpty {
+            initials = InvitedMember.initials(for: email)
+        } else if let displayName {
+            initials = AccountDisplayName.initials(from: displayName)
+        } else {
+            initials = "?"
+        }
         return InvitedMember(
             id: viewer.userId,
-            displayName: nil,
+            displayName: displayName,
             email: email,
-            initials: InvitedMember.initials(for: email),
+            initials: initials,
             status: .accepted,
             sentAt: viewer.grantedAt,
             acceptedAt: viewer.grantedAt
         )
+    }
+
+    private static func nonBlank(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else {
+            return nil
+        }
+        return trimmed
     }
 
     static func toMembers(_ response: ProjectSharesAPIResponse) -> [InvitedMember] {

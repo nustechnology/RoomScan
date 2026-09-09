@@ -50,9 +50,32 @@ struct RemoteShareServiceTests {
         #expect(snapshot.members[0].status == .pending)
         #expect(snapshot.members[1].id == "viewer-user-1")
         #expect(snapshot.members[1].email == "viewer@example.com")
+        #expect(snapshot.members[1].displayName == "Viewer One")
+        #expect(snapshot.members[1].rowTitle == "Viewer One")
+        #expect(snapshot.members[1].initials == "V")
         #expect(snapshot.members[1].status == .accepted)
         #expect(snapshot.members[1].acceptedAt != nil)
         #expect(await recorder.requests.count == 1)
+    }
+
+    @Test func loadInvitedMembers_fallsBackToDisplayNameThenAnonymous() async throws {
+        let client = FakeShareHTTPClient { _ in
+            .success(Self.sharesJSONWithNullableViewerIdentity())
+        }
+        let service = RemoteShareService(httpClient: client)
+        let input = ShareScreenInput.project(id: "project-1", name: "Lakeside Remodel")
+
+        let snapshot = try await service.loadInvitedMembers(for: input)
+
+        #expect(snapshot.members.count == 2)
+        #expect(snapshot.members[0].email.isEmpty)
+        #expect(snapshot.members[0].displayName == "BBBBBBB")
+        #expect(snapshot.members[0].rowTitle == "BBBBBBB")
+        #expect(snapshot.members[0].initials == "BB")
+        #expect(snapshot.members[1].email.isEmpty)
+        #expect(snapshot.members[1].displayName == nil)
+        #expect(snapshot.members[1].rowTitle == "Anonymous")
+        #expect(snapshot.members[1].initials == "?")
     }
 
     @Test func loadInvitedMembers_scanUsesScanID() async throws {
@@ -407,9 +430,42 @@ struct RemoteShareServiceTests {
                   "userId": "viewer-user-1",
                   "recipientUser": {
                     "id": "viewer-user-1",
-                    "email": "viewer@example.com"
+                    "email": "viewer@example.com",
+                    "displayName": "Viewer One"
                   },
                   "grantedAt": "2026-08-14T10:05:13.883Z"
+                }
+              ]
+            }
+            """.utf8
+        )
+    }
+
+    private static func sharesJSONWithNullableViewerIdentity() -> Data {
+        Data(
+            """
+            {
+              "pendingInvitations": [],
+              "viewers": [
+                {
+                  "userId": "viewer-user-1",
+                  "revision": 1,
+                  "recipientUser": {
+                    "id": "viewer-user-1",
+                    "email": null,
+                    "displayName": "BBBBBBB"
+                  },
+                  "grantedAt": "2026-09-07T03:09:52.686Z"
+                },
+                {
+                  "userId": "viewer-user-2",
+                  "revision": 1,
+                  "recipientUser": {
+                    "id": "viewer-user-2",
+                    "email": null,
+                    "displayName": null
+                  },
+                  "grantedAt": "2026-09-07T03:09:52.686Z"
                 }
               ]
             }

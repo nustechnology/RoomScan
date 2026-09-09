@@ -76,12 +76,7 @@ struct MemberActionsBottomSheet: View {
     }
 
     private var titleText: String {
-        switch member.status {
-        case .accepted:
-            return member.rowTitle
-        case .pending:
-            return member.email
-        }
+        member.rowTitle
     }
 
     private var subtitleText: String {

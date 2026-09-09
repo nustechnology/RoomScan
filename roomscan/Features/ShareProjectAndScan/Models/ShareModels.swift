@@ -41,9 +41,20 @@ struct InvitedMember: Identifiable, Equatable, Hashable, Sendable {
     let sentAt: Date
     let acceptedAt: Date?
 
+    static var anonymousDisplayName: String {
+        String(localized: "share.member.anonymous")
+    }
+
     var rowTitle: String {
         let trimmedName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return trimmedName.isEmpty ? email : trimmedName
+        if !trimmedName.isEmpty {
+            return trimmedName
+        }
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedEmail.isEmpty {
+            return trimmedEmail
+        }
+        return Self.anonymousDisplayName
     }
 
     static func initials(for email: String) -> String {
