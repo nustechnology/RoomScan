@@ -178,6 +178,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         guard !commands.isEmpty else { return }
 
         var isZoomOnly = true
+        var shouldAnimate = true
         for command in commands {
             switch command {
             case .zoomIn:
@@ -192,6 +193,8 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
                 isZoomOnly = false
                 target = position
                 distance = max(minDistance, min(distance, 5.5))
+                // Focus accompanies note selection, so it must not race the presenting sheet or gestures.
+                shouldAnimate = false
             }
         }
 
@@ -202,7 +205,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
                 timingFunction: .easeOut
             )
         } else {
-            updateCamera(animated: true)
+            updateCamera(animated: shouldAnimate)
         }
     }
 
