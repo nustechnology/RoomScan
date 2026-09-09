@@ -85,7 +85,9 @@ actor RemoteSharedService: SharedService {
             let remoteItems = remoteScans.map {
                 SharedScanAPIItem.toSharedScanItem(
                     $0,
-                    projectName: projectNamesByID[$0.projectId] ?? "Unknown Project"
+                    projectName: $0.embeddedProjectName
+                        ?? projectNamesByID[$0.projectId]
+                        ?? "Unknown Project"
                 )
             }
             var itemsByID = Dictionary(
@@ -280,6 +282,7 @@ private struct SharedProjectAPIItem: Decodable, Sendable {
 private struct SharedScanAPIItem: Decodable, Sendable {
     let id: String
     let projectId: String
+    let project: SharedScanProjectDTO?
     let name: String
     let thumbnail: String?
     let creator: ProjectOwnerDTO
@@ -288,6 +291,15 @@ private struct SharedScanAPIItem: Decodable, Sendable {
     let updatedAt: Date
     let status: String
     let permissions: SharedPermissionsDTO
+
+    var embeddedProjectName: String? {
+        guard let name = project?.name,
+              !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return nil
+        }
+        return name
+    }
 
     static func toSharedScanItem(_ item: SharedScanAPIItem, projectName: String) -> SharedScanItem {
         let ownerName = item.creator.sharedDisplayName
@@ -318,6 +330,10 @@ private struct SharedScanAPIItem: Decodable, Sendable {
             detailScan: accessStatus.isActive ? scan : nil
         )
     }
+}
+
+private struct SharedScanProjectDTO: Decodable, Sendable {
+    let name: String?
 }
 
 private extension ProjectOwnerDTO {

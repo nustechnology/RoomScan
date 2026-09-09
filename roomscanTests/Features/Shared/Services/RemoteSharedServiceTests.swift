@@ -42,7 +42,7 @@ struct RemoteSharedServiceTests {
         #expect(scans[0].id == "shared-scan-1")
         #expect(scans[0].ownerName == "Scan Creator")
         #expect(scans[0].projectID == "shared-project-1")
-        #expect(scans[0].projectName == "Shared Project")
+        #expect(scans[0].projectName == " Project Name From Scan API ")
         #expect(scans[0].noteCount == 2)
         #expect(scans[0].detailScan?.syncStatus == .synced)
         #expect(scans.first { $0.id == "shared-scan-revoked" }?.status == .accessRevoked)
@@ -324,6 +324,7 @@ struct RemoteSharedServiceTests {
           "items": [{
             "id": "shared-scan-1",
             "projectId": "shared-project-1",
+            "project": { "id": "shared-project-1", "name": " Project Name From Scan API " },
             "name": "Shared Scan",
             "thumbnail": "https://example.com/thumbnail",
             "creator": { "id": "owner-1", "email": "owner@example.com", "displayName": "Scan Creator" },
