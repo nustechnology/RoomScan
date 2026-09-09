@@ -44,22 +44,21 @@ final class ScanningUITests: XCTestCase {
         XCTAssertTrue(saveButton.waitForExistence(timeout: 5))
 
         let scanNameField = app.textFields["review.scanNameField"]
-        if scanNameField.waitForExistence(timeout: 3) {
-            scanNameField.tap()
-            scanNameField.typeText(" Scan Alpha")
-        }
+        XCTAssertTrue(scanNameField.waitForExistence(timeout: 5))
+        scanNameField.tap()
+        scanNameField.typeText("Scan Alpha")
 
         let projectDropdown = app.buttons["review.selectProjectDropdown"]
         XCTAssertTrue(projectDropdown.waitForExistence(timeout: 3))
         projectDropdown.tap()
 
-        let firstProject = app.buttons["review.projectOption.project-1"]
-        XCTAssertTrue(firstProject.waitForExistence(timeout: 3))
+        let firstProject = app.descendants(matching: .any)["review.projectOption.project-1"].firstMatch
+        XCTAssertTrue(firstProject.waitForExistence(timeout: 10))
         firstProject.tap()
 
         let saveEnabledPredicate = NSPredicate(format: "isEnabled == true")
         expectation(for: saveEnabledPredicate, evaluatedWith: saveButton, handler: nil)
-        waitForExpectations(timeout: 5)
+        waitForExpectations(timeout: 10)
 
         // Tap Save Scan
         saveButton.tap()
@@ -118,14 +117,20 @@ final class ScanningUITests: XCTestCase {
         let saveButton = app.buttons["review.saveButton"]
         XCTAssertTrue(saveButton.waitForExistence(timeout: 5))
 
+        let projectDropdown = app.buttons["review.selectProjectDropdown"]
+        XCTAssertTrue(projectDropdown.waitForExistence(timeout: 5))
+        let preselectedProjectPredicate = NSPredicate(format: "label CONTAINS %@", "Lakeside Remodel")
+        expectation(for: preselectedProjectPredicate, evaluatedWith: projectDropdown, handler: nil)
+        waitForExpectations(timeout: 10)
+
         let scanNameField = app.textFields["review.scanNameField"]
-        XCTAssertTrue(scanNameField.waitForExistence(timeout: 3))
+        XCTAssertTrue(scanNameField.waitForExistence(timeout: 5))
         scanNameField.tap()
         scanNameField.typeText("Project Scan")
 
         let saveEnabledPredicate = NSPredicate(format: "isEnabled == true")
         expectation(for: saveEnabledPredicate, evaluatedWith: saveButton, handler: nil)
-        waitForExpectations(timeout: 5)
+        waitForExpectations(timeout: 10)
         saveButton.tap()
 
         let doneButton = app.buttons["scanDetails.doneButton"]

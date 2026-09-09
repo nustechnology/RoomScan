@@ -83,9 +83,13 @@ actor RemoteSharedService: SharedService {
             )
             projectNamesByID.merge(fetchedProjectNames, uniquingKeysWith: { _, candidate in candidate })
             let remoteItems = remoteScans.map {
-                SharedScanAPIItem.toSharedScanItem(
+                let projectName = [$0.project?.name, projectNamesByID[$0.projectId]]
+                    .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .first { !$0.isEmpty }
+                    ?? "Unknown Project"
+                return SharedScanAPIItem.toSharedScanItem(
                     $0,
-                    projectName: projectNamesByID[$0.projectId] ?? "Unknown Project"
+                    projectName: projectName
                 )
             }
             var itemsByID = Dictionary(
@@ -280,6 +284,7 @@ private struct SharedProjectAPIItem: Decodable, Sendable {
 private struct SharedScanAPIItem: Decodable, Sendable {
     let id: String
     let projectId: String
+    let project: SharedScanProjectDTO?
     let name: String
     let thumbnail: String?
     let creator: ProjectOwnerDTO
@@ -318,6 +323,10 @@ private struct SharedScanAPIItem: Decodable, Sendable {
             detailScan: accessStatus.isActive ? scan : nil
         )
     }
+}
+
+private struct SharedScanProjectDTO: Decodable, Sendable {
+    let name: String?
 }
 
 private extension ProjectOwnerDTO {

@@ -42,11 +42,32 @@ struct RemoteSharedServiceTests {
         #expect(scans[0].id == "shared-scan-1")
         #expect(scans[0].ownerName == "Scan Creator")
         #expect(scans[0].projectID == "shared-project-1")
-        #expect(scans[0].projectName == "Shared Project")
+        #expect(scans[0].projectName == "Project Name From Scan API")
         #expect(scans[0].noteCount == 2)
         #expect(scans[0].detailScan?.syncStatus == .synced)
         #expect(scans.first { $0.id == "shared-scan-revoked" }?.status == .accessRevoked)
         #expect(scans.first { $0.id == "shared-scan-revoked" }?.ownerName == "owner@example.com")
+    }
+
+    @Test func fetchSharedScans_resolvesEmbeddedProjectNamesAndFallbacks() async throws {
+        let client = SharedHTTPClient { endpoint in
+            switch endpoint.path {
+            case "/api/v1/shared-projects":
+                return .success(Self.sharedProjectsJSON)
+            case "/api/v1/shared-scans":
+                return .success(Self.sharedScansWithInvalidProjectNamesJSON)
+            default:
+                Issue.record("Unexpected endpoint: \(endpoint.path)")
+                return .failure(.networkError)
+            }
+        }
+        let service = RemoteSharedService(httpClient: client, now: { Self.fixtureNow })
+
+        let scans = try await service.fetchSharedScans()
+
+        #expect(scans.first { $0.id == "shared-scan-1" }?.projectName == "Shared Project")
+        #expect(scans.first { $0.id == "shared-scan-revoked" }?.projectName == "Revoked Project")
+        #expect(scans.first { $0.id == "shared-scan-trimmed-project" }?.projectName == "Embedded Project")
     }
 
     @Test func removeSharedItem_callsScopeSpecificEndpoints() async throws {
@@ -324,6 +345,7 @@ struct RemoteSharedServiceTests {
           "items": [{
             "id": "shared-scan-1",
             "projectId": "shared-project-1",
+            "project": { "id": "shared-project-1", "name": "Project Name From Scan API" },
             "name": "Shared Scan",
             "thumbnail": "https://example.com/thumbnail",
             "creator": { "id": "owner-1", "email": "owner@example.com", "displayName": "Scan Creator" },
@@ -353,6 +375,51 @@ struct RemoteSharedServiceTests {
         String(decoding: sharedScansJSON, as: UTF8.self)
             .replacingOccurrences(of: "2026-08-12T04:29:30.089Z", with: "2026-08-07T04:29:30.089Z")
             .utf8
+    )
+
+    private static let sharedScansWithInvalidProjectNamesJSON = Data(
+        """
+        {
+          "items": [{
+            "id": "shared-scan-1",
+            "projectId": "shared-project-1",
+            "project": { "id": "shared-project-1", "name": "   " },
+            "name": "Shared Scan",
+            "thumbnail": "https://example.com/thumbnail",
+            "creator": { "id": "owner-1", "email": "owner@example.com", "displayName": "Scan Creator" },
+            "noteCount": 2,
+            "syncStatus": "SYNCED",
+            "updatedAt": "2026-08-13T04:29:30.089Z",
+            "status": "ACTIVE",
+            "permissions": { "canView": true }
+          }, {
+            "id": "shared-scan-revoked",
+            "projectId": "shared-project-revoked",
+            "project": { "id": "shared-project-revoked" },
+            "name": "Revoked Scan",
+            "thumbnail": null,
+            "creator": { "id": "owner-1", "email": "owner@example.com" },
+            "noteCount": 0,
+            "syncStatus": "SYNCED",
+            "updatedAt": "2026-08-12T04:29:30.089Z",
+            "status": "REVOKED",
+            "permissions": { "canView": false }
+          }, {
+            "id": "shared-scan-trimmed-project",
+            "projectId": "shared-project-1",
+            "project": { "id": "shared-project-1", "name": "  Embedded Project  " },
+            "name": "Scan With Trimmed Project",
+            "thumbnail": null,
+            "creator": { "id": "owner-1", "email": "owner@example.com" },
+            "noteCount": 0,
+            "syncStatus": "SYNCED",
+            "updatedAt": "2026-08-11T04:29:30.089Z",
+            "status": "ACTIVE",
+            "permissions": { "canView": true }
+          }],
+          "pagination": { "page": 1, "limit": 50, "total": 3, "totalPages": 1 }
+        }
+        """.utf8
     )
 }
 
