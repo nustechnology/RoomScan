@@ -3281,6 +3281,18 @@
         }
       }
     },
+    "share.member.anonymous" : {
+      "comment" : "Fallback label when a shared member has neither email nor display name.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anonymous"
+          }
+        }
+      }
+    },
     "share.member.cancel" : {
       "extractionState" : "manual",
       "localizations" : {
