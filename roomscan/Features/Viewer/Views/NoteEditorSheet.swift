@@ -100,7 +100,7 @@ struct NoteEditorSheet: View {
                 String(localized: "viewer.note.editor.titlePlaceholder"),
                 text: Binding(
                     get: { viewModel.title },
-                    set: { viewModel.updateTitle($0) }
+                    set: { viewModel.title = $0 }
                 )
             )
             .textFieldStyle(.plain)
@@ -115,6 +115,9 @@ struct NoteEditorSheet: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large))
             .focused($focusedField, equals: .title)
+            .onChange(of: viewModel.title) { _, title in
+                viewModel.updateTitle(title)
+            }
             .accessibilityIdentifier("viewer.note.editor.title")
 
             characterCountText("\(viewModel.titleCharacterCount)/\(NoteEditorViewModel.titleLimit)")
@@ -131,7 +134,7 @@ struct NoteEditorSheet: View {
                 String(localized: "viewer.note.editor.descriptionPlaceholder"),
                 text: Binding(
                     get: { viewModel.noteDescription },
-                    set: { viewModel.updateDescription($0) }
+                    set: { viewModel.noteDescription = $0 }
                 ),
                 axis: .vertical
             )
@@ -148,6 +151,9 @@ struct NoteEditorSheet: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large))
             .focused($focusedField, equals: .description)
+            .onChange(of: viewModel.noteDescription) { _, description in
+                viewModel.updateDescription(description)
+            }
             .accessibilityIdentifier("viewer.note.editor.description")
 
             characterCountText(

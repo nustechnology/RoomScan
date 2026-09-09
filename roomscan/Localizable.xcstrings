@@ -4273,7 +4273,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Description"
+            "value" : "Description *"
           }
         }
       }
@@ -4328,7 +4328,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Title"
+            "value" : "Title *"
           }
         }
       }
