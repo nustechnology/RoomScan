@@ -5,7 +5,7 @@
 
 import Foundation
 
-protocol ShareService: Sendable {
+nonisolated protocol ShareService: Sendable {
     func loadInvitedMembers(for input: ShareScreenInput) async throws -> ShareMembersSnapshot
     func sendInvitation(for input: ShareScreenInput, email: String) async throws -> InvitedMember
     func resendInvitation(for input: ShareScreenInput, id: String) async throws -> InvitedMember
@@ -14,7 +14,7 @@ protocol ShareService: Sendable {
     func copyInvitationLink(for input: ShareScreenInput) async throws -> URL
 }
 
-enum ShareServiceError: Error, Equatable, Sendable {
+nonisolated enum ShareServiceError: Error, Equatable, Sendable {
     case offline
     case duplicateEmail
     case memberNotFound

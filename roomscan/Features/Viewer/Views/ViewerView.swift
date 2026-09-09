@@ -319,8 +319,8 @@ private extension ViewerView {
                     onPinTapped: { viewModel.handlePinTap(noteID: $0) },
                     onSurfaceTapped: { viewModel.handleCanvasTap(position: $0) },
                     onMoveDraftChanged: { viewModel.updateMoveDraft(position: $0) },
-                    onModelLoaded: { viewModel.reportModelLoaded() },
-                    onModelLoadFailed: { viewModel.reportModelLoadFailed() }
+                    onModelLoaded: { @MainActor @Sendable in viewModel.reportModelLoaded() },
+                    onModelLoadFailed: { @MainActor @Sendable in viewModel.reportModelLoadFailed() }
                 )
                 .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
                 .accessibilityIdentifier("viewer.canvas")

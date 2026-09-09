@@ -5,7 +5,7 @@
 
 import Foundation
 
-struct AuthenticatedHTTPClient: HTTPClient {
+nonisolated struct AuthenticatedHTTPClient: HTTPClient {
     private let httpClient: any HTTPClient
     private let keychainStore: any KeychainTokenStore
     private let refreshCoordinator: AccessTokenRefreshCoordinator
@@ -48,10 +48,7 @@ struct AuthenticatedHTTPClient: HTTPClient {
                 refreshedData = try await refreshCoordinator.refreshTokens()
             } catch let authError as AuthenticationError {
                 if authError == .invalidCredential {
-                    try? keychainStore.deleteTokens()
-                    if let onSessionInvalidated {
-                        await onSessionInvalidated()
-                    }
+                    await clearInvalidSession()
                     throw error
                 }
                 throw mapRefreshFailure(authError, originalError: error)
@@ -63,6 +60,14 @@ struct AuthenticatedHTTPClient: HTTPClient {
             )
             return try await httpClient.request(retriedEndpoint)
         }
+    }
+
+    /// Deletes tokens and notifies `AppState` in one MainActor turn so callers cannot
+    /// observe an empty keychain while `phase` is still `.signedIn`.
+    @MainActor
+    private func clearInvalidSession() {
+        try? keychainStore.deleteTokens()
+        onSessionInvalidated?()
     }
 
     private func shouldRefresh(for error: HTTPClientError) -> Bool {

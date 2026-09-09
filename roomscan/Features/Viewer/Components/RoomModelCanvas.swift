@@ -22,20 +22,24 @@ struct RoomModelCanvas: UIViewRepresentable {
     var onPinTapped: (String) -> Void
     var onSurfaceTapped: (SIMD3<Float>) -> Void
     var onMoveDraftChanged: (SIMD3<Float>) -> Void
-    var onModelLoaded: () -> Void
-    var onModelLoadFailed: () -> Void
+    var onModelLoaded: @MainActor @Sendable () -> Void
+    var onModelLoadFailed: @MainActor @Sendable () -> Void
 
-    private func deferToNextViewUpdate(_ action: @escaping () -> Void) {
-        DispatchQueue.main.async(execute: action)
+    private func deferToNextViewUpdate(_ action: @escaping @MainActor @Sendable () -> Void) {
+        Task { @MainActor in
+            action()
+        }
     }
 
     func makeCoordinator() -> RoomModelCanvasCoordinator {
-        RoomModelCanvasCoordinator(
+        let notifyLoaded = onModelLoaded
+        let notifyFailed = onModelLoadFailed
+        return RoomModelCanvasCoordinator(
             onPinTapped: onPinTapped,
             onSurfaceTapped: onSurfaceTapped,
             onMoveDraftChanged: onMoveDraftChanged,
-            onModelLoaded: onModelLoaded,
-            onModelLoadFailed: onModelLoadFailed
+            onModelLoaded: { @MainActor @Sendable in notifyLoaded() },
+            onModelLoadFailed: { @MainActor @Sendable in notifyFailed() }
         )
     }
 }
@@ -72,8 +76,10 @@ extension RoomModelCanvas {
         coordinator.onPinTapped = onPinTapped
         coordinator.onSurfaceTapped = onSurfaceTapped
         coordinator.onMoveDraftChanged = onMoveDraftChanged
-        coordinator.onModelLoaded = onModelLoaded
-        coordinator.onModelLoadFailed = onModelLoadFailed
+        let notifyLoaded = onModelLoaded
+        let notifyFailed = onModelLoadFailed
+        coordinator.onModelLoaded = { @MainActor @Sendable in notifyLoaded() }
+        coordinator.onModelLoadFailed = { @MainActor @Sendable in notifyFailed() }
         coordinator.isPlacementMode = isPlacementMode
         coordinator.movingNoteID = movingNoteID
         coordinator.movePreviewPosition = movePreviewPosition
@@ -96,7 +102,7 @@ extension RoomModelCanvas {
             coordinator.applyCameraCommands(unapplied.map(\.command))
             let ids = Set(unapplied.map(\.id))
             coordinator.appliedCameraCommandIDs.formUnion(ids)
-            deferToNextViewUpdate {
+            deferToNextViewUpdate { @MainActor @Sendable in
                 onCameraCommandsConsumed(ids)
             }
         }

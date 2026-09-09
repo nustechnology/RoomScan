@@ -76,7 +76,7 @@ nonisolated struct SyncChangesAPIResponse: Decodable, Sendable {
 }
 
 /// Decodes `T` if possible; always succeeds so one bad array element does not fail the page.
-private struct LossyDecodable<T: Decodable>: Decodable {
+private nonisolated struct LossyDecodable<T: Decodable>: Decodable {
     let value: T?
 
     init(from decoder: Decoder) throws {

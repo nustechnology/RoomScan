@@ -5,7 +5,7 @@
 
 import Foundation
 
-protocol UsersService: Sendable {
+nonisolated protocol UsersService: Sendable {
     func fetchMe(fallingBackTo currentUser: AuthenticatedUser) async throws -> AuthenticatedUser
     func fetchRemoteDisplayName() async throws -> String?
     func updateMe(
@@ -14,7 +14,7 @@ protocol UsersService: Sendable {
     ) async throws -> AuthenticatedUser
 }
 
-enum UsersServiceError: Error, Equatable, Sendable {
+nonisolated enum UsersServiceError: Error, Equatable, Sendable {
     case invalidDisplayName
     case network
     case unauthorized

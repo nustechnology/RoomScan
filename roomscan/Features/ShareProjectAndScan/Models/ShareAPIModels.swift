@@ -6,13 +6,13 @@
 import Foundation
 
 /// POST body for `/api/v1/projects/{projectId}/invitations`.
-struct CreateProjectInvitationAPIRequest: Encodable, Sendable {
+nonisolated struct CreateProjectInvitationAPIRequest: Encodable, Sendable {
     let recipientEmail: String
     let expiresInSeconds: Int
 }
 
 /// Shared invitation payload returned by create and resend endpoints.
-struct CreateProjectInvitationAPIResponse: Decodable, Sendable {
+nonisolated struct CreateProjectInvitationAPIResponse: Decodable, Sendable {
     let invitationId: String
     let invitationUrl: String
     let recipientEmail: String
@@ -22,7 +22,7 @@ struct CreateProjectInvitationAPIResponse: Decodable, Sendable {
 }
 
 /// Response from either project or scan share-link creation endpoint.
-struct CreateShareLinkAPIResponse: Decodable, Sendable {
+nonisolated struct CreateShareLinkAPIResponse: Decodable, Sendable {
     let shareLinkId: String
     let shareLinkUrl: String
     let scope: String
@@ -30,7 +30,7 @@ struct CreateShareLinkAPIResponse: Decodable, Sendable {
 }
 
 /// 200 response from `DELETE /api/v1/invitations/{invitationId}`.
-struct RevokeInvitationAPIResponse: Decodable, Sendable {
+nonisolated struct RevokeInvitationAPIResponse: Decodable, Sendable {
     let invitationId: String
     let status: String
     let revokedAt: Date
@@ -40,18 +40,18 @@ struct RevokeInvitationAPIResponse: Decodable, Sendable {
 /// The parent identifier is intentionally ignored because the caller already
 /// has the share target; project APIs return `projectId` while scan APIs may
 /// return `scanId`.
-struct RevokeShareAPIResponse: Decodable, Sendable {
+nonisolated struct RevokeShareAPIResponse: Decodable, Sendable {
     let userId: String
     let revokedAt: Date
 }
 
 /// GET response from `/api/v1/projects/{projectId}/shares`.
-struct ProjectSharesAPIResponse: Decodable, Sendable {
+nonisolated struct ProjectSharesAPIResponse: Decodable, Sendable {
     let pendingInvitations: [PendingProjectInvitationDTO]
     let viewers: [ProjectViewerDTO]
 }
 
-struct PendingProjectInvitationDTO: Decodable, Sendable {
+nonisolated struct PendingProjectInvitationDTO: Decodable, Sendable {
     let invitationId: String
     let recipientEmail: String
     let status: String
@@ -59,19 +59,21 @@ struct PendingProjectInvitationDTO: Decodable, Sendable {
     let expiresAt: Date
 }
 
-struct ProjectViewerDTO: Decodable, Sendable {
+nonisolated struct ProjectViewerDTO: Decodable, Sendable {
     let userId: String
     let recipientUser: ProjectShareUserDTO
     let grantedAt: Date
 }
 
-struct ProjectShareUserDTO: Decodable, Sendable {
+nonisolated struct ProjectShareUserDTO: Decodable, Sendable {
     let id: String
     let email: String?
     let displayName: String?
 }
 
-enum ShareAPIMapping {
+/// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so actors
+/// (e.g. `RemoteShareService`) can map DTOs from any isolation domain.
+nonisolated enum ShareAPIMapping {
     static func toInvitedMember(_ response: CreateProjectInvitationAPIResponse) -> InvitedMember {
         InvitedMember(
             id: response.invitationId,

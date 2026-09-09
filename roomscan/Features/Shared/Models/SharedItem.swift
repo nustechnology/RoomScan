@@ -5,27 +5,27 @@
 
 import Foundation
 
-enum SharedItemScope: String, Equatable, Sendable {
+nonisolated enum SharedItemScope: String, Equatable, Sendable {
     case project
     case scan
 }
 
-enum SharedAccessStatus: String, Equatable, CaseIterable, Sendable {
+nonisolated enum SharedAccessStatus: String, Equatable, CaseIterable, Sendable {
     case active
     case accessRevoked
     case itemDeleted
 
-    nonisolated var isActive: Bool { self == .active }
+    var isActive: Bool { self == .active }
 }
 
-private protocol SharedAccessTimed {
+private nonisolated protocol SharedAccessTimed {
     var status: SharedAccessStatus { get }
     var statusChangedAt: Date { get }
 }
 
 /// When either side is inactive, picks by `statusChangedAt` so a stale active event
 /// cannot resurrect a revoked share. Returns `nil` when both are active.
-private func preferredItemResolvingInactiveStatusConflict<Item: SharedAccessTimed>(
+private nonisolated func preferredItemResolvingInactiveStatusConflict<Item: SharedAccessTimed>(
     existing: Item,
     incoming: Item
 ) -> Item? {
@@ -33,7 +33,9 @@ private func preferredItemResolvingInactiveStatusConflict<Item: SharedAccessTime
     return incoming.statusChangedAt >= existing.statusChangedAt ? incoming : existing
 }
 
-struct SharedProjectItem: Identifiable, Equatable, Sendable, SharedAccessTimed {
+/// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so Equatable
+/// works from actors and nonisolated services (Swift 6–ready).
+nonisolated struct SharedProjectItem: Identifiable, Equatable, Sendable, SharedAccessTimed {
     let id: String
     let name: String
     let ownerName: String
@@ -48,12 +50,12 @@ struct SharedProjectItem: Identifiable, Equatable, Sendable, SharedAccessTimed {
 
     /// Picks the thumbnail of the scan with the most recent `createdAt`.
     /// Returns `nil` when the project has no scans (UI shows the system placeholder).
-    nonisolated static func thumbnailName(from roomScans: [RoomScanSummary]) -> String? {
+    static func thumbnailName(from roomScans: [RoomScanSummary]) -> String? {
         roomScans.max(by: { $0.createdAt < $1.createdAt })?.thumbnailName
     }
 
     /// Builds a shared project card from a `ProjectSummary`, deriving scan count and thumbnail.
-    nonisolated static func make(
+    static func make(
         from project: ProjectSummary,
         status: SharedAccessStatus,
         statusChangedAt: Date,
@@ -73,7 +75,7 @@ struct SharedProjectItem: Identifiable, Equatable, Sendable, SharedAccessTimed {
 
     /// Merges a prior local ingest with an incoming upsert without wiping openable detail.
     /// Active stubs (`detailProject == nil`) must not replace an active item that can open.
-    nonisolated static func coalescing(
+    static func coalescing(
         existing: SharedProjectItem?,
         incoming: SharedProjectItem
     ) -> SharedProjectItem {
@@ -106,13 +108,13 @@ struct SharedProjectItem: Identifiable, Equatable, Sendable, SharedAccessTimed {
     }
 }
 
-struct SharedScanParent: Equatable, Sendable {
+nonisolated struct SharedScanParent: Equatable, Sendable {
     let ownerName: String
     let projectID: String
     let projectName: String
 }
 
-struct SharedScanItem: Identifiable, Equatable, Sendable, SharedAccessTimed {
+nonisolated struct SharedScanItem: Identifiable, Equatable, Sendable, SharedAccessTimed {
     let id: String
     let name: String
     let ownerName: String
@@ -128,7 +130,7 @@ struct SharedScanItem: Identifiable, Equatable, Sendable, SharedAccessTimed {
     var isInactive: Bool { !status.isActive }
 
     /// Builds a shared scan card from a `RoomScanSummary` and parent project metadata.
-    nonisolated static func make(
+    static func make(
         from scan: RoomScanSummary,
         parent: SharedScanParent,
         status: SharedAccessStatus,
@@ -150,7 +152,7 @@ struct SharedScanItem: Identifiable, Equatable, Sendable, SharedAccessTimed {
     }
 
     /// Merges a prior local ingest with an incoming upsert without wiping openable detail.
-    nonisolated static func coalescing(
+    static func coalescing(
         existing: SharedScanItem?,
         incoming: SharedScanItem
     ) -> SharedScanItem {
@@ -184,7 +186,7 @@ struct SharedScanItem: Identifiable, Equatable, Sendable, SharedAccessTimed {
         }
     }
 
-    nonisolated var viewerInput: ViewerInput {
+    var viewerInput: ViewerInput {
         ViewerInput(
             projectID: projectID,
             projectName: projectName,
@@ -197,15 +199,15 @@ struct SharedScanItem: Identifiable, Equatable, Sendable, SharedAccessTimed {
     }
 }
 
-enum SharedServiceError: Error, Equatable {
+nonisolated enum SharedServiceError: Error, Equatable {
     case network
     case notFound
 }
 
-enum SharedInactiveRetention: Sendable {
-    nonisolated static let days = 7
+nonisolated enum SharedInactiveRetention: Sendable {
+    static let days = 7
 
-    nonisolated static func shouldRetain(status: SharedAccessStatus, statusChangedAt: Date, now: Date = Date()) -> Bool {
+    static func shouldRetain(status: SharedAccessStatus, statusChangedAt: Date, now: Date = Date()) -> Bool {
         guard !status.isActive else { return true }
         let cutoff = now.addingTimeInterval(TimeInterval(-days * 86_400))
         return statusChangedAt >= cutoff

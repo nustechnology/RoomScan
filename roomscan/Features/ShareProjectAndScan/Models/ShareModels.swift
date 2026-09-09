@@ -5,17 +5,17 @@
 
 import Foundation
 
-enum ShareScope: String, CaseIterable, Hashable, Sendable {
+nonisolated enum ShareScope: String, CaseIterable, Hashable, Sendable {
     case project
     case scan
 }
 
-enum InvitationStatus: String, CaseIterable, Hashable, Sendable {
+nonisolated enum InvitationStatus: String, CaseIterable, Hashable, Sendable {
     case pending
     case accepted
 }
 
-enum SharePermission: String, CaseIterable, Hashable, Sendable {
+nonisolated enum SharePermission: String, CaseIterable, Hashable, Sendable {
     case viewOnly
 
     var title: String {
@@ -26,13 +26,13 @@ enum SharePermission: String, CaseIterable, Hashable, Sendable {
     }
 }
 
-enum ShareMemberAction: String, Equatable, Sendable {
+nonisolated enum ShareMemberAction: String, Equatable, Sendable {
     case resendInvitation
     case cancelInvitation
     case removeAccess
 }
 
-struct InvitedMember: Identifiable, Equatable, Hashable, Sendable {
+nonisolated struct InvitedMember: Identifiable, Equatable, Hashable, Sendable {
     let id: String
     let displayName: String?
     let email: String
@@ -86,12 +86,12 @@ struct InvitedMember: Identifiable, Equatable, Hashable, Sendable {
     }
 }
 
-struct ShareMembersSnapshot: Equatable, Sendable {
+nonisolated struct ShareMembersSnapshot: Equatable, Sendable {
     let members: [InvitedMember]
     let isOffline: Bool
 }
 
-enum ShareTarget: Hashable, Sendable {
+nonisolated enum ShareTarget: Hashable, Sendable {
     case project(ProjectTarget)
     case scan(ScanTarget)
 
@@ -114,13 +114,13 @@ enum ShareTarget: Hashable, Sendable {
     }
 }
 
-struct ProjectTarget: Hashable, Sendable {
+nonisolated struct ProjectTarget: Hashable, Sendable {
     let projectID: String
     let projectName: String
     let hasUploadedScan: Bool
 }
 
-struct ScanTarget: Hashable, Sendable {
+nonisolated struct ScanTarget: Hashable, Sendable {
     let projectID: String?
     let projectName: String?
     let scanID: String
@@ -129,7 +129,7 @@ struct ScanTarget: Hashable, Sendable {
     let assetStatus: String?
 }
 
-struct ShareScreenInput: Identifiable, Hashable, Sendable {
+nonisolated struct ShareScreenInput: Identifiable, Hashable, Sendable {
     let id: String
     let scope: ShareScope
     let target: ShareTarget
@@ -214,7 +214,7 @@ struct ShareScreenInput: Identifiable, Hashable, Sendable {
     }
 }
 
-enum SharePresentation {
+nonisolated enum SharePresentation {
     static func dateText(_ date: Date, locale: Locale = .current) -> String {
         date.formatted(.dateTime.month(.abbreviated).day().locale(locale))
     }

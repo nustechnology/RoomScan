@@ -5,24 +5,26 @@
 
 import Foundation
 
-enum AuthenticationProvider: String, Codable, Sendable, CaseIterable {
+/// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so actors and
+/// nonisolated services can construct and compare these Sendable values freely.
+nonisolated enum AuthenticationProvider: String, Codable, Sendable, CaseIterable {
     case apple
     case google
     case facebook
 }
 
-struct AuthenticatedUser: Equatable, Codable, Sendable, Identifiable {
+nonisolated struct AuthenticatedUser: Equatable, Codable, Sendable, Identifiable {
     let id: String
     let displayName: String?
     let email: String?
 }
 
-struct AuthenticationSession: Equatable, Codable, Sendable {
+nonisolated struct AuthenticationSession: Equatable, Codable, Sendable {
     let user: AuthenticatedUser
     let provider: AuthenticationProvider
 }
 
-enum AuthenticationError: Error, Equatable, Sendable, LocalizedError {
+nonisolated enum AuthenticationError: Error, Equatable, Sendable, LocalizedError {
     case cancelled
     case appleSystemError
     case invalidCredential

@@ -48,7 +48,7 @@ nonisolated struct ScanDetailPermissions: Sendable {
     let canDelete: Bool
 }
 
-struct ScanDetailUpdateRequest: Encodable, Sendable {
+nonisolated struct ScanDetailUpdateRequest: Encodable, Sendable {
     let name: String
     let description: String?
 
@@ -64,7 +64,7 @@ struct ScanDetailUpdateRequest: Encodable, Sendable {
     }
 }
 
-struct ScanDetailAPIResponse: Decodable, Sendable {
+nonisolated struct ScanDetailAPIResponse: Decodable, Sendable {
     let id: String
     let revision: Int?
     let projectId: String
@@ -80,12 +80,12 @@ struct ScanDetailAPIResponse: Decodable, Sendable {
     let updatedAt: String
     let permissions: Permissions
 
-    struct Creator: Decodable, Sendable {
+    nonisolated struct Creator: Decodable, Sendable {
         let id: String
         let email: String?
     }
 
-    struct Permissions: Decodable, Sendable {
+    nonisolated struct Permissions: Decodable, Sendable {
         let role: String
         let canView: Bool
         let canEdit: Bool

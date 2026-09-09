@@ -6,7 +6,7 @@
 import Foundation
 import UIKit
 
-struct DraftManifest: Codable, Equatable, Sendable {
+nonisolated struct DraftManifest: Codable, Equatable, Sendable {
     let id: String
     let createdAt: Date
     let meshPath: String
@@ -58,7 +58,7 @@ struct DraftManifest: Codable, Equatable, Sendable {
     }
 }
 
-protocol ScanStorageService: Sendable {
+nonisolated protocol ScanStorageService: Sendable {
     func saveDraftManifest(_ draft: RoomScanDraft) throws
     func loadDraftManifest() -> RoomScanDraft?
     func clearDraftManifest()
@@ -66,16 +66,17 @@ protocol ScanStorageService: Sendable {
     func deleteScanFiles(scanID: String)
     func meshExists(scanID: String) -> Bool
     /// Returns the subset of `candidates` that have a local `mesh.usdz` on disk.
-    /// Performs filesystem work off the caller's actor; prefer this over repeated `meshExists` calls.
+    /// Prefer this over repeated `meshExists` calls. Implementations should offload
+    /// filesystem work (e.g. via `Task.detached`); `nonisolated` alone does not.
     func existingMeshScanIDs(in candidates: [String]) async -> Set<String>
 }
 
 extension ScanStorageService {
-    func meshExists(scanID: String) -> Bool { false }
-    func existingMeshScanIDs(in candidates: [String]) async -> Set<String> { [] }
+    nonisolated func meshExists(scanID: String) -> Bool { false }
+    nonisolated func existingMeshScanIDs(in candidates: [String]) async -> Set<String> { [] }
 }
 
-final class LocalScanStorageService: ScanStorageService, @unchecked Sendable {
+nonisolated final class LocalScanStorageService: ScanStorageService, @unchecked Sendable {
     private let fileManager = FileManager.default
 
     private var documentsDirectory: URL {
@@ -283,16 +284,20 @@ final class LocalScanStorageService: ScanStorageService, @unchecked Sendable {
         let safeCandidates = Set(candidates.filter(isSafeScanID))
         guard !safeCandidates.isEmpty else { return [] }
 
-        let present = Set((try? fileManager.contentsOfDirectory(atPath: scansDirectory.path)) ?? [])
-        let matchingDirectories = safeCandidates.intersection(present)
-        guard !matchingDirectories.isEmpty else { return [] }
+        let scansDirectory = self.scansDirectory
+        let fileManager = self.fileManager
+        return await Task.detached(priority: .utility) {
+            let present = Set((try? fileManager.contentsOfDirectory(atPath: scansDirectory.path)) ?? [])
+            let matchingDirectories = safeCandidates.intersection(present)
+            guard !matchingDirectories.isEmpty else { return [] }
 
-        return matchingDirectories.filter { scanID in
-            let meshURL = scansDirectory
-                .appendingPathComponent(scanID, isDirectory: true)
-                .appendingPathComponent("mesh.usdz")
-            return fileManager.fileExists(atPath: meshURL.path)
-        }
+            return matchingDirectories.filter { scanID in
+                let meshURL = scansDirectory
+                    .appendingPathComponent(scanID, isDirectory: true)
+                    .appendingPathComponent("mesh.usdz")
+                return fileManager.fileExists(atPath: meshURL.path)
+            }
+        }.value
     }
 
     private nonisolated func isSafeScanID(_ scanID: String) -> Bool {
