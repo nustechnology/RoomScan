@@ -12,6 +12,7 @@ nonisolated struct ScanDetail: Sendable {
     let description: String?
     let thumbnail: String?
     let creatorID: String
+    let creatorDisplayName: String?
     let creatorEmail: String?
     let noteCount: Int
     let assetStatus: String
@@ -21,6 +22,40 @@ nonisolated struct ScanDetail: Sendable {
     let updatedAt: Date
     let permissions: ScanDetailPermissions
 
+    init(
+        id: String,
+        projectID: String,
+        name: String,
+        description: String?,
+        thumbnail: String?,
+        creatorID: String,
+        creatorDisplayName: String? = nil,
+        creatorEmail: String?,
+        noteCount: Int,
+        assetStatus: String,
+        syncStatus: RoomScanSyncStatus,
+        modelVersion: Int,
+        createdAt: Date,
+        updatedAt: Date,
+        permissions: ScanDetailPermissions
+    ) {
+        self.id = id
+        self.projectID = projectID
+        self.name = name
+        self.description = description
+        self.thumbnail = thumbnail
+        self.creatorID = creatorID
+        self.creatorDisplayName = creatorDisplayName
+        self.creatorEmail = creatorEmail
+        self.noteCount = noteCount
+        self.assetStatus = assetStatus
+        self.syncStatus = syncStatus
+        self.modelVersion = modelVersion
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.permissions = permissions
+    }
+
     func updating(syncStatus: RoomScanSyncStatus) -> ScanDetail {
         ScanDetail(
             id: id,
@@ -29,6 +64,7 @@ nonisolated struct ScanDetail: Sendable {
             description: description,
             thumbnail: thumbnail,
             creatorID: creatorID,
+            creatorDisplayName: creatorDisplayName,
             creatorEmail: creatorEmail,
             noteCount: noteCount,
             assetStatus: assetStatus,
@@ -83,6 +119,7 @@ nonisolated struct ScanDetailAPIResponse: Decodable, Sendable {
     nonisolated struct Creator: Decodable, Sendable {
         let id: String
         let email: String?
+        let displayName: String?
     }
 
     nonisolated struct Permissions: Decodable, Sendable {
@@ -124,6 +161,7 @@ nonisolated struct ScanDetailAPIResponse: Decodable, Sendable {
             description: description,
             thumbnail: thumbnail,
             creatorID: creator.id,
+            creatorDisplayName: creator.displayName,
             creatorEmail: creator.email,
             noteCount: noteCount,
             assetStatus: assetStatus,

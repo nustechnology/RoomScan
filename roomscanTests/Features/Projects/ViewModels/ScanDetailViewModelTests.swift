@@ -28,6 +28,107 @@ struct ScanDetailViewModelTests {
         #expect(viewModel.createdByText == "Alex Rivera")
     }
 
+    @Test func createdByPrefersCreatorNameAfterRemoteDetailLoads() async {
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(
+                creatorUserID: "other-user",
+                creatorDisplayName: "Alex Rivera"
+            ),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(projects: [makeProject()], simulatedDelayNanoseconds: 0),
+            scanDetailService: ScanDetailRenameStub(
+                creatorID: "other-user",
+                creatorEmail: "alex@example.com"
+            ),
+            accessPolicy: .readOnly
+        )
+
+        await viewModel.loadDetail()
+
+        #expect(viewModel.createdByText == "Alex Rivera")
+    }
+
+    @Test func createdByUsesRemoteDisplayNameForScanInsideSharedProject() async {
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(
+                creatorUserID: "",
+                creatorDisplayName: ""
+            ),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(projects: [makeProject()], simulatedDelayNanoseconds: 0),
+            scanDetailService: ScanDetailRenameStub(
+                creatorID: "other-user",
+                creatorDisplayName: "Scan Creator",
+                creatorEmail: "owner@example.com"
+            ),
+            accessPolicy: .readOnly,
+            creatorDisplayNameFallback: "Project Owner"
+        )
+
+        await viewModel.loadDetail()
+
+        #expect(viewModel.createdByText == "Scan Creator")
+    }
+
+    @Test func createdByUpgradesProjectOwnerFallbackToRemoteEmail() async {
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(
+                creatorUserID: "",
+                creatorDisplayName: ""
+            ),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(projects: [makeProject()], simulatedDelayNanoseconds: 0),
+            scanDetailService: ScanDetailRenameStub(
+                creatorID: "other-user",
+                creatorEmail: "creator@example.com"
+            ),
+            accessPolicy: .readOnly,
+            creatorDisplayNameFallback: "Project Owner"
+        )
+
+        #expect(viewModel.createdByText == "Project Owner")
+
+        await viewModel.loadDetail()
+
+        #expect(viewModel.createdByText == "creator@example.com")
+    }
+
+    @Test func createdByStillShowsYouAfterRemoteDetailLoads() async {
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(projects: [makeProject()], simulatedDelayNanoseconds: 0),
+            scanDetailService: ScanDetailRenameStub(creatorEmail: "me@example.com")
+        )
+
+        await viewModel.loadDetail()
+
+        #expect(viewModel.createdByText == String(localized: "scanDetail.createdBy.you"))
+    }
+
+    @Test func createdByShowsUnknownWhenCreatorIdentityIsBlank() async {
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(creatorUserID: "", creatorDisplayName: " "),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(projects: [makeProject()], simulatedDelayNanoseconds: 0),
+            scanDetailService: ScanDetailRenameStub(
+                creatorID: "other-user",
+                creatorDisplayName: " ",
+                creatorEmail: " "
+            ),
+            accessPolicy: .readOnly
+        )
+
+        await viewModel.loadDetail()
+
+        #expect(viewModel.createdByText == String(localized: "shared.owner.unknown"))
+    }
+
     @Test func formattedDateUsesMonthDayYear() {
         let viewModel = makeViewModel(
             createdAt: Date(timeIntervalSince1970: 1_781_251_200) // Jun 12, 2026 UTC
@@ -654,11 +755,24 @@ private struct ScanDetailRenameStub: ScanDetailService {
     let assetStatus: String
     let thumbnail: String?
     let noteCount: Int
+    let creatorID: String
+    let creatorDisplayName: String?
+    let creatorEmail: String?
 
-    init(assetStatus: String = "NONE", thumbnail: String? = nil, noteCount: Int = 0) {
+    init(
+        assetStatus: String = "NONE",
+        thumbnail: String? = nil,
+        noteCount: Int = 0,
+        creatorID: String = "mock-user-apple",
+        creatorDisplayName: String? = nil,
+        creatorEmail: String? = nil
+    ) {
         self.assetStatus = assetStatus
         self.thumbnail = thumbnail
         self.noteCount = noteCount
+        self.creatorID = creatorID
+        self.creatorDisplayName = creatorDisplayName
+        self.creatorEmail = creatorEmail
     }
 
     func fetchScanDetail(id: String) async throws -> ScanDetail {
@@ -678,8 +792,9 @@ private struct ScanDetailRenameStub: ScanDetailService {
             name: name,
             description: description,
             thumbnail: thumbnail,
-            creatorID: "mock-user-apple",
-            creatorEmail: nil,
+            creatorID: creatorID,
+            creatorDisplayName: creatorDisplayName,
+            creatorEmail: creatorEmail,
             noteCount: noteCount,
             assetStatus: assetStatus,
             syncStatus: .synced,

@@ -243,7 +243,10 @@ struct ProjectDetailView: View {
                             currentUserID: currentUserID,
                             service: projectsService,
                             scanDetailService: scanDetailService,
-                            accessPolicy: accessPolicy
+                            accessPolicy: accessPolicy,
+                            creatorDisplayNameFallback: accessPolicy.allowsOwnerActions
+                                ? nil
+                                : displayedProject.ownerName
                         ),
                         projectID: destination.projectID,
                         projectName: displayedProject.name,
@@ -409,12 +412,14 @@ private struct ProjectDetailScanDestination: Identifiable {
 
 enum ProjectDetailPresentation {
     static func ownerName(_ ownerName: String, accessPolicy: DetailAccessPolicy) -> String {
-        let trimmed = ownerName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty else { return trimmed }
+        guard !accessPolicy.allowsOwnerActions else {
+            return String(localized: "projects.detail.metadata.owner.you")
+        }
 
-        return accessPolicy.allowsOwnerActions
-            ? String(localized: "projects.detail.metadata.owner.you")
-            : String(localized: "shared.owner.unknown")
+        let trimmed = ownerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty
+            ? String(localized: "shared.owner.unknown")
+            : trimmed
     }
 
     static func showsOwnerActions(for accessPolicy: DetailAccessPolicy) -> Bool {
