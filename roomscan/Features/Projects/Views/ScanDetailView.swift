@@ -128,6 +128,10 @@ struct ScanDetailView: View {
             Button(String(localized: "scanDetail.action.error.dismiss"), role: .cancel) {
                 viewModel.dismissActionError()
             }
+        } message: {
+            if let message = viewModel.actionErrorMessage {
+                Text(message)
+            }
         }
         .fullScreenCover(
             item: $viewerInput,
