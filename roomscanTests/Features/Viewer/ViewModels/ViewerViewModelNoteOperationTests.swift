@@ -40,6 +40,131 @@ struct ViewerViewModelNoteOperationTests {
         #expect(viewModel.selectedNoteID == second.id)
     }
 
+    @Test func selectingTheSameNoteFetchesDetailOnlyOnce() async throws {
+        let notesService = CancellableDetailNotesService()
+        notesService.disableDetailFetchDelay()
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-cache", scanName: "Room"),
+            notesService: notesService,
+            modelLoadingService: TestModelLoadingService()
+        )
+        await viewModel.load()
+        let note = try #require(viewModel.notes.first)
+
+        viewModel.selectNote(id: note.id)
+        await ViewerViewModelTestHelpers.waitUntilNoteDetailSettled(viewModel)
+        viewModel.selectNote(id: note.id)
+        await ViewerViewModelTestHelpers.waitUntilNoteDetailSettled(viewModel)
+
+        #expect(notesService.fetchNoteCallCount(for: note.id) == 1)
+        #expect(viewModel.selectedNoteID == note.id)
+    }
+
+    @Test func selectingAgainAfterFailedDetailFetchRetries() async throws {
+        let notesService = CancellableDetailNotesService()
+        notesService.disableDetailFetchDelay()
+        notesService.failNextDetailFetches(1)
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-cache-retry", scanName: "Room"),
+            notesService: notesService,
+            modelLoadingService: TestModelLoadingService()
+        )
+        await viewModel.load()
+        let note = try #require(viewModel.notes.first)
+
+        viewModel.selectNote(id: note.id)
+        await ViewerViewModelTestHelpers.waitUntilNoteDetailSettled(viewModel)
+        #expect(notesService.fetchNoteCallCount(for: note.id) == 1)
+        #expect(viewModel.fetchedNoteIDs.contains(note.id) == false)
+        #expect(viewModel.noteDetailRequest.noteID == nil)
+
+        viewModel.selectNote(id: note.id)
+        await ViewerViewModelTestHelpers.waitUntilNoteDetailSettled(viewModel)
+
+        #expect(notesService.fetchNoteCallCount(for: note.id) == 2)
+        #expect(viewModel.fetchedNoteIDs.contains(note.id))
+    }
+
+    @Test func selectingAgainAfterUpdateRefetchesDetail() async throws {
+        let notesService = CancellableDetailNotesService()
+        notesService.disableDetailFetchDelay()
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-cache-update", scanName: "Room"),
+            notesService: notesService,
+            modelLoadingService: TestModelLoadingService()
+        )
+        await viewModel.load()
+        let note = try #require(viewModel.notes.first)
+
+        viewModel.selectNote(id: note.id)
+        await ViewerViewModelTestHelpers.waitUntilNoteDetailSettled(viewModel)
+        #expect(notesService.fetchNoteCallCount(for: note.id) == 1)
+
+        await viewModel.openEditor(noteID: note.id)
+        let didSave = await viewModel.saveEditor(
+            title: "Updated",
+            description: "Changed",
+            color: .red
+        )
+        #expect(didSave)
+
+        viewModel.selectNote(id: note.id)
+        await ViewerViewModelTestHelpers.waitUntilNoteDetailSettled(viewModel)
+
+        #expect(notesService.fetchNoteCallCount(for: note.id) == 2)
+    }
+
+    @Test func selectingAgainAfterMoveRefetchesDetail() async throws {
+        let notesService = CancellableDetailNotesService()
+        notesService.disableDetailFetchDelay()
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-cache-move", scanName: "Room"),
+            notesService: notesService,
+            modelLoadingService: TestModelLoadingService()
+        )
+        await viewModel.load()
+        let note = try #require(viewModel.notes.first)
+
+        viewModel.selectNote(id: note.id)
+        await ViewerViewModelTestHelpers.waitUntilNoteDetailSettled(viewModel)
+        #expect(notesService.fetchNoteCallCount(for: note.id) == 1)
+
+        viewModel.beginMoveNote(note)
+        viewModel.updateMoveDraft(position: SIMD3(-0.4, 1.2, 0.8))
+        viewModel.confirmPlacement()
+        await ViewerViewModelTestHelpers.waitUntilIdle(viewModel)
+
+        viewModel.selectNote(id: note.id)
+        await ViewerViewModelTestHelpers.waitUntilNoteDetailSettled(viewModel)
+
+        #expect(notesService.fetchNoteCallCount(for: note.id) == 2)
+    }
+
+    @Test func openEditorUsesCachedDetailWithoutRefetch() async throws {
+        let notesService = CancellableDetailNotesService()
+        notesService.disableDetailFetchDelay()
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-editor-cache", scanName: "Room"),
+            notesService: notesService,
+            modelLoadingService: TestModelLoadingService()
+        )
+        await viewModel.load()
+        let note = try #require(viewModel.notes.first)
+
+        viewModel.selectNote(id: note.id)
+        await ViewerViewModelTestHelpers.waitUntilNoteDetailSettled(viewModel)
+        #expect(notesService.fetchNoteCallCount(for: note.id) == 1)
+
+        await viewModel.openEditor(noteID: note.id)
+
+        #expect(notesService.fetchNoteCallCount(for: note.id) == 1)
+        if case .edit(let editing)? = viewModel.editorMode {
+            #expect(editing.id == note.id)
+        } else {
+            Issue.record("Expected edit editor mode")
+        }
+    }
+
     @Test func confirmDeleteRemovesNote() async throws {
         let viewModel = await ViewerViewModelTestHelpers.loadedViewModel(scanID: "scan-delete")
         let note = try #require(viewModel.notes.first)

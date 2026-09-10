@@ -387,7 +387,7 @@ final class DelayedNotesService: NotesService {
 
 @MainActor
 final class CancellableDetailNotesService: NotesService {
-    private let notes = [
+    private var notes = [
         SpatialNote(
             id: "first",
             title: "First",
@@ -415,6 +415,27 @@ final class CancellableDetailNotesService: NotesService {
     private var detailFetchStarted = false
     private var detailFetchCancelled = false
     private(set) var cancelledNoteIDs: [String] = []
+    private(set) var fetchNoteCallCountByID: [String: Int] = [:]
+    private var shouldDelayDetailFetch = true
+    private var remainingDetailFetchFailures = 0
+
+    var fetchNoteCallCount: Int {
+        fetchNoteCallCountByID.values.reduce(0, +)
+    }
+
+    func fetchNoteCallCount(for noteID: String) -> Int {
+        fetchNoteCallCountByID[noteID] ?? 0
+    }
+
+    /// Completes detail fetches immediately so cache tests can finish without sleeping.
+    func disableDetailFetchDelay() {
+        shouldDelayDetailFetch = false
+    }
+
+    /// Makes the next `count` `fetchNote` calls throw before succeeding again.
+    func failNextDetailFetches(_ count: Int) {
+        remainingDetailFetchFailures = count
+    }
 
     func waitUntilDetailFetchStarted() async {
         while !detailFetchStarted {
@@ -433,19 +454,39 @@ final class CancellableDetailNotesService: NotesService {
     }
 
     func fetchNote(noteID: String) async throws -> SpatialNote {
+        fetchNoteCallCountByID[noteID, default: 0] += 1
         detailFetchStarted = true
-        do {
-            try await Task.sleep(for: .seconds(30))
-        } catch {
-            detailFetchCancelled = true
-            cancelledNoteIDs.append(noteID)
-            throw error
+        if remainingDetailFetchFailures > 0 {
+            remainingDetailFetchFailures -= 1
+            throw NotesServiceError.noteNotFound
+        }
+        if shouldDelayDetailFetch {
+            do {
+                try await Task.sleep(for: .seconds(30))
+            } catch {
+                detailFetchCancelled = true
+                cancelledNoteIDs.append(noteID)
+                throw error
+            }
         }
         return try #require(notes.first(where: { $0.id == noteID }))
     }
 
     func createNote(scanID: String, input: CreateNoteInput) async throws -> SpatialNote {
-        throw NotesServiceError.invalidContent
+        let now = Date()
+        let note = SpatialNote(
+            id: UUID().uuidString,
+            title: input.title,
+            detail: input.description,
+            color: input.color,
+            position: input.position,
+            orientation: input.orientation,
+            createdAt: now,
+            updatedAt: now,
+            modelVersion: input.modelVersion
+        )
+        notes.append(note)
+        return note
     }
 
     func updateNote(
@@ -455,15 +496,29 @@ final class CancellableDetailNotesService: NotesService {
         description: String,
         color: NoteColor
     ) async throws -> SpatialNote {
-        throw NotesServiceError.invalidContent
+        guard let index = notes.firstIndex(where: { $0.id == noteID }) else {
+            throw NotesServiceError.noteNotFound
+        }
+        notes[index].title = title
+        notes[index].detail = description
+        notes[index].color = color
+        notes[index].updatedAt = .now
+        return notes[index]
     }
 
     func moveNote(noteID: String, input: MoveNoteInput) async throws -> SpatialNote {
-        throw NotesServiceError.invalidContent
+        guard let index = notes.firstIndex(where: { $0.id == noteID }) else {
+            throw NotesServiceError.noteNotFound
+        }
+        notes[index].position = input.position
+        notes[index].orientation = input.orientation
+        notes[index].modelVersion = input.modelVersion
+        notes[index].updatedAt = .now
+        return notes[index]
     }
 
     func deleteNote(scanID: String, noteID: String) async throws {
-        throw NotesServiceError.invalidContent
+        notes.removeAll { $0.id == noteID }
     }
 }
 
@@ -483,5 +538,14 @@ enum ViewerViewModelTestHelpers {
         for _ in 0..<50 where viewModel.isBusy {
             try? await Task.sleep(nanoseconds: 20_000_000)
         }
+    }
+
+    /// Yields until an in-flight note detail Task has a chance to finish.
+    static func waitUntilNoteDetailSettled(_ viewModel: ViewerViewModel) async {
+        for _ in 0..<200 where viewModel.noteDetailRequest.noteID != nil {
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        await Task.yield()
     }
 }
