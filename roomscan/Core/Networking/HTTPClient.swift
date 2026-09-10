@@ -5,11 +5,14 @@
 
 import Foundation
 
-struct APIRevision: Decodable, Sendable, Equatable {
+/// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so Equatable /
+/// Sendable value equality works from any isolation domain (does not move work
+/// off the caller's actor by itself).
+nonisolated struct APIRevision: Decodable, Sendable, Equatable {
     static let initial = "1"
     let value: Int
 
-    init(from decoder: Decoder) throws {
+    nonisolated init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if let string = try? container.decode(String.self) {
             guard let intValue = Int(string) else {
@@ -62,7 +65,7 @@ actor APIRevisionStore {
 
 // MARK: - HTTP Method
 
-enum HTTPMethod: String, Sendable {
+nonisolated enum HTTPMethod: String, Sendable {
     case get = "GET"
     case post = "POST"
     case patch = "PATCH"
@@ -72,7 +75,7 @@ enum HTTPMethod: String, Sendable {
 
 // MARK: - Endpoint
 
-struct APIEndpoint: Sendable {
+nonisolated struct APIEndpoint: Sendable {
     let path: String
     let method: HTTPMethod
     let headers: [String: String]
@@ -145,7 +148,7 @@ struct APIEndpoint: Sendable {
 
 // MARK: - Errors
 
-enum HTTPClientError: Error, Equatable, Sendable {
+nonisolated enum HTTPClientError: Error, Equatable, Sendable {
     case invalidURL
     case networkError
     case serverError(statusCode: Int, apiError: APIErrorResponse?)
@@ -154,23 +157,26 @@ enum HTTPClientError: Error, Equatable, Sendable {
 
 // MARK: - API Error Response
 
-struct APIErrorResponse: Decodable, Sendable, Equatable {
+/// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so Equatable
+/// works from any isolation domain (Swift 6–ready). Does not by itself run
+/// decode work off the caller's actor — see `HTTPClient` / `LiveHTTPClient`.
+nonisolated struct APIErrorResponse: Decodable, Sendable, Equatable {
     let error: APIErrorBody
     let requestId: String
 }
 
-struct APIErrorBody: Decodable, Sendable, Equatable {
+nonisolated struct APIErrorBody: Decodable, Sendable, Equatable {
     let code: String
     let message: String
     let details: String?
 }
 
 /// Decodable placeholder for endpoints that return an empty body (e.g. HTTP 204).
-struct EmptyAPIResponse: Decodable, Sendable, Equatable {}
+nonisolated struct EmptyAPIResponse: Decodable, Sendable, Equatable {}
 
 // MARK: - Helpers
 
-extension APIEndpoint {
+nonisolated extension APIEndpoint {
     func addingHeader(key: String, value: String) -> APIEndpoint {
         var mergedHeaders = headers
         mergedHeaders[key] = value
@@ -186,13 +192,13 @@ extension APIEndpoint {
 
 // MARK: - Client Protocol
 
-protocol HTTPClient: Sendable {
+nonisolated protocol HTTPClient: Sendable {
     func request<T: Decodable>(_ endpoint: APIEndpoint) async throws -> T
 }
 
 // MARK: - Live Implementation
 
-struct LiveHTTPClient: HTTPClient {
+nonisolated struct LiveHTTPClient: HTTPClient {
     private let baseURL: URL
     private let urlSession: URLSession
     private let decoder: JSONDecoder

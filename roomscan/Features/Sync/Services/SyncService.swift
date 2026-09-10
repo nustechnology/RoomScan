@@ -5,7 +5,7 @@
 
 import Foundation
 
-protocol SyncService: Sendable {
+nonisolated protocol SyncService: Sendable {
     /// Backend-known sync readiness for every accessible project, or one project when `projectId` is set.
     func fetchSyncStatus(projectId: String?) async throws -> [ProjectSyncStatusSummary]
 

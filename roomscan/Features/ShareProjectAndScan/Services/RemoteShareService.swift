@@ -14,7 +14,7 @@ import UIKit
 /// Cancel invitation uses `DELETE /api/v1/invitations/{invitationId}`.
 /// Remove access uses the corresponding project or scan `/shares/{userId}` endpoint.
 actor RemoteShareService: ShareService {
-    static let defaultInvitationLifetimeSeconds = 7 * 24 * 60 * 60
+    nonisolated static let defaultInvitationLifetimeSeconds = 7 * 24 * 60 * 60
 
     private let httpClient: any HTTPClient
     private let invitationLifetimeSeconds: Int

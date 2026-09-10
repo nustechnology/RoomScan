@@ -5,7 +5,7 @@
 
 import Foundation
 
-struct RoomScanDraft: Identifiable, Equatable, Sendable {
+nonisolated struct RoomScanDraft: Identifiable, Equatable, Sendable {
     let id: String
     let createdAt: Date
     let meshFileURL: URL

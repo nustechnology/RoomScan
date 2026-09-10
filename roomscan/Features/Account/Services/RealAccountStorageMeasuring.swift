@@ -7,7 +7,7 @@ import Foundation
 
 /// Measures disk used by the current account's saved scan files (mesh and
 /// thumbnails), plus app cache and in-progress capture drafts.
-struct RealAccountStorageMeasuring: AccountStorageMeasuring {
+nonisolated struct RealAccountStorageMeasuring: AccountStorageMeasuring {
     let scansRoot: URL
     let sharedDirectories: [URL]
 

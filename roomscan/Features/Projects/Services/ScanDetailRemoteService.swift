@@ -5,7 +5,7 @@
 
 import Foundation
 
-protocol ScanDetailService: Sendable {
+nonisolated protocol ScanDetailService: Sendable {
     func fetchScanDetail(id: String) async throws -> ScanDetail
     func updateScanDetail(id: String, name: String, description: String?) async throws -> ScanDetail
     func deleteScanDetail(id: String) async throws
@@ -13,12 +13,12 @@ protocol ScanDetailService: Sendable {
 }
 
 extension ScanDetailService {
-    func downloadModel(scanID: String, to destinationURL: URL) async throws {
+    nonisolated func downloadModel(scanID: String, to destinationURL: URL) async throws {
         throw HTTPClientError.networkError
     }
 }
 
-struct ScanDetailRemoteService: ScanDetailService {
+nonisolated struct ScanDetailRemoteService: ScanDetailService {
     private let httpClient: any HTTPClient
     private let urlSession: URLSession
     private let revisionStore = APIRevisionStore.shared
@@ -53,7 +53,7 @@ struct ScanDetailRemoteService: ScanDetailService {
 
     func deleteScanDetail(id: String) async throws {
         let revision = await revisionStore.currentRevision(for: id)
-        let _: EmptyResponse = try await httpClient.request(
+        let _: EmptyAPIResponse = try await httpClient.request(
             APIEndpoint(
                 path: "/api/v1/scans/\(id)", method: .delete,
                 revision: revision
@@ -78,7 +78,7 @@ struct ScanDetailRemoteService: ScanDetailService {
             withIntermediateDirectories: true
         )
         if fileManager.fileExists(atPath: destinationURL.path) {
-            try fileManager.replaceItemAt(
+            _ = try fileManager.replaceItemAt(
                 destinationURL,
                 withItemAt: temporaryURL
             )
@@ -88,8 +88,6 @@ struct ScanDetailRemoteService: ScanDetailService {
     }
 }
 
-private struct EmptyResponse: Decodable, Sendable {}
-
-private struct ModelDownloadURLResponse: Decodable, Sendable {
+private nonisolated struct ModelDownloadURLResponse: Decodable, Sendable {
     let downloadUrl: URL
 }

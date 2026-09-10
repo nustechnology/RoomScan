@@ -5,14 +5,16 @@
 
 import Foundation
 
-protocol SyncCursorStoring: Sendable {
+nonisolated protocol SyncCursorStoring: Sendable {
     func cursor(forUserId userId: String) async -> String?
     func save(cursor: String?, forUserId userId: String) async
     func clear(forUserId userId: String) async
 }
 
+/// Serializes cursor reads/writes through actor isolation so concurrent callers
+/// cannot interleave updates to the same UserDefaults keys.
 actor SyncCursorStore: SyncCursorStoring {
-    private static let defaultsKeyPrefix = "sync.changes.cursor."
+    private nonisolated static let defaultsKeyPrefix = "sync.changes.cursor."
 
     private let defaults: UserDefaults
 
@@ -40,7 +42,7 @@ actor SyncCursorStore: SyncCursorStoring {
         defaults.removeObject(forKey: Self.key(for: userId))
     }
 
-    private static func key(for userId: String) -> String {
+    private nonisolated static func key(for userId: String) -> String {
         defaultsKeyPrefix + userId
     }
 }

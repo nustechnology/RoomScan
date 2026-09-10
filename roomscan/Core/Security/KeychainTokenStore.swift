@@ -8,7 +8,9 @@ import Security
 
 // MARK: - Stored Data
 
-struct StoredAuthData: Codable, Sendable {
+/// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so actors
+/// (e.g. `AccessTokenRefreshCoordinator`) can read/write tokens from any isolation domain.
+nonisolated struct StoredAuthData: Codable, Sendable {
     let accessToken: String
     let refreshToken: String
     let userId: String
@@ -76,7 +78,7 @@ struct StoredAuthData: Codable, Sendable {
 
 // MARK: - Errors
 
-enum KeychainError: Error, Equatable, Sendable {
+nonisolated enum KeychainError: Error, Equatable, Sendable {
     case saveFailed(OSStatus)
     case readFailed(OSStatus)
     case deleteFailed(OSStatus)
@@ -85,7 +87,7 @@ enum KeychainError: Error, Equatable, Sendable {
 
 // MARK: - Protocol
 
-protocol KeychainTokenStore: Sendable {
+nonisolated protocol KeychainTokenStore: Sendable {
     func save(_ storedData: StoredAuthData) throws
     func getStoredAuthData() throws -> StoredAuthData?
     func deleteTokens() throws
@@ -93,7 +95,7 @@ protocol KeychainTokenStore: Sendable {
 
 // MARK: - Live Implementation
 
-struct LiveKeychainTokenStore: KeychainTokenStore {
+nonisolated struct LiveKeychainTokenStore: KeychainTokenStore {
     private let service = "com.nus.roomscan.auth"
     private let account = "authSession"
 

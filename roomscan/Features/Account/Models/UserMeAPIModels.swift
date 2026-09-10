@@ -5,13 +5,15 @@
 
 import Foundation
 
-struct UpdateUserMeAPIRequest: Encodable, Sendable {
+nonisolated struct UpdateUserMeAPIRequest: Encodable, Sendable {
     let displayName: String
 }
 
 /// Response for GET/PATCH `/api/v1/users/me`.
 /// Real payloads may omit `id`, use `userId`, or wrap fields under `user` / `data`.
-struct UserMeAPIResponse: Decodable, Sendable {
+/// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so actors can
+/// map responses from any isolation domain (does not offload decode by itself).
+nonisolated struct UserMeAPIResponse: Decodable, Sendable {
     let id: String?
     let email: String?
     let displayName: String?

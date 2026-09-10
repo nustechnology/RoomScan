@@ -3,6 +3,12 @@
 //  roomscan
 //
 
+// swiftlint:disable file_length
+// Combine→async load bridge types are kept in this file so they stay in
+// compilation scope with the coordinator (separate files were not visible to
+// some Xcode builds).
+
+import Combine
 import RealityKit
 import simd
 import SwiftUI
@@ -22,8 +28,8 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     var onPinTapped: (String) -> Void
     var onSurfaceTapped: (SIMD3<Float>) -> Void
     var onMoveDraftChanged: (SIMD3<Float>) -> Void
-    var onModelLoaded: () -> Void
-    var onModelLoadFailed: () -> Void
+    var onModelLoaded: @MainActor @Sendable () -> Void
+    var onModelLoadFailed: @MainActor @Sendable () -> Void
     var isPlacementMode = false
     var movingNoteID: String?
     var movePreviewPosition: SIMD3<Float>?
@@ -57,6 +63,8 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     private var activePinDrag: ActivePinDrag?
     var pinAppearanceStates: [ObjectIdentifier: PinAppearanceState] = [:]
     private var pinFacingTask: Task<Void, Never>?
+    private var modelLoadCancellable: AnyCancellable?
+    private var modelLoadTask: Task<Void, Never>?
     private let cameraAnimationDuration: TimeInterval = 0.35
     /// Zoom buttons interrupt in-flight motion; easeOut starts moving immediately,
     /// unlike easeInOut whose first frames have near-zero velocity.
@@ -67,8 +75,8 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         onPinTapped: @escaping (String) -> Void,
         onSurfaceTapped: @escaping (SIMD3<Float>) -> Void,
         onMoveDraftChanged: @escaping (SIMD3<Float>) -> Void,
-        onModelLoaded: @escaping () -> Void,
-        onModelLoadFailed: @escaping () -> Void
+        onModelLoaded: @escaping @MainActor @Sendable () -> Void,
+        onModelLoadFailed: @escaping @MainActor @Sendable () -> Void
     ) {
         self.onPinTapped = onPinTapped
         self.onSurfaceTapped = onSurfaceTapped
@@ -85,6 +93,10 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         pinsRoot.removeFromParent()
         loadedSource = nil
         pendingFileSource = nil
+        modelLoadTask?.cancel()
+        modelLoadTask = nil
+        modelLoadCancellable?.cancel()
+        modelLoadCancellable = nil
 
         switch source {
         case .sampleRoom:
@@ -100,45 +112,120 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
             pinsRoot.name = "PinsRoot"
             anchor.addChild(pinsRoot)
             updateCamera(animated: false)
-            DispatchQueue.main.async(execute: onModelLoaded)
+            // Defer off the current SwiftUI update cycle without capturing non-Sendable state
+            // into a `DispatchQueue` `@Sendable` closure.
+            deferToNextRunLoop(onModelLoaded)
             return true
         case .file(let url):
             pendingFileSource = source
-            let notifyFailure = onModelLoadFailed
-            Task.detached(priority: .userInitiated) { [weak self] in
-                do {
-                    let room = try Entity.load(contentsOf: url)
-                    room.generateCollisionShapes(recursive: true)
-                    RoomModelCollision.applyFilter(
-                        to: room,
-                        group: RoomModelCollision.roomSurfaceGroup,
-                        mask: RoomModelCollision.pinGroup
-                    )
-                    await MainActor.run {
-                        guard let self,
-                              self.pendingFileSource == source,
-                              let anchor = self.anchor else { return }
-                        self.pendingFileSource = nil
-                        self.roomEntity?.removeFromParent()
-                        self.roomEntity = room
-                        self.loadedSource = source
-                        anchor.addChild(room)
-                        self.pinsRoot.name = "PinsRoot"
-                        anchor.addChild(self.pinsRoot)
-                        self.updateCamera(animated: false)
-                        DispatchQueue.main.async(execute: self.onModelLoaded)
-                    }
-                } catch {
-                    await MainActor.run {
-                        guard let self, self.pendingFileSource == source else { return }
-                        self.pendingFileSource = nil
-                        self.loadedSource = nil
-                        self.roomEntity = nil
-                        DispatchQueue.main.async(execute: notifyFailure)
-                    }
-                }
+            modelLoadTask?.cancel()
+            modelLoadCancellable?.cancel()
+            modelLoadCancellable = nil
+            // RealityKit entity load APIs are `@MainActor`. `Task.detached` + sync
+            // `Entity.load` is invalid (isolation) and blocks the main thread.
+            // `await Entity(contentsOf:)` / `loadAsync` suspend so file I/O and USDZ
+            // decode do not occupy the main run loop while in flight.
+            modelLoadTask = Task { @MainActor [weak self] in
+                await self?.finishFileLoad(source: source, url: url)
             }
             return true
+        }
+    }
+
+    private func finishFileLoad(source: ModelSource, url: URL) async {
+        do {
+            let room: Entity
+            if #available(iOS 18.0, *) {
+                room = try await Entity(contentsOf: url)
+            } else {
+                room = try await loadEntityAsync(from: url)
+            }
+            try Task.checkCancellation()
+            // Load has resumed on MainActor. Yield lets already-queued MainActor work
+            // (loading UI) commit before `generateCollisionShapes`; it does not move
+            // or shorten that hitch — RealityKit keeps collision generation on-main.
+            await Task.yield()
+            try Task.checkCancellation()
+            await applyLoadedFileEntity(room, source: source)
+        } catch is CancellationError {
+            // Superseded by a newer load or view teardown — do not surface as failure.
+        } catch {
+            handleFileLoadFailure(source: source)
+        }
+    }
+
+    /// iOS 17-compatible non-blocking load via Combine `LoadRequest`.
+    private func loadEntityAsync(from url: URL) async throws -> Entity {
+        let bridge = LoadRequestCancellableBox()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Entity, Error>) in
+                // Install resume BEFORE subscribing so a synchronous cached delivery
+                // cannot observe `resume == nil` and leak the continuation.
+                bridge.install(resume: OnceResume(continuation))
+                modelLoadCancellable?.cancel()
+                let cancellable = Entity.loadAsync(contentsOf: url)
+                    .sink(
+                        receiveCompletion: { completion in
+                            switch completion {
+                            case .finished:
+                                // No-op if `receiveValue` already resumed; otherwise avoid a leak.
+                                bridge.resume(throwing: LoadRequestBridgeError.completedWithoutValue)
+                            case .failure(let error):
+                                bridge.resume(throwing: error)
+                            }
+                        },
+                        receiveValue: { entity in
+                            bridge.resume(returning: entity)
+                        }
+                    )
+                bridge.attach(cancellable: cancellable)
+                // MainActor-only bookkeeping for superseding loads; Combine callbacks
+                // must not write this property (may run off the main queue).
+                modelLoadCancellable = cancellable
+            }
+        } onCancel: {
+            bridge.cancel()
+        }
+    }
+
+    private func applyLoadedFileEntity(_ room: Entity, source: ModelSource) async {
+        guard pendingFileSource == source, let anchor else { return }
+
+        // MainActor-only (RealityKit); cost scales with mesh complexity on every open.
+        // Follow-ups: ShapeResource.generateStaticMesh off-actor, or bake at export.
+        room.generateCollisionShapes(recursive: true)
+        RoomModelCollision.applyFilter(
+            to: room,
+            group: RoomModelCollision.roomSurfaceGroup,
+            mask: RoomModelCollision.pinGroup
+        )
+        await Task.yield()
+
+        guard pendingFileSource == source else { return }
+        pendingFileSource = nil
+        roomEntity?.removeFromParent()
+        roomEntity = room
+        loadedSource = source
+        anchor.addChild(room)
+        pinsRoot.name = "PinsRoot"
+        anchor.addChild(pinsRoot)
+        updateCamera(animated: false)
+        deferToNextRunLoop(onModelLoaded)
+    }
+
+    private func handleFileLoadFailure(source: ModelSource) {
+        guard pendingFileSource == source else { return }
+        pendingFileSource = nil
+        loadedSource = nil
+        roomEntity = nil
+        deferToNextRunLoop(onModelLoadFailed)
+    }
+
+    /// Schedules MainActor work on the next turn without `DispatchQueue.main.async`
+    /// capturing non-`@Sendable` closures.
+    private func deferToNextRunLoop(_ action: @escaping @MainActor @Sendable () -> Void) {
+        Task { @MainActor in
+            action()
         }
     }
 
@@ -508,5 +595,116 @@ extension RoomModelCanvasCoordinator {
         shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
     ) -> Bool {
         false
+    }
+}
+
+// MARK: - Combine → async bridging (same file so types are always in module scope)
+
+private enum LoadRequestBridgeError: Error {
+    case completedWithoutValue
+}
+
+/// Holds the in-flight `LoadRequest` subscription so `onCancel` can stop it from any executor.
+///
+/// Ordering API: call `install(resume:)` before subscribing, then `attach(cancellable:)`.
+/// That closes both races — cancel-before-install and resolve-before-attach (cached sync delivery).
+nonisolated private final class LoadRequestCancellableBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancellable: AnyCancellable?
+    private var resume: OnceResume<Entity>?
+    private var isCancelled = false
+    private var isResolved = false
+
+    func install(resume: OnceResume<Entity>) {
+        lock.lock()
+        if isCancelled || isResolved {
+            lock.unlock()
+            resume.resume(throwing: isCancelled ? CancellationError() : LoadRequestBridgeError.completedWithoutValue)
+            return
+        }
+        self.resume = resume
+        lock.unlock()
+    }
+
+    func attach(cancellable: AnyCancellable) {
+        lock.lock()
+        if isCancelled || isResolved {
+            lock.unlock()
+            cancellable.cancel()
+            return
+        }
+        self.cancellable = cancellable
+        lock.unlock()
+    }
+
+    func cancel() {
+        lock.lock()
+        isCancelled = true
+        let toCancel = cancellable
+        cancellable = nil
+        let pending = resume
+        resume = nil
+        lock.unlock()
+        // Cancel outside the lock — Combine completion may re-enter this box.
+        toCancel?.cancel()
+        pending?.resume(throwing: CancellationError())
+    }
+
+    func resume(returning value: Entity) {
+        lock.lock()
+        guard !isCancelled, !isResolved else {
+            lock.unlock()
+            return
+        }
+        isResolved = true
+        let pending = resume
+        resume = nil
+        let toCancel = cancellable
+        cancellable = nil
+        lock.unlock()
+        toCancel?.cancel()
+        pending?.resume(returning: value)
+    }
+
+    func resume(throwing error: Error) {
+        lock.lock()
+        guard !isCancelled, !isResolved else {
+            lock.unlock()
+            return
+        }
+        isResolved = true
+        let pending = resume
+        resume = nil
+        let toCancel = cancellable
+        cancellable = nil
+        lock.unlock()
+        toCancel?.cancel()
+        pending?.resume(throwing: error)
+    }
+}
+
+/// Ensures a checked continuation is resumed at most once.
+nonisolated private final class OnceResume<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<T, Error>?
+
+    init(_ continuation: CheckedContinuation<T, Error>) {
+        self.continuation = continuation
+    }
+
+    func resume(returning value: T) {
+        lock.lock()
+        let pending = continuation
+        continuation = nil
+        lock.unlock()
+        pending?.resume(returning: value)
+    }
+
+    func resume(throwing error: Error) {
+        lock.lock()
+        let pending = continuation
+        continuation = nil
+        lock.unlock()
+        pending?.resume(throwing: error)
     }
 }

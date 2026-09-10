@@ -5,7 +5,7 @@
 
 import Foundation
 
-struct CreateProjectAPIRequest: Encodable, Sendable {
+nonisolated struct CreateProjectAPIRequest: Encodable, Sendable {
     let name: String
     /// JSON key is `description`. Named to avoid `CustomStringConvertible.description` clashes.
     let projectDescription: String?
@@ -23,7 +23,7 @@ struct CreateProjectAPIRequest: Encodable, Sendable {
 }
 
 /// PATCH body for `/api/v1/projects/{projectId}`.
-struct UpdateProjectAPIRequest: Encodable, Sendable {
+nonisolated struct UpdateProjectAPIRequest: Encodable, Sendable {
     let name: String
     /// JSON key is `description`. Named to avoid `CustomStringConvertible.description` clashes.
     let projectDescription: String?
@@ -41,13 +41,13 @@ struct UpdateProjectAPIRequest: Encodable, Sendable {
 }
 
 /// POST body for `/api/v1/projects/{projectId}/scans`.
-struct CreateScanAPIRequest: Encodable, Sendable {
+nonisolated struct CreateScanAPIRequest: Encodable, Sendable {
     let name: String
     let thumbnail: ScanAssetMetadataRequest
     let scanFile: ScanAssetMetadataRequest
 }
 
-struct ScanAssetMetadataRequest: Encodable, Sendable {
+nonisolated struct ScanAssetMetadataRequest: Encodable, Sendable {
     let contentType: String
     let sizeBytes: Int
     let checksum: String?
@@ -70,22 +70,22 @@ struct ScanAssetMetadataRequest: Encodable, Sendable {
 }
 
 /// Response from creating a scan. Each asset has a presigned URL to upload its binary data.
-struct CreateScanAPIResponse: Decodable, Sendable {
+nonisolated struct CreateScanAPIResponse: Decodable, Sendable {
     let id: String
     let uploads: ScanUploadURLs
 }
 
-struct ScanUploadURLs: Decodable, Sendable {
+nonisolated struct ScanUploadURLs: Decodable, Sendable {
     let thumbnail: PresignedUploadTarget
     let scanFile: PresignedUploadTarget
 }
 
-struct PresignedUploadTarget: Decodable, Sendable {
+nonisolated struct PresignedUploadTarget: Decodable, Sendable {
     let uploadSessionId: String
     let uploadUrl: URL
 }
 
-struct UploadCompletionAPIRequest: Encodable, Sendable {
+nonisolated struct UploadCompletionAPIRequest: Encodable, Sendable {
     let sizeBytes: Int
     let checksum: String?
 
@@ -102,12 +102,12 @@ struct UploadCompletionAPIRequest: Encodable, Sendable {
 }
 
 /// POST body for `/api/v1/upload-sessions/{uploadSessionId}/fail`.
-struct UploadFailureAPIRequest: Encodable, Sendable {
+nonisolated struct UploadFailureAPIRequest: Encodable, Sendable {
     let reason: String
 }
 
 /// POST body for `/api/v1/scans/{scanId}/assets/upload-sessions`.
-struct CreateAssetUploadSessionAPIRequest: Encodable, Sendable {
+nonisolated struct CreateAssetUploadSessionAPIRequest: Encodable, Sendable {
     let assetType: String
     let contentType: String
     let sizeBytes: Int
@@ -132,7 +132,7 @@ struct CreateAssetUploadSessionAPIRequest: Encodable, Sendable {
     }
 }
 
-struct ProjectAPIResponse: Decodable, Sendable, Equatable {
+nonisolated struct ProjectAPIResponse: Decodable, Sendable, Equatable {
     let id: String
     let revision: Int?
     let name: String
@@ -171,7 +171,8 @@ struct ProjectAPIResponse: Decodable, Sendable, Equatable {
 }
 
 extension KeyedDecodingContainer {
-    func decodeFlexibleIntIfPresent(forKey key: Key) throws -> Int? {
+    /// Nonisolated so `nonisolated` Decodable DTOs can decode flexible revision fields.
+    nonisolated func decodeFlexibleIntIfPresent(forKey key: Key) throws -> Int? {
         guard contains(key), try !decodeNil(forKey: key) else { return nil }
         if let value = try? decode(Int.self, forKey: key) { return value }
         let stringValue = try decode(String.self, forKey: key)
@@ -187,7 +188,7 @@ extension KeyedDecodingContainer {
 }
 
 /// Nested scan summary on project create/list/detail/update responses.
-struct ProjectScanDTO: Decodable, Sendable, Equatable {
+nonisolated struct ProjectScanDTO: Decodable, Sendable, Equatable {
     let id: String
     let revision: Int?
     let name: String
@@ -217,13 +218,13 @@ struct ProjectScanDTO: Decodable, Sendable, Equatable {
     }
 }
 
-struct ProjectOwnerDTO: Decodable, Sendable, Equatable {
+nonisolated struct ProjectOwnerDTO: Decodable, Sendable, Equatable {
     let id: String
     let email: String?
     let displayName: String?
 }
 
-struct ProjectPermissionsDTO: Decodable, Sendable, Equatable {
+nonisolated struct ProjectPermissionsDTO: Decodable, Sendable, Equatable {
     let role: String
     let canView: Bool
     let canEdit: Bool
@@ -232,7 +233,7 @@ struct ProjectPermissionsDTO: Decodable, Sendable, Equatable {
     let canCreateScan: Bool
 }
 
-enum ProjectAPIMapping {
+nonisolated enum ProjectAPIMapping {
     nonisolated static func toProjectSummary(
         _ response: ProjectAPIResponse,
         revision: Int? = nil,
@@ -388,12 +389,12 @@ enum ProjectAPIMapping {
     }
 }
 
-struct ProjectsListAPIResponse: Decodable, Sendable, Equatable {
+nonisolated struct ProjectsListAPIResponse: Decodable, Sendable, Equatable {
     let items: [ProjectAPIResponse]
     let pagination: ProjectsPaginationDTO
 }
 
-struct ProjectsPaginationDTO: Decodable, Sendable, Equatable {
+nonisolated struct ProjectsPaginationDTO: Decodable, Sendable, Equatable {
     let page: Int
     let limit: Int
     let total: Int

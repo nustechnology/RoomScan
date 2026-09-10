@@ -5,7 +5,9 @@
 
 import Foundation
 
-enum AppleUserDisplayName {
+/// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so actors and
+/// nonisolated auth services can resolve display names without MainActor hops.
+nonisolated enum AppleUserDisplayName {
     static func formatted(from components: PersonNameComponents?) -> String? {
         guard let components else { return nil }
         let formatter = PersonNameComponentsFormatter()

@@ -235,21 +235,21 @@ actor RemoteSharedService: SharedService {
     }
 }
 
-private struct SharedProjectsListAPIResponse: Decodable, Sendable {
+private nonisolated struct SharedProjectsListAPIResponse: Decodable, Sendable {
     let items: [SharedProjectAPIItem]
     let pagination: ProjectsPaginationDTO
 }
 
-private struct SharedScansListAPIResponse: Decodable, Sendable {
+private nonisolated struct SharedScansListAPIResponse: Decodable, Sendable {
     let items: [SharedScanAPIItem]
     let pagination: ProjectsPaginationDTO
 }
 
-private struct SharedPermissionsDTO: Decodable, Sendable {
+private nonisolated struct SharedPermissionsDTO: Decodable, Sendable {
     let canView: Bool
 }
 
-private struct SharedProjectAPIItem: Decodable, Sendable {
+private nonisolated struct SharedProjectAPIItem: Decodable, Sendable {
     let id: String
     let name: String
     let owner: ProjectOwnerDTO
@@ -281,7 +281,7 @@ private struct SharedProjectAPIItem: Decodable, Sendable {
     }
 }
 
-private struct SharedScanAPIItem: Decodable, Sendable {
+private nonisolated struct SharedScanAPIItem: Decodable, Sendable {
     let id: String
     let projectId: String
     let project: SharedScanProjectDTO?
@@ -325,11 +325,11 @@ private struct SharedScanAPIItem: Decodable, Sendable {
     }
 }
 
-private struct SharedScanProjectDTO: Decodable, Sendable {
+private nonisolated struct SharedScanProjectDTO: Decodable, Sendable {
     let name: String?
 }
 
-private extension ProjectOwnerDTO {
+private nonisolated extension ProjectOwnerDTO {
     var sharedDisplayName: String {
         for value in [displayName, email] {
             let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -341,7 +341,7 @@ private extension ProjectOwnerDTO {
     }
 }
 
-private extension SharedAccessStatus {
+private nonisolated extension SharedAccessStatus {
     static func fromAPI(_ status: String) -> SharedAccessStatus {
         switch status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
         case "ACTIVE":

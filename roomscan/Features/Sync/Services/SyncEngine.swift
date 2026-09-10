@@ -8,8 +8,8 @@ import Foundation
 /// Pulls incremental `/sync/changes` pages and applies them to the local cache.
 @MainActor
 final class SyncEngine {
-    static let defaultPageLimit = 100
-    static let maximumPageLimit = 500
+    nonisolated static let defaultPageLimit = 100
+    nonisolated static let maximumPageLimit = 500
     private static let maximumPagesPerPull = 50
 
     private struct InFlightPull {

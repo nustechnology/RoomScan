@@ -78,7 +78,7 @@ final class RoomPlanCaptureService: NSObject, RoomCaptureService, RoomCaptureSes
            isCaptureSessionRunning {
             previousSession.stop()
             isCaptureSessionRunning = false
-            runLifecycle.requestStop()
+            _ = runLifecycle.requestStop()
             isStopRequested = true
         }
 

@@ -5,7 +5,7 @@
 
 import Foundation
 
-struct MockAccountStorageMeasuring: AccountStorageMeasuring {
+nonisolated struct MockAccountStorageMeasuring: AccountStorageMeasuring {
     /// ~1.8 GB to match the Account design mock.
     static let defaultUsedBytes: Int64 = 1_932_735_283
 

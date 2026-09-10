@@ -9,7 +9,7 @@ import RoomPlan
 #endif
 
 #if canImport(RoomPlan)
-enum RoomPlanModelCatalogError: LocalizedError, Equatable {
+nonisolated enum RoomPlanModelCatalogError: LocalizedError, Equatable {
     case cannotFindCatalog
     case emptyCatalog
 
@@ -25,8 +25,11 @@ enum RoomPlanModelCatalogError: LocalizedError, Equatable {
 ///
 /// Catalog decode types follow the WWDC23 sample *Providing custom models for captured rooms
 /// and structure exports* so they match `RoomPlanCatalog.bundle/catalog.plist`.
+///
+/// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so export can run
+/// inside `Task.detached` without MainActor hops.
 @available(iOS 17.0, *)
-enum RoomPlanModelCatalog {
+nonisolated enum RoomPlanModelCatalog {
     static let bundleName = "RoomPlanCatalog"
     private static let catalogIndexFilename = "catalog.plist"
     private static let nullModelFilename = "$null"
@@ -71,12 +74,12 @@ enum RoomPlanModelCatalog {
 }
 
 @available(iOS 17.0, *)
-private struct RoomPlanCatalogIndex: Decodable {
+private nonisolated struct RoomPlanCatalogIndex: Decodable {
     let categoryAttributes: [RoomPlanCatalogCategoryAttribute]
 }
 
 @available(iOS 17.0, *)
-private struct RoomPlanCatalogCategoryAttribute: Decodable {
+private nonisolated struct RoomPlanCatalogCategoryAttribute: Decodable {
     let folderRelativePath: String
     let category: CapturedRoom.Object.Category
     let attributes: [any CapturedRoomAttribute]
