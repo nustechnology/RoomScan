@@ -15,6 +15,7 @@ final class ScanDetailViewModel {
     private let currentUserID: String
     private let projectID: String
     private let accessPolicy: DetailAccessPolicy
+    private let creatorDisplayNameFallback: String?
 
     private(set) var scan: RoomScanSummary
     private(set) var showsActionError = false
@@ -36,7 +37,8 @@ final class ScanDetailViewModel {
         currentUserID: String,
         service: any ProjectsService,
         scanDetailService: (any ScanDetailService)? = nil,
-        accessPolicy: DetailAccessPolicy = .editable
+        accessPolicy: DetailAccessPolicy = .editable,
+        creatorDisplayNameFallback: String? = nil
     ) {
         self.projectID = projectID
         self.scan = scan
@@ -44,6 +46,7 @@ final class ScanDetailViewModel {
         self.service = service
         self.scanDetailService = scanDetailService
         self.accessPolicy = accessPolicy
+        self.creatorDisplayNameFallback = creatorDisplayNameFallback
         self.renameDraft = scan.name
     }
 
@@ -71,7 +74,19 @@ final class ScanDetailViewModel {
         if creatorID == currentUserID {
             return String(localized: "scanDetail.createdBy.you")
         }
-        return detail?.creatorEmail ?? scan.creatorDisplayName
+
+        for value in [
+            detail?.creatorDisplayName,
+            scan.creatorDisplayName,
+            detail?.creatorEmail,
+            creatorDisplayNameFallback
+        ] {
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let trimmed, !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+        return String(localized: "shared.owner.unknown")
     }
 
     var formattedDate: String {
