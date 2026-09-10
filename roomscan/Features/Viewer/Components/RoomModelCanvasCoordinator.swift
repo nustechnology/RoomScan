@@ -261,41 +261,6 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         updateCamera(animated: animated)
     }
 
-    func applyCameraCommands(_ commands: [CameraCommand]) {
-        guard !commands.isEmpty else { return }
-
-        var isZoomOnly = true
-        var shouldAnimate = true
-        for command in commands {
-            switch command {
-            case .zoomIn:
-                distance = max(minDistance, distance * 0.82)
-            case .zoomOut:
-                distance = min(maxDistance, distance * 1.22)
-            case .reset:
-                isZoomOnly = false
-                applyViewModePose(for: currentViewMode)
-                updateAllPinModePresentations()
-            case .focus(let position):
-                isZoomOnly = false
-                target = position
-                distance = max(minDistance, min(distance, 5.5))
-                // Focus accompanies note selection, so it must not race the presenting sheet or gestures.
-                shouldAnimate = false
-            }
-        }
-
-        if isZoomOnly {
-            updateCamera(
-                animated: true,
-                duration: zoomAnimationDuration,
-                timingFunction: .easeOut
-            )
-        } else {
-            updateCamera(animated: shouldAnimate)
-        }
-    }
-
     private func applyViewModePose(for mode: ViewerMode) {
         switch mode {
         case .threeD:
@@ -369,6 +334,62 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         return normalize(cross(SIMD3<Float>(0, 1, 0), -forward))
     }
 
+}
+
+@MainActor
+extension RoomModelCanvasCoordinator {
+    func applyCameraCommands(_ commands: [CameraCommand]) {
+        guard !commands.isEmpty else { return }
+
+        let isZoomOnly = commands.allSatisfy { command in
+            switch command {
+            case .zoomIn, .zoomOut: true
+            case .reset, .focus: false
+            }
+        }
+        // Only sync for zoom-only batches. Mixed batches may change `target` first
+        // (e.g. focus then zoom); measuring against the pre-focus target is wrong.
+        if isZoomOnly {
+            syncOrbitDistanceFromCamera()
+        }
+
+        var shouldAnimate = true
+        for command in commands {
+            switch command {
+            case .zoomIn:
+                distance = max(minDistance, distance * 0.82)
+            case .zoomOut:
+                distance = min(maxDistance, distance * 1.22)
+            case .reset:
+                applyViewModePose(for: currentViewMode)
+                updateAllPinModePresentations()
+            case .focus(let position):
+                target = position
+                distance = max(minDistance, min(distance, 5.5))
+                // Focus accompanies note selection, so it must not race the presenting sheet or gestures.
+                shouldAnimate = false
+            }
+        }
+
+        if isZoomOnly {
+            updateCamera(
+                animated: true,
+                duration: zoomAnimationDuration,
+                timingFunction: .easeOut
+            )
+        } else {
+            updateCamera(animated: shouldAnimate)
+        }
+    }
+
+    /// Aligns logical orbit distance with the camera's current world position.
+    /// Required when interrupting an in-flight zoom animation.
+    private func syncOrbitDistanceFromCamera() {
+        guard let camera else { return }
+        let eye = camera.position(relativeTo: nil)
+        let current = simd_length(eye - target)
+        distance = max(minDistance, min(maxDistance, current))
+    }
 }
 
 @MainActor
