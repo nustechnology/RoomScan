@@ -61,6 +61,11 @@ final class ReviewScanViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
+    /// Loads projects for the review picker and recovers a missing preselected project.
+    ///
+    /// When the selected project is absent from the paginated list, fetches it by ID and
+    /// prepends it before publishing. Cancellation during recovery leaves `projects`
+    /// unchanged so a partial list without the selection is never shown.
     func loadProjects() async {
         isLoadingProjects = true
         saveErrorMessage = nil

@@ -15,17 +15,26 @@ struct ScanDetailDestination: Hashable, Identifiable {
     }
 }
 
+/// Identifies a presented scan flow and optionally preselects a project on review.
 struct ActiveScanFlow: Identifiable, Equatable {
     let id: UUID
     let sourceProjectID: String?
 
+    /// Creates a scan-flow presentation value.
+    /// - Parameters:
+    ///   - id: Stable identity for `fullScreenCover(item:)`.
+    ///   - sourceProjectID: Project to preselect on the review screen, if any.
     init(id: UUID = UUID(), sourceProjectID: String?) {
         self.id = id
         self.sourceProjectID = sourceProjectID
     }
 }
 
+/// Moves a pending Add Scan request into the active scan presentation after project detail dismisses.
 enum ActiveScanFlowHandoff {
+    /// Takes ownership of `pending` for presentation and clears it.
+    /// - Parameter pending: Pending scan flow set when Add Scan is tapped from project detail.
+    /// - Returns: The flow to present, or `nil` when nothing is pending.
     static func consumePendingForPresentation(_ pending: inout ActiveScanFlow?) -> ActiveScanFlow? {
         let flow = pending
         pending = nil
@@ -225,6 +234,7 @@ struct ProjectsPresentationModifier: ViewModifier {
         )
     }
 
+    /// Project detail cover; Add Scan stashes a pending `ActiveScanFlow` then dismisses.
     private func projectDetailCover(for project: ProjectSummary) -> some View {
         ProjectDetailView(
             project: project,

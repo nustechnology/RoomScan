@@ -7,6 +7,7 @@
 import XCTest
 
 final class ActiveScanFlowHandoffTests: XCTestCase {
+    /// Pending Add Scan keeps its source project ID and clears the pending slot.
     func testConsumePendingForPresentation_preservesSourceProjectIDAndClearsPending() {
         var pending: ActiveScanFlow? = ActiveScanFlow(sourceProjectID: "project-1")
 
@@ -16,6 +17,7 @@ final class ActiveScanFlowHandoffTests: XCTestCase {
         XCTAssertNil(pending)
     }
 
+    /// With no pending flow, consume returns nil and leaves pending nil.
     func testConsumePendingForPresentation_nilPending_returnsNil() {
         var pending: ActiveScanFlow?
 

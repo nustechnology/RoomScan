@@ -198,6 +198,7 @@ final class ReviewScanViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.saveErrorMessage)
     }
 
+    /// Preselected project missing from the list is fetched by ID and kept selected.
     func testLoadProjects_recoversPreselectedProjectMissingFromList() async {
         let missingProject = ProjectSummary(
             id: "missing-from-list",
@@ -226,6 +227,7 @@ final class ReviewScanViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.projects.first?.name, "Recovered Project")
     }
 
+    /// Stale preselection is cleared when list load and fetch-by-ID both fail to find it.
     func testLoadProjects_clearsPreselectedProjectWhenFetchAlsoFails() async {
         let service = SelectiveProjectsService(
             listedProjects: [],
@@ -243,6 +245,7 @@ final class ReviewScanViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.projects.isEmpty)
     }
 
+    /// Cancellation during recovery keeps the selection and does not publish a partial list.
     func testLoadProjects_whenRecoveryCancelled_keepsSelectionAndDoesNotPublishPartialList() async {
         let service = SelectiveProjectsService(
             listedProjects: [
@@ -274,7 +277,43 @@ final class ReviewScanViewModelTests: XCTestCase {
     }
 }
 
-private actor FailingProjectsService: ProjectsService {
+/// Shared unused `ProjectsService` stubs for ReviewScan unit-test doubles.
+private protocol ReviewScanUnusedProjectsServiceStubs: ProjectsService {}
+
+extension ReviewScanUnusedProjectsServiceStubs {
+    func createProject(name: String, projectDescription: String) async throws -> ProjectSummary {
+        throw ProjectsServiceError.network
+    }
+
+    func updateProject(id: String, name: String, description: String, revision: Int) async throws -> ProjectSummary {
+        throw ProjectsServiceError.network
+    }
+
+    func deleteProject(id: String) async throws {
+        throw ProjectsServiceError.network
+    }
+
+    func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool { false }
+
+    func saveScan(draft: RoomScanDraft, name: String, projectID: String, meshURL: URL) async throws
+        -> RoomScanSummary {
+        throw ProjectsServiceError.network
+    }
+
+    func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary {
+        throw ProjectsServiceError.network
+    }
+
+    func deleteScan(projectID: String, scanID: String) async throws {
+        throw ProjectsServiceError.network
+    }
+
+    func retryScanUpload(projectID: String, scanID: String) async throws -> RoomScanSummary {
+        throw ProjectsServiceError.network
+    }
+}
+
+private actor FailingProjectsService: ReviewScanUnusedProjectsServiceStubs {
     enum FetchProjectsBehavior: Sendable {
         case failure
         case cancellation
@@ -304,19 +343,14 @@ private actor FailingProjectsService: ProjectsService {
     func fetchProjectsCallCount() -> Int { fetchCount }
 
     func fetchProject(id: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }
-    func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] { throw ProjectsServiceError.network }
-    func createProject(name: String, projectDescription: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }
-    func updateProject(id: String, name: String, description: String, revision: Int) async throws -> ProjectSummary { throw ProjectsServiceError.network }
-    func deleteProject(id: String) async throws { throw ProjectsServiceError.network }
-    func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool { false }
-    func saveScan(draft: RoomScanDraft, name: String, projectID: String, meshURL: URL) async throws
-        -> RoomScanSummary { throw ProjectsServiceError.network }
-    func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary { throw ProjectsServiceError.network }
-    func deleteScan(projectID: String, scanID: String) async throws { throw ProjectsServiceError.network }
-    func retryScanUpload(projectID: String, scanID: String) async throws -> RoomScanSummary { throw ProjectsServiceError.network }
+
+    func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] {
+        throw ProjectsServiceError.network
+    }
 }
 
-private actor SelectiveProjectsService: ProjectsService {
+/// Test double that can return a different set for list vs fetch-by-ID, including cancellation.
+private actor SelectiveProjectsService: ReviewScanUnusedProjectsServiceStubs {
     enum FetchProjectBehavior: Sendable {
         case useFetchableProjects
         case cancellation
@@ -326,6 +360,11 @@ private actor SelectiveProjectsService: ProjectsService {
     private let fetchableProjects: [ProjectSummary]
     private let fetchProjectBehavior: FetchProjectBehavior
 
+    /// Creates a selective stub for list vs single-project recovery tests.
+    /// - Parameters:
+    ///   - listedProjects: Projects returned by paginated `fetchProjects`.
+    ///   - fetchableProjects: Projects returned by `fetchProject(id:)` when not cancelling.
+    ///   - fetchProjectBehavior: Controls whether `fetchProject` succeeds or cancels.
     init(
         listedProjects: [ProjectSummary],
         fetchableProjects: [ProjectSummary],
@@ -336,6 +375,7 @@ private actor SelectiveProjectsService: ProjectsService {
         self.fetchProjectBehavior = fetchProjectBehavior
     }
 
+    /// Returns the configured listed page for page 1, otherwise an empty page.
     func fetchProjects(page: Int, pageSize: Int) async throws -> ProjectPage {
         guard page == 1 else {
             return ProjectPage(projects: [], hasMore: false)
@@ -343,6 +383,7 @@ private actor SelectiveProjectsService: ProjectsService {
         return ProjectPage(projects: listedProjects, hasMore: false)
     }
 
+    /// Returns a configured project, or throws cancellation / not-found.
     func fetchProject(id: String) async throws -> ProjectSummary {
         if case .cancellation = fetchProjectBehavior {
             throw CancellationError()
@@ -353,16 +394,8 @@ private actor SelectiveProjectsService: ProjectsService {
         return project
     }
 
+    /// Returns the listed projects sorted by the stub's fixed order.
     func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] { listedProjects }
-    func createProject(name: String, projectDescription: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }
-    func updateProject(id: String, name: String, description: String, revision: Int) async throws -> ProjectSummary { throw ProjectsServiceError.network }
-    func deleteProject(id: String) async throws { throw ProjectsServiceError.network }
-    func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool { false }
-    func saveScan(draft: RoomScanDraft, name: String, projectID: String, meshURL: URL) async throws
-        -> RoomScanSummary { throw ProjectsServiceError.network }
-    func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary { throw ProjectsServiceError.network }
-    func deleteScan(projectID: String, scanID: String) async throws { throw ProjectsServiceError.network }
-    func retryScanUpload(projectID: String, scanID: String) async throws -> RoomScanSummary { throw ProjectsServiceError.network }
 }
 
 private final class FailingScanStorageService: ScanStorageService, @unchecked Sendable {

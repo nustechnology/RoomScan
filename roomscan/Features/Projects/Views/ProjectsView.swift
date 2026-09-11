@@ -97,6 +97,7 @@ struct ProjectsView: View {
             }
     }
 
+    /// Starts a scan flow preselected to `projectID` when Home requests Add Scan after project creation.
     private func handleRequestedScanSource(_ projectID: String?) {
         guard let projectID else { return }
         requestedScanSourceProjectID = nil
