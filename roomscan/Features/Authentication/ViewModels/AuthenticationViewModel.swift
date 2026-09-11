@@ -11,6 +11,11 @@ import Observation
 @MainActor
 @Observable
 final class AuthenticationViewModel {
+    struct AppleAuthorizationAttempt: Equatable {
+        let id: UUID
+        let rawNonce: String
+    }
+
     enum ViewState: Equatable {
         case idle
         case signingIn
@@ -22,14 +27,26 @@ final class AuthenticationViewModel {
     var toastStyle: ToastStyle = .error
 
     private let authenticationService: any AuthenticationService
+    private let appleAuthorizationTimeoutNanoseconds: UInt64
+    private var activeAppleAuthorizationAttempt: AppleAuthorizationAttempt?
+    @ObservationIgnored private var appleAuthorizationTimeoutTask: Task<Void, Never>?
 
-    init(authenticationService: any AuthenticationService) {
+    init(
+        authenticationService: any AuthenticationService,
+        appleAuthorizationTimeoutNanoseconds: UInt64 = 120_000_000_000
+    ) {
         self.authenticationService = authenticationService
+        self.appleAuthorizationTimeoutNanoseconds = appleAuthorizationTimeoutNanoseconds
     }
 
     var isSigningIn: Bool {
+        if isAppleAuthorizationInProgress { return true }
         if case .signingIn = viewState { return true }
         return false
+    }
+
+    var isAppleAuthorizationInProgress: Bool {
+        activeAppleAuthorizationAttempt != nil
     }
 
     var errorMessage: String? {
@@ -56,14 +73,58 @@ final class AuthenticationViewModel {
         return hashedData.compactMap { String(format: "%02x", $0) }.joined()
     }
 
-    @discardableResult
-    func signInWithApple(authorization: ASAuthorization, rawNonce: String) async -> AuthenticationSession? {
-        guard !isSigningIn else { return nil }
+    func beginAppleAuthorization(
+        onTimeout: @escaping @MainActor (UUID) -> Void = { _ in }
+    ) -> AppleAuthorizationAttempt {
+        if let activeAppleAuthorizationAttempt {
+            return activeAppleAuthorizationAttempt
+        }
 
+        let attempt = AppleAuthorizationAttempt(id: UUID(), rawNonce: generateRawNonce())
+        activeAppleAuthorizationAttempt = attempt
+        startAppleAuthorizationTimeout(for: attempt.id, onTimeout: onTimeout)
+        return attempt
+    }
+
+    func endAppleAuthorization(attemptID: UUID) {
+        guard activeAppleAuthorizationAttempt?.id == attemptID else { return }
+        cancelAppleAuthorizationTimeout()
+        activeAppleAuthorizationAttempt = nil
+    }
+
+    @discardableResult
+    func signInWithApple(
+        authorization: ASAuthorization,
+        attemptID: UUID
+    ) async -> AuthenticationSession? {
+        await signInWithApple(attemptID: attemptID) { [authenticationService] rawNonce in
+            try await authenticationService.signInWithApple(
+                authorization: authorization,
+                rawNonce: rawNonce
+            )
+        }
+    }
+
+    @discardableResult
+    func signInWithApple(
+        attemptID: UUID,
+        authenticate: (String) async throws -> AuthenticationSession
+    ) async -> AuthenticationSession? {
+        guard !isCredentialExchangeInProgress,
+              let attempt = activeAppleAuthorizationAttempt,
+              attempt.id == attemptID
+        else { return nil }
+
+        cancelAppleAuthorizationTimeout()
         viewState = .signingIn
+        defer {
+            if activeAppleAuthorizationAttempt?.id == attemptID {
+                activeAppleAuthorizationAttempt = nil
+            }
+        }
 
         do {
-            let session = try await authenticationService.signInWithApple(authorization: authorization, rawNonce: rawNonce)
+            let session = try await authenticate(attempt.rawNonce)
             viewState = .idle
             return session
         } catch let error as AuthenticationError {
@@ -75,7 +136,12 @@ final class AuthenticationViewModel {
         }
     }
 
-    func handleAppleSignInError(_ error: Error) {
+    func handleAppleSignInError(_ error: Error, attemptID: UUID) {
+        guard !isCredentialExchangeInProgress,
+              activeAppleAuthorizationAttempt?.id == attemptID
+        else { return }
+        endAppleAuthorization(attemptID: attemptID)
+
         if let authError = error as? ASAuthorizationError {
             if authError.code == .canceled {
                 viewState = .idle
@@ -117,6 +183,41 @@ final class AuthenticationViewModel {
             toastMessage = error.errorDescription
             toastStyle = .error
         }
+    }
+
+    private var isCredentialExchangeInProgress: Bool {
+        if case .signingIn = viewState { return true }
+        return false
+    }
+
+    private func startAppleAuthorizationTimeout(
+        for attemptID: UUID,
+        onTimeout: @escaping @MainActor (UUID) -> Void
+    ) {
+        appleAuthorizationTimeoutTask?.cancel()
+        let timeoutNanoseconds = appleAuthorizationTimeoutNanoseconds
+        appleAuthorizationTimeoutTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: timeoutNanoseconds)
+            } catch {
+                return
+            }
+
+            guard let self,
+                  !self.isCredentialExchangeInProgress,
+                  self.activeAppleAuthorizationAttempt?.id == attemptID
+            else { return }
+
+            onTimeout(attemptID)
+            self.activeAppleAuthorizationAttempt = nil
+            self.appleAuthorizationTimeoutTask = nil
+            self.handleError(.appleAuthorizationTimedOut)
+        }
+    }
+
+    private func cancelAppleAuthorizationTimeout() {
+        appleAuthorizationTimeoutTask?.cancel()
+        appleAuthorizationTimeoutTask = nil
     }
 
     func dismissError() {
