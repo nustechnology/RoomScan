@@ -24,13 +24,12 @@ struct ProjectsView: View {
     @State private var projectPendingDelete: ProjectSummary?
     @FocusState private var isSearchFocused: Bool
 
-    @State private var scanningSourceProjectID: String?
-    @State private var pendingScanSourceProjectID: String?
+    @State private var activeScanFlow: ActiveScanFlow?
+    @State private var pendingActiveScanFlow: ActiveScanFlow?
     @State private var recoveredDraft: RoomScanDraft?
     @State private var recoveredDraftToPrompt: RoomScanDraft?
     @State private var savedScanForDetails: RoomScanSummary?
     @State private var pendingSavedScanForDetails: RoomScanSummary?
-    @State private var showsScanFlow = false
 
     private let storageService: ScanStorageService = LocalScanStorageService()
 
@@ -82,9 +81,8 @@ struct ProjectsView: View {
                 shareService: shareService,
                 syncEngine: syncEngine,
                 currentUserID: currentUserID,
-                showsScanFlow: $showsScanFlow,
-                scanningSourceProjectID: $scanningSourceProjectID,
-                pendingScanSourceProjectID: $pendingScanSourceProjectID,
+                activeScanFlow: $activeScanFlow,
+                pendingActiveScanFlow: $pendingActiveScanFlow,
                 recoveredDraft: $recoveredDraft,
                 recoveredDraftToPrompt: $recoveredDraftToPrompt,
                 savedScanForDetails: $savedScanForDetails,
@@ -101,9 +99,8 @@ struct ProjectsView: View {
 
     private func handleRequestedScanSource(_ projectID: String?) {
         guard let projectID else { return }
-        scanningSourceProjectID = projectID
         requestedScanSourceProjectID = nil
-        showsScanFlow = true
+        activeScanFlow = ActiveScanFlow(sourceProjectID: projectID)
     }
 
     private var toastOverlay: some View {
@@ -179,8 +176,7 @@ struct ProjectsView: View {
                     ProjectsContentSection(
                         viewModel: viewModel,
                         onNewScan: {
-                            scanningSourceProjectID = nil
-                            showsScanFlow = true
+                            activeScanFlow = ActiveScanFlow(sourceProjectID: nil)
                         },
                         onProjectTap: { project in
                             selectedProject = project
@@ -209,8 +205,7 @@ struct ProjectsView: View {
                             projectPendingDelete = project
                         },
                         onAddScan: { project in
-                            scanningSourceProjectID = project.id
-                            showsScanFlow = true
+                            activeScanFlow = ActiveScanFlow(sourceProjectID: project.id)
                         }
                     )
                 }

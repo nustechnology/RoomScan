@@ -197,6 +197,81 @@ final class ReviewScanViewModelTests: XCTestCase {
         XCTAssertEqual(callCount, ReviewScanViewModel.maxProjectPages)
         XCTAssertNil(viewModel.saveErrorMessage)
     }
+
+    func testLoadProjects_recoversPreselectedProjectMissingFromList() async {
+        let missingProject = ProjectSummary(
+            id: "missing-from-list",
+            name: "Recovered Project",
+            ownerName: "You",
+            createdAt: Date(),
+            updatedAt: Date(),
+            description: "",
+            sharedUserCount: 0,
+            roomScans: []
+        )
+        let service = SelectiveProjectsService(
+            listedProjects: [],
+            fetchableProjects: [missingProject]
+        )
+        let viewModel = ReviewScanViewModel(
+            draft: dummyDraft,
+            preselectedProjectID: missingProject.id,
+            projectsService: service
+        )
+
+        await viewModel.loadProjects()
+
+        XCTAssertEqual(viewModel.selectedProjectID, missingProject.id)
+        XCTAssertEqual(viewModel.projects.first?.id, missingProject.id)
+        XCTAssertEqual(viewModel.projects.first?.name, "Recovered Project")
+    }
+
+    func testLoadProjects_clearsPreselectedProjectWhenFetchAlsoFails() async {
+        let service = SelectiveProjectsService(
+            listedProjects: [],
+            fetchableProjects: []
+        )
+        let viewModel = ReviewScanViewModel(
+            draft: dummyDraft,
+            preselectedProjectID: "stale-project",
+            projectsService: service
+        )
+
+        await viewModel.loadProjects()
+
+        XCTAssertNil(viewModel.selectedProjectID)
+        XCTAssertTrue(viewModel.projects.isEmpty)
+    }
+
+    func testLoadProjects_whenRecoveryCancelled_keepsSelectionAndDoesNotPublishPartialList() async {
+        let service = SelectiveProjectsService(
+            listedProjects: [
+                ProjectSummary(
+                    id: "listed-only",
+                    name: "Listed Only",
+                    ownerName: "You",
+                    createdAt: Date(),
+                    updatedAt: Date(),
+                    description: "",
+                    sharedUserCount: 0,
+                    roomScans: []
+                )
+            ],
+            fetchableProjects: [],
+            fetchProjectBehavior: .cancellation
+        )
+        let viewModel = ReviewScanViewModel(
+            draft: dummyDraft,
+            preselectedProjectID: "preselected-project",
+            projectsService: service
+        )
+
+        await viewModel.loadProjects()
+
+        XCTAssertEqual(viewModel.selectedProjectID, "preselected-project")
+        XCTAssertTrue(viewModel.projects.isEmpty)
+        XCTAssertNil(viewModel.saveErrorMessage)
+    }
 }
 
 private actor FailingProjectsService: ProjectsService {
@@ -230,6 +305,55 @@ private actor FailingProjectsService: ProjectsService {
 
     func fetchProject(id: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }
     func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] { throw ProjectsServiceError.network }
+    func createProject(name: String, projectDescription: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }
+    func updateProject(id: String, name: String, description: String, revision: Int) async throws -> ProjectSummary { throw ProjectsServiceError.network }
+    func deleteProject(id: String) async throws { throw ProjectsServiceError.network }
+    func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool { false }
+    func saveScan(draft: RoomScanDraft, name: String, projectID: String, meshURL: URL) async throws
+        -> RoomScanSummary { throw ProjectsServiceError.network }
+    func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary { throw ProjectsServiceError.network }
+    func deleteScan(projectID: String, scanID: String) async throws { throw ProjectsServiceError.network }
+    func retryScanUpload(projectID: String, scanID: String) async throws -> RoomScanSummary { throw ProjectsServiceError.network }
+}
+
+private actor SelectiveProjectsService: ProjectsService {
+    enum FetchProjectBehavior: Sendable {
+        case useFetchableProjects
+        case cancellation
+    }
+
+    private let listedProjects: [ProjectSummary]
+    private let fetchableProjects: [ProjectSummary]
+    private let fetchProjectBehavior: FetchProjectBehavior
+
+    init(
+        listedProjects: [ProjectSummary],
+        fetchableProjects: [ProjectSummary],
+        fetchProjectBehavior: FetchProjectBehavior = .useFetchableProjects
+    ) {
+        self.listedProjects = listedProjects
+        self.fetchableProjects = fetchableProjects
+        self.fetchProjectBehavior = fetchProjectBehavior
+    }
+
+    func fetchProjects(page: Int, pageSize: Int) async throws -> ProjectPage {
+        guard page == 1 else {
+            return ProjectPage(projects: [], hasMore: false)
+        }
+        return ProjectPage(projects: listedProjects, hasMore: false)
+    }
+
+    func fetchProject(id: String) async throws -> ProjectSummary {
+        if case .cancellation = fetchProjectBehavior {
+            throw CancellationError()
+        }
+        guard let project = fetchableProjects.first(where: { $0.id == id }) else {
+            throw ProjectsServiceError.projectNotFound
+        }
+        return project
+    }
+
+    func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] { listedProjects }
     func createProject(name: String, projectDescription: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }
     func updateProject(id: String, name: String, description: String, revision: Int) async throws -> ProjectSummary { throw ProjectsServiceError.network }
     func deleteProject(id: String) async throws { throw ProjectsServiceError.network }

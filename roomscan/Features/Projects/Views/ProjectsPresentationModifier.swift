@@ -15,6 +15,24 @@ struct ScanDetailDestination: Hashable, Identifiable {
     }
 }
 
+struct ActiveScanFlow: Identifiable, Equatable {
+    let id: UUID
+    let sourceProjectID: String?
+
+    init(id: UUID = UUID(), sourceProjectID: String?) {
+        self.id = id
+        self.sourceProjectID = sourceProjectID
+    }
+}
+
+enum ActiveScanFlowHandoff {
+    static func consumePendingForPresentation(_ pending: inout ActiveScanFlow?) -> ActiveScanFlow? {
+        let flow = pending
+        pending = nil
+        return flow
+    }
+}
+
 struct ProjectsPresentationModifier: ViewModifier {
     @Binding var selectedProject: ProjectSummary?
     @Binding var selectedScanDetail: ScanDetailDestination?
@@ -30,9 +48,8 @@ struct ProjectsPresentationModifier: ViewModifier {
     let syncEngine: SyncEngine?
     var currentUserID: String
 
-    @Binding var showsScanFlow: Bool
-    @Binding var scanningSourceProjectID: String?
-    @Binding var pendingScanSourceProjectID: String?
+    @Binding var activeScanFlow: ActiveScanFlow?
+    @Binding var pendingActiveScanFlow: ActiveScanFlow?
     @Binding var recoveredDraft: RoomScanDraft?
     @Binding var recoveredDraftToPrompt: RoomScanDraft?
     @Binding var savedScanForDetails: RoomScanSummary?
@@ -45,10 +62,10 @@ struct ProjectsPresentationModifier: ViewModifier {
             .fullScreenCover(
                 item: $selectedProject,
                 onDismiss: {
-                    if let projectID = pendingScanSourceProjectID {
-                        pendingScanSourceProjectID = nil
-                        scanningSourceProjectID = projectID
-                        showsScanFlow = true
+                    if let flow = ActiveScanFlowHandoff.consumePendingForPresentation(&pendingActiveScanFlow) {
+                        Task { @MainActor in
+                            activeScanFlow = flow
+                        }
                     }
                 },
                 content: { project in
@@ -68,21 +85,21 @@ struct ProjectsPresentationModifier: ViewModifier {
                 checkDraftRecovery()
             }
             .fullScreenCover(
-                isPresented: $showsScanFlow,
+                item: $activeScanFlow,
                 onDismiss: {
                     if let savedScan = pendingSavedScanForDetails {
                         pendingSavedScanForDetails = nil
                         savedScanForDetails = savedScan
                     }
                 },
-                content: {
+                content: { flow in
                     ScanFlowCoordinatorView(
-                        sourceProjectID: scanningSourceProjectID,
+                        sourceProjectID: flow.sourceProjectID,
                         recoveredDraft: recoveredDraft,
                         projectsService: projectsService,
                         onComplete: { savedScan in
                             recoveredDraft = nil
-                            showsScanFlow = false
+                            activeScanFlow = nil
                             if let savedScan {
                                 pendingSavedScanForDetails = savedScan
                             }
@@ -92,7 +109,7 @@ struct ProjectsPresentationModifier: ViewModifier {
                         },
                         onCancel: {
                             recoveredDraft = nil
-                            showsScanFlow = false
+                            activeScanFlow = nil
                         }
                     )
                 }
@@ -115,8 +132,7 @@ struct ProjectsPresentationModifier: ViewModifier {
             ) { draft in
                 Button(String(localized: "scan.recovery.resume")) {
                     recoveredDraft = draft
-                    scanningSourceProjectID = draft.projectID
-                    showsScanFlow = true
+                    activeScanFlow = ActiveScanFlow(sourceProjectID: draft.projectID)
                     recoveredDraftToPrompt = nil
                 }
                 Button(String(localized: "scan.recovery.discard"), role: .destructive) {
@@ -231,7 +247,7 @@ struct ProjectsPresentationModifier: ViewModifier {
                 )
             },
             onAddScan: { projectID in
-                pendingScanSourceProjectID = projectID
+                pendingActiveScanFlow = ActiveScanFlow(sourceProjectID: projectID)
                 selectedProject = nil
             },
             onEdit: { project in

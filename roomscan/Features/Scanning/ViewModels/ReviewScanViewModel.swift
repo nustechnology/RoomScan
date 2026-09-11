@@ -86,11 +86,19 @@ final class ReviewScanViewModel: ObservableObject {
                 #endif
             }
 
-            self.projects = fetchedProjects
             if let selectedProjectID,
                !fetchedProjects.contains(where: { $0.id == selectedProjectID }) {
-                self.selectedProjectID = nil
+                do {
+                    let project = try await projectsService.fetchProject(id: selectedProjectID)
+                    fetchedProjects.insert(project, at: 0)
+                } catch is CancellationError {
+                    return
+                } catch {
+                    self.selectedProjectID = nil
+                }
             }
+
+            self.projects = fetchedProjects
         } catch is CancellationError {
             return
         } catch {
