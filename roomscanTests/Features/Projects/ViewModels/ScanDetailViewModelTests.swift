@@ -361,6 +361,75 @@ struct ScanDetailViewModelTests {
         #expect(viewModel.title == "Living Room")
     }
 
+    @Test func renameScanRejectsDuplicateNameAndShowsExistingMessage() async {
+        let scan = makeScan(id: "scan-1", name: "Living Room")
+        let service = MockProjectsService(
+            projects: [
+                makeProject(roomScans: [
+                    scan,
+                    makeScan(id: "scan-2", name: "Kitchen")
+                ])
+            ],
+            simulatedDelayNanoseconds: 0
+        )
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: scan,
+            currentUserID: Self.mockCurrentUserID,
+            service: service,
+            scanDetailService: ScanDetailRenameStub()
+        )
+        viewModel.renameDraft = "  kitchen  "
+
+        let didRename = await viewModel.renameScan()
+
+        #expect(!didRename)
+        #expect(viewModel.showsActionError)
+        #expect(viewModel.actionErrorMessage == String(localized: "review.error.duplicate_name"))
+        #expect(viewModel.title == "Living Room")
+    }
+
+    @Test func renameScanAllowsUnchangedName() async {
+        let scan = makeScan(name: "Living Room")
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: scan,
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(
+                projects: [makeProject(roomScans: [scan])],
+                simulatedDelayNanoseconds: 0
+            ),
+            scanDetailService: ScanDetailRenameStub()
+        )
+        viewModel.renameDraft = "  living room  "
+
+        let didRename = await viewModel.renameScan()
+
+        #expect(didRename)
+        #expect(!viewModel.showsActionError)
+    }
+
+    @Test func renameScanShowsExistingMessageForServerConflict() async {
+        let viewModel = ScanDetailViewModel(
+            projectID: "project-1",
+            scan: makeScan(name: "Living Room"),
+            currentUserID: Self.mockCurrentUserID,
+            service: MockProjectsService(
+                projects: [makeProject()],
+                simulatedDelayNanoseconds: 0
+            ),
+            scanDetailService: DuplicateScanDetailRenameStub()
+        )
+        viewModel.renameDraft = "Kitchen"
+
+        let didRename = await viewModel.renameScan()
+
+        #expect(!didRename)
+        #expect(viewModel.showsActionError)
+        #expect(viewModel.actionErrorMessage == String(localized: "review.error.duplicate_name"))
+        #expect(viewModel.title == "Living Room")
+    }
+
     @Test func renameScanBeforeDetailLoadsOmitsDescription() async {
         let scanDetailService = ScanDetailRenameSpy()
         let viewModel = ScanDetailViewModel(
@@ -663,7 +732,8 @@ struct ScanDetailViewModelTests {
     }
 
     private func makeProject(
-        syncStatus: RoomScanSyncStatus = .synced
+        syncStatus: RoomScanSyncStatus = .synced,
+        roomScans: [RoomScanSummary]? = nil
     ) -> ProjectSummary {
         ProjectSummary(
             id: "project-1",
@@ -673,11 +743,12 @@ struct ScanDetailViewModelTests {
             updatedAt: Date(timeIntervalSince1970: 2_000),
             description: "",
             sharedUserCount: 0,
-            roomScans: [makeScan(syncStatus: syncStatus)]
+            roomScans: roomScans ?? [makeScan(syncStatus: syncStatus)]
         )
     }
 
     private func makeScan(
+        id: String = "scan-1",
         name: String = "Living Room",
         createdAt: Date = Date(timeIntervalSince1970: 1_781_251_200),
         localModelURL: URL? = nil,
@@ -688,7 +759,7 @@ struct ScanDetailViewModelTests {
         assetStatus: String? = nil
     ) -> RoomScanSummary {
         RoomScanSummary(
-            id: "scan-1",
+            id: id,
             name: name,
             createdAt: createdAt,
             localModelURL: localModelURL,
@@ -809,6 +880,18 @@ private struct ScanDetailRenameStub: ScanDetailService {
             )
         )
     }
+}
+
+private struct DuplicateScanDetailRenameStub: ScanDetailService {
+    func fetchScanDetail(id: String) async throws -> ScanDetail {
+        ScanDetailRenameStub().makeDetail(id: id, name: "Living Room", description: nil)
+    }
+
+    func updateScanDetail(id: String, name: String, description: String?) async throws -> ScanDetail {
+        throw HTTPClientError.serverError(statusCode: 409, apiError: nil)
+    }
+
+    func deleteScanDetail(id: String) async throws {}
 }
 
 private final class ScanDetailNoteCountStub: ScanDetailService, @unchecked Sendable {

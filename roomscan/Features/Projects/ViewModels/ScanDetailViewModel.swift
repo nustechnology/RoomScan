@@ -19,6 +19,7 @@ final class ScanDetailViewModel {
 
     private(set) var scan: RoomScanSummary
     private(set) var showsActionError = false
+    private(set) var actionErrorMessage: String?
     private(set) var needsRescanForRetry = false
     private(set) var isPerformingAction = false
     private(set) var didDeleteScan = false
@@ -199,18 +200,13 @@ final class ScanDetailViewModel {
         detail.map { String($0.modelVersion) }
     }
 
-    func beginRename() {
-        guard allowsOwnerActions else { return }
-        renameDraft = scan.name
-    }
-
     @discardableResult
     func renameScan() async -> Bool {
         guard allowsOwnerActions else { return false }
 
         let trimmedName = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
-            showsActionError = true
+            presentActionError()
             return false
         }
 
@@ -218,6 +214,10 @@ final class ScanDetailViewModel {
         defer { isPerformingAction = false }
 
         do {
+            if await hasDuplicateScanName(trimmedName) {
+                presentActionError(message: String(localized: "review.error.duplicate_name"))
+                return false
+            }
             if let scanDetailService {
                 let updatedDetail = try await scanDetailService.updateScanDetail(
                     id: scan.id,
@@ -236,10 +236,13 @@ final class ScanDetailViewModel {
                 invalidateInFlightDetailLoads()
             }
             renameDraft = scan.name
-            showsActionError = false
+            dismissActionError()
             return true
+        } catch let error as HTTPClientError {
+            presentActionError(message: actionErrorMessage(for: error))
+            return false
         } catch {
-            showsActionError = true
+            presentActionError()
             return false
         }
     }
@@ -320,10 +323,6 @@ final class ScanDetailViewModel {
         }
     }
 
-    func dismissActionError() {
-        showsActionError = false
-    }
-
     /// Bumps the shared generation so any in-flight `loadDetail` response is ignored.
     private func invalidateInFlightDetailLoads() {
         detailLoadGeneration += 1
@@ -358,9 +357,35 @@ final class ScanDetailViewModel {
 }
 
 extension ScanDetailViewModel {
+    func beginRename() {
+        guard allowsOwnerActions else { return }
+        renameDraft = scan.name
+    }
+
     func applyViewerRename(_ updatedDetail: ScanDetail) {
         invalidateInFlightDetailLoads()
         detail = updatedDetail
         scan = scanWithUpdatedName(updatedDetail.name)
+    }
+
+    func dismissActionError() {
+        showsActionError = false
+        actionErrorMessage = nil
+    }
+
+    private func hasDuplicateScanName(_ name: String) async -> Bool {
+        let currentName = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard currentName.caseInsensitiveCompare(name) != .orderedSame else { return false }
+        return (try? await service.isScanNameDuplicate(name: name, projectID: projectID)) ?? false
+    }
+
+    private func presentActionError(message: String? = nil) {
+        actionErrorMessage = message
+        showsActionError = true
+    }
+
+    private func actionErrorMessage(for error: HTTPClientError) -> String? {
+        guard case .serverError(409, _) = error else { return nil }
+        return String(localized: "review.error.duplicate_name")
     }
 }
