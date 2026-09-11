@@ -69,6 +69,78 @@ struct AuthenticationViewModelTests {
         #expect(viewModel.viewState == .idle)
     }
 
+    @Test func preparingAppleRequestImmediatelyShowsLoadingAndReusesNonce() {
+        let service = MockAuthenticationService()
+        let viewModel = AuthenticationViewModel(authenticationService: service)
+
+        let firstNonce = viewModel.prepareAppleSignInRequest()
+        let repeatedNonce = viewModel.prepareAppleSignInRequest()
+
+        #expect(!firstNonce.rawNonce.isEmpty)
+        #expect(repeatedNonce == firstNonce)
+        #expect(viewModel.viewState == .signingIn)
+        #expect(viewModel.isSigningIn)
+    }
+
+    @Test func appleRequestTimeoutShowsRetryableError() async {
+        let service = MockAuthenticationService()
+        let viewModel = AuthenticationViewModel(
+            authenticationService: service,
+            appleAuthorizationTimeoutNanoseconds: 1_000_000
+        )
+
+        _ = viewModel.prepareAppleSignInRequest()
+        await waitUntilAppleSignInFinishes(viewModel)
+
+        #expect(viewModel.viewState == .failed(.appleSystemError))
+        #expect(!viewModel.isSigningIn)
+        #expect(viewModel.toastMessage == AuthenticationError.appleSystemError.errorDescription)
+        #expect(viewModel.toastStyle == .error)
+    }
+
+    @Test func lateFailureDoesNotClearRetriedAppleRequest() async {
+        let service = MockAuthenticationService()
+        let viewModel = AuthenticationViewModel(
+            authenticationService: service,
+            appleAuthorizationTimeoutNanoseconds: 1_000_000
+        )
+        let expiredAttempt = viewModel.prepareAppleSignInRequest()
+        await waitUntilAppleSignInFinishes(viewModel)
+        #expect(!viewModel.isSigningIn)
+        let retryAttempt = viewModel.prepareAppleSignInRequest()
+
+        viewModel.handleAppleSignInError(
+            AuthenticationError.appleSystemError,
+            attemptID: expiredAttempt.id
+        )
+
+        #expect(viewModel.isSigningIn)
+        #expect(viewModel.prepareAppleSignInRequest() == retryAttempt)
+    }
+
+    @Test func lateSuccessDoesNotAuthenticateOrClearRetriedAppleRequest() async {
+        let service = MockAuthenticationService()
+        let viewModel = AuthenticationViewModel(
+            authenticationService: service,
+            appleAuthorizationTimeoutNanoseconds: 1_000_000
+        )
+        let expiredAttempt = viewModel.prepareAppleSignInRequest()
+        await waitUntilAppleSignInFinishes(viewModel)
+        #expect(!viewModel.isSigningIn)
+        let retryAttempt = viewModel.prepareAppleSignInRequest()
+        var didAuthenticate = false
+
+        let session = await viewModel.completeAppleSignIn(attemptID: expiredAttempt.id) { _ in
+            didAuthenticate = true
+            return .mockAppleUser
+        }
+
+        #expect(session == nil)
+        #expect(!didAuthenticate)
+        #expect(viewModel.isSigningIn)
+        #expect(viewModel.prepareAppleSignInRequest() == retryAttempt)
+    }
+
     @Test func signInWithAppleCancellationKeepsIdleState() async {
         let service = MockAuthenticationService(
             configuration: .init(
@@ -158,5 +230,13 @@ struct AuthenticationViewModelTests {
         #expect(viewModel.viewState == .failed(.invalidCredential))
         #expect(viewModel.toastMessage == AuthenticationError.invalidCredential.errorDescription)
         #expect(viewModel.toastStyle == .error)
+    }
+
+    private func waitUntilAppleSignInFinishes(_ viewModel: AuthenticationViewModel) async {
+        let deadline = Date().addingTimeInterval(1)
+        while viewModel.isSigningIn, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+            await Task.yield()
+        }
     }
 }

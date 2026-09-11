@@ -11,6 +11,11 @@ import Observation
 @MainActor
 @Observable
 final class AuthenticationViewModel {
+    struct AppleSignInAttempt: Equatable {
+        let id: UUID
+        let rawNonce: String
+    }
+
     enum ViewState: Equatable {
         case idle
         case signingIn
@@ -22,9 +27,17 @@ final class AuthenticationViewModel {
     var toastStyle: ToastStyle = .error
 
     private let authenticationService: any AuthenticationService
+    private let appleAuthorizationTimeoutNanoseconds: UInt64
+    private var activeAppleSignInAttempt: AppleSignInAttempt?
+    private var isCompletingAppleSignIn = false
+    @ObservationIgnored private var appleAuthorizationTimeoutTask: Task<Void, Never>?
 
-    init(authenticationService: any AuthenticationService) {
+    init(
+        authenticationService: any AuthenticationService,
+        appleAuthorizationTimeoutNanoseconds: UInt64 = 120_000_000_000
+    ) {
         self.authenticationService = authenticationService
+        self.appleAuthorizationTimeoutNanoseconds = appleAuthorizationTimeoutNanoseconds
     }
 
     var isSigningIn: Bool {
@@ -56,14 +69,54 @@ final class AuthenticationViewModel {
         return hashedData.compactMap { String(format: "%02x", $0) }.joined()
     }
 
-    @discardableResult
-    func signInWithApple(authorization: ASAuthorization, rawNonce: String) async -> AuthenticationSession? {
-        guard !isSigningIn else { return nil }
+    /// Always supplies a nonce before the Apple authorization request is dispatched.
+    /// Repeated request callbacks reuse the active nonce while the first sign-in is in progress.
+    func prepareAppleSignInRequest() -> AppleSignInAttempt {
+        if let activeAppleSignInAttempt {
+            return activeAppleSignInAttempt
+        }
 
+        let attempt = AppleSignInAttempt(id: UUID(), rawNonce: generateRawNonce())
+        activeAppleSignInAttempt = attempt
         viewState = .signingIn
+        startAppleAuthorizationTimeout(for: attempt.id)
+        return attempt
+    }
+
+    @discardableResult
+    func completeAppleSignIn(
+        authorization: ASAuthorization,
+        attemptID: UUID
+    ) async -> AuthenticationSession? {
+        await completeAppleSignIn(attemptID: attemptID) { [authenticationService] rawNonce in
+            try await authenticationService.signInWithApple(
+                authorization: authorization,
+                rawNonce: rawNonce
+            )
+        }
+    }
+
+    @discardableResult
+    func completeAppleSignIn(
+        attemptID: UUID,
+        authenticate: (String) async throws -> AuthenticationSession
+    ) async -> AuthenticationSession? {
+        guard !isCompletingAppleSignIn,
+              let attempt = activeAppleSignInAttempt,
+              attempt.id == attemptID
+        else { return nil }
+
+        cancelAppleAuthorizationTimeout()
+        isCompletingAppleSignIn = true
+        defer {
+            isCompletingAppleSignIn = false
+            if activeAppleSignInAttempt?.id == attemptID {
+                activeAppleSignInAttempt = nil
+            }
+        }
 
         do {
-            let session = try await authenticationService.signInWithApple(authorization: authorization, rawNonce: rawNonce)
+            let session = try await authenticate(attempt.rawNonce)
             viewState = .idle
             return session
         } catch let error as AuthenticationError {
@@ -75,7 +128,12 @@ final class AuthenticationViewModel {
         }
     }
 
-    func handleAppleSignInError(_ error: Error) {
+    func handleAppleSignInError(_ error: Error, attemptID: UUID) {
+        guard !isCompletingAppleSignIn else { return }
+        guard activeAppleSignInAttempt?.id == attemptID else { return }
+        cancelAppleAuthorizationTimeout()
+        activeAppleSignInAttempt = nil
+
         if let authError = error as? ASAuthorizationError {
             if authError.code == .canceled {
                 viewState = .idle
@@ -117,6 +175,32 @@ final class AuthenticationViewModel {
             toastMessage = error.errorDescription
             toastStyle = .error
         }
+    }
+
+    private func startAppleAuthorizationTimeout(for attemptID: UUID) {
+        appleAuthorizationTimeoutTask?.cancel()
+        let timeoutNanoseconds = appleAuthorizationTimeoutNanoseconds
+        appleAuthorizationTimeoutTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: timeoutNanoseconds)
+            } catch {
+                return
+            }
+
+            guard let self,
+                  !self.isCompletingAppleSignIn,
+                  self.activeAppleSignInAttempt?.id == attemptID
+            else { return }
+
+            self.activeAppleSignInAttempt = nil
+            self.appleAuthorizationTimeoutTask = nil
+            self.handleError(.appleSystemError)
+        }
+    }
+
+    private func cancelAppleAuthorizationTimeout() {
+        appleAuthorizationTimeoutTask?.cancel()
+        appleAuthorizationTimeoutTask = nil
     }
 
     func dismissError() {
