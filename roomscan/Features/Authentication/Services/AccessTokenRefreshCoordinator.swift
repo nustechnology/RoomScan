@@ -164,7 +164,8 @@ actor AccessTokenRefreshCoordinator {
             return true
         case .serverRejected(let statusCode):
             return statusCode == 408 || statusCode == 429 || (500...599).contains(statusCode)
-        case .invalidCredential, .unavailable, .unknown, .appleSystemError, .cancelled:
+        case .invalidCredential, .unavailable, .unknown, .appleSystemError,
+             .appleAuthorizationTimedOut, .cancelled:
             return false
         }
     }
