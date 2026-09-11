@@ -125,17 +125,24 @@ final class RemoteNotesService: NotesService, @unchecked Sendable {
             idempotencyKey: idempotencyKey
         )
 
+        let note: SpatialNote
         do {
-            return try await performCreateNote(endpoint: endpoint)
+            note = try await performCreateNote(endpoint: endpoint)
         } catch let error as HTTPClientError where error == .networkError {
             do {
-                return try await performCreateNote(endpoint: endpoint)
+                note = try await performCreateNote(endpoint: endpoint)
             } catch let retryError as HTTPClientError {
                 throw mapHTTPClientError(retryError)
             }
         } catch let error as HTTPClientError {
             throw mapHTTPClientError(error)
         }
+
+        // Advance once after the create (including any network retry) succeeds.
+        // Creating a note mutates the parent scan (e.g. noteCount) and bumps its
+        // server revision; keep If-Match for later scan PATCH/DELETE in sync.
+        await revisionStore.advance(for: scanID)
+        return note
     }
 
     private func performCreateNote(endpoint: APIEndpoint) async throws -> SpatialNote {
@@ -202,12 +209,14 @@ final class RemoteNotesService: NotesService, @unchecked Sendable {
 
         do {
             let _: EmptyAPIResponse = try await httpClient.request(endpoint)
-            await revisionStore.advance(for: noteID)
         } catch let error as HTTPClientError {
             throw mapHTTPClientError(error)
         } catch {
             throw NotesServiceError.noteNotFound
         }
+
+        // Only after a successful delete: bump note + parent scan together.
+        await revisionStore.advance(for: [noteID, scanID])
     }
 
     private func requestNote(endpoint: APIEndpoint, resourceID: String?) async throws -> SpatialNote {

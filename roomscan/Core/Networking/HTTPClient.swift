@@ -48,8 +48,16 @@ actor APIRevisionStore {
     }
 
     func advance(for resourceID: String) {
-        let nextValue = (Int(revisions[resourceID] ?? APIRevision.initial) ?? 1) + 1
-        revisions[resourceID] = String(nextValue)
+        advance(for: [resourceID])
+    }
+
+    /// Advances multiple resources in one hop so callers cannot observe a partial bump.
+    func advance(for resourceIDs: [String]) {
+        guard !resourceIDs.isEmpty else { return }
+        for resourceID in resourceIDs {
+            let nextValue = (Int(revisions[resourceID] ?? APIRevision.initial) ?? 1) + 1
+            revisions[resourceID] = String(nextValue)
+        }
         persist()
     }
 
@@ -59,6 +67,14 @@ actor APIRevisionStore {
             return
         }
         revisions[resourceID] = String(incoming)
+        persist()
+    }
+
+    /// Trusts an authoritative server revision (e.g. from GET), including lowering
+    /// a locally overshot value so a later If-Match can succeed.
+    func replace(_ revision: String?, for resourceID: String) {
+        guard let revision, Int(revision) != nil else { return }
+        revisions[resourceID] = revision
         persist()
     }
 }
