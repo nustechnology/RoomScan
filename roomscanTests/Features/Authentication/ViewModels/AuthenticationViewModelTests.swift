@@ -3,6 +3,7 @@
 //  roomscanTests
 //
 
+import AuthenticationServices
 import Foundation
 @testable import roomscan
 import Testing
@@ -105,14 +106,12 @@ struct AuthenticationViewModelTests {
         #expect(viewModel.viewState == .failed(.appleSystemError))
     }
 
-    @Test func appleAuthorizationStaysActiveUntilTimeout() async {
+    @Test func appleAuthorizationStaysActiveUntilTimeout() {
         let viewModel = AuthenticationViewModel(
             authenticationService: MockAuthenticationService(),
-            appleAuthorizationTimeoutNanoseconds: 100_000_000
+            appleAuthorizationTimeoutNanoseconds: 10_000_000_000
         )
         let attempt = viewModel.beginAppleAuthorization()
-
-        try? await Task.sleep(nanoseconds: 20_000_000)
 
         #expect(viewModel.isAppleAuthorizationInProgress)
         #expect(viewModel.isSigningIn)
@@ -165,6 +164,81 @@ struct AuthenticationViewModelTests {
         #expect(viewModel.isAppleAuthorizationInProgress)
         #expect(viewModel.beginAppleAuthorization() == retryAttempt)
         viewModel.endAppleAuthorization(attemptID: retryAttempt.id)
+    }
+
+    @Test func timedOutAppleAuthorizationExpiresAndRejectsLateSignIn() async {
+        let viewModel = AuthenticationViewModel(
+            authenticationService: MockAuthenticationService(),
+            appleAuthorizationTimeoutNanoseconds: 1_000_000,
+            appleAuthorizationExpiryNanoseconds: 1_000_000
+        )
+        let attempt = viewModel.beginAppleAuthorization()
+        await waitUntilAppleAuthorizationFinishes(viewModel)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        let session = await viewModel.signInWithApple(attemptID: attempt.id) { _ in .mockAppleUser }
+
+        #expect(session == nil)
+        #expect(viewModel.viewState == .idle)
+        #expect(viewModel.toastMessage == nil)
+    }
+
+    @Test func timedOutAppleAuthorizationFailureShowsError() async {
+        let viewModel = AuthenticationViewModel(
+            authenticationService: MockAuthenticationService(),
+            appleAuthorizationTimeoutNanoseconds: 1_000_000
+        )
+        let attempt = viewModel.beginAppleAuthorization()
+        await waitUntilAppleAuthorizationFinishes(viewModel)
+
+        viewModel.handleAppleSignInError(ASAuthorizationError(.failed), attemptID: attempt.id)
+
+        #expect(viewModel.viewState == .failed(.appleSystemError))
+        #expect(viewModel.toastMessage == AuthenticationError.appleSystemError.errorDescription)
+        #expect(await viewModel.signInWithApple(attemptID: attempt.id) { _ in .mockAppleUser } == nil)
+    }
+
+    @Test func timedOutAppleAuthorizationCancellationStaysQuiet() async {
+        let viewModel = AuthenticationViewModel(
+            authenticationService: MockAuthenticationService(),
+            appleAuthorizationTimeoutNanoseconds: 1_000_000
+        )
+        let attempt = viewModel.beginAppleAuthorization()
+        await waitUntilAppleAuthorizationFinishes(viewModel)
+
+        viewModel.handleAppleSignInError(ASAuthorizationError(.canceled), attemptID: attempt.id)
+
+        #expect(viewModel.viewState == .idle)
+        #expect(viewModel.toastMessage == nil)
+        #expect(await viewModel.signInWithApple(attemptID: attempt.id) { _ in .mockAppleUser } == nil)
+    }
+
+    @Test func errorDuringCredentialExchangeDropsCompletableAttempt() async {
+        let service = MockAuthenticationService(
+            configuration: .init(
+                initialSession: nil,
+                signInOutcome: .success,
+                restoreFails: false,
+                simulatedDelayNanoseconds: 50_000_000
+            )
+        )
+        let viewModel = AuthenticationViewModel(
+            authenticationService: service,
+            appleAuthorizationTimeoutNanoseconds: 1_000_000
+        )
+        let timedOutAttempt = viewModel.beginAppleAuthorization()
+        await waitUntilAppleAuthorizationFinishes(viewModel)
+
+        async let session = viewModel.signInWithApple()
+        await service.waitUntilSignInStarted()
+        viewModel.handleAppleSignInError(
+            ASAuthorizationError(.failed),
+            attemptID: timedOutAttempt.id
+        )
+
+        #expect(await session == .mockAppleUser)
+        #expect(viewModel.toastMessage == nil)
+        #expect(await viewModel.signInWithApple(attemptID: timedOutAttempt.id) { _ in .mockAppleUser } == nil)
     }
 
     @Test func sameAppleAuthorizationAttemptStillSignsIn() async {
@@ -313,6 +387,9 @@ struct AuthenticationViewModelTests {
         while viewModel.isAppleAuthorizationInProgress, Date() < deadline {
             try? await Task.sleep(nanoseconds: 5_000_000)
             await Task.yield()
+        }
+        if viewModel.isAppleAuthorizationInProgress {
+            Issue.record("Apple authorization did not finish within 1s")
         }
     }
 }

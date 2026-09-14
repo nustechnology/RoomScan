@@ -346,17 +346,6 @@
         }
       }
     },
-    "auth.error.appleAuthorizationTimedOut" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Sign-In timed out. Please try again."
-          }
-        }
-      }
-    },
     "auth.error.cancelled" : {
       "extractionState" : "manual",
       "localizations" : {
