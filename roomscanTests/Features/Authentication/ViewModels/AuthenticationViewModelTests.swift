@@ -105,32 +105,39 @@ struct AuthenticationViewModelTests {
         #expect(viewModel.viewState == .failed(.appleSystemError))
     }
 
-    @Test func appleAuthorizationTimeoutStopsLoading() async {
-        let viewModel = AuthenticationViewModel(
-            authenticationService: MockAuthenticationService(),
-            appleAuthorizationTimeoutNanoseconds: 1_000_000
-        )
-        var timedOutAttemptID: UUID?
+    @Test func appleAuthorizationStaysActiveUntilAppleResponds() async {
+        let viewModel = AuthenticationViewModel(authenticationService: MockAuthenticationService())
+        let attempt = viewModel.beginAppleAuthorization()
 
-        let attempt = viewModel.beginAppleAuthorization { attemptID in
-            timedOutAttemptID = attemptID
-        }
-        await waitUntilAppleAuthorizationFinishes(viewModel)
+        try? await Task.sleep(nanoseconds: 50_000_000)
 
-        #expect(!viewModel.isAppleAuthorizationInProgress)
-        #expect(!viewModel.isSigningIn)
-        #expect(timedOutAttemptID == attempt.id)
-        #expect(viewModel.viewState == .failed(.appleAuthorizationTimedOut))
-        #expect(viewModel.toastMessage == AuthenticationError.appleAuthorizationTimedOut.errorDescription)
+        #expect(viewModel.isAppleAuthorizationInProgress)
+        #expect(viewModel.isSigningIn)
+        #expect(viewModel.viewState == .idle)
+        #expect(viewModel.toastMessage == nil)
+        #expect(viewModel.beginAppleAuthorization() == attempt)
+        viewModel.endAppleAuthorization(attemptID: attempt.id)
     }
 
-    @Test func lateFailureDoesNotClearRetriedAppleAuthorization() async {
-        let viewModel = AuthenticationViewModel(
-            authenticationService: MockAuthenticationService(),
-            appleAuthorizationTimeoutNanoseconds: 100_000_000
-        )
+    @Test func sameAppleAuthorizationAttemptStillSignsIn() async {
+        let viewModel = AuthenticationViewModel(authenticationService: MockAuthenticationService())
+        let attempt = viewModel.beginAppleAuthorization()
+
+        let session = await viewModel.signInWithApple(attemptID: attempt.id) { rawNonce in
+            #expect(rawNonce == attempt.rawNonce)
+            return .mockAppleUser
+        }
+
+        #expect(session == .mockAppleUser)
+        #expect(viewModel.viewState == .idle)
+        #expect(!viewModel.isAppleAuthorizationInProgress)
+        #expect(viewModel.toastMessage == nil)
+    }
+
+    @Test func lateFailureDoesNotClearRetriedAppleAuthorization() {
+        let viewModel = AuthenticationViewModel(authenticationService: MockAuthenticationService())
         let expiredAttempt = viewModel.beginAppleAuthorization()
-        await waitUntilAppleAuthorizationFinishes(viewModel)
+        viewModel.endAppleAuthorization(attemptID: expiredAttempt.id)
         let retryAttempt = viewModel.beginAppleAuthorization()
 
         viewModel.handleAppleSignInError(
@@ -144,12 +151,9 @@ struct AuthenticationViewModelTests {
     }
 
     @Test func lateSuccessDoesNotUseRetriedAppleAuthorizationNonce() async {
-        let viewModel = AuthenticationViewModel(
-            authenticationService: MockAuthenticationService(),
-            appleAuthorizationTimeoutNanoseconds: 100_000_000
-        )
+        let viewModel = AuthenticationViewModel(authenticationService: MockAuthenticationService())
         let expiredAttempt = viewModel.beginAppleAuthorization()
-        await waitUntilAppleAuthorizationFinishes(viewModel)
+        viewModel.endAppleAuthorization(attemptID: expiredAttempt.id)
         let retryAttempt = viewModel.beginAppleAuthorization()
         var didAuthenticate = false
 
@@ -254,13 +258,5 @@ struct AuthenticationViewModelTests {
         #expect(viewModel.viewState == .failed(.invalidCredential))
         #expect(viewModel.toastMessage == AuthenticationError.invalidCredential.errorDescription)
         #expect(viewModel.toastStyle == .error)
-    }
-
-    private func waitUntilAppleAuthorizationFinishes(_ viewModel: AuthenticationViewModel) async {
-        let deadline = Date().addingTimeInterval(1)
-        while viewModel.isAppleAuthorizationInProgress, Date() < deadline {
-            try? await Task.sleep(nanoseconds: 5_000_000)
-            await Task.yield()
-        }
     }
 }

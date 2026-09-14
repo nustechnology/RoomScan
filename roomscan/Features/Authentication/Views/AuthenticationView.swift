@@ -136,8 +136,8 @@ struct AuthenticationView: View {
     private var signInButton: some View {
         let control = AppleAuthorizationButton(
             isEnabled: !viewModel.isSigningIn,
-            beginAuthorization: { onTimeout in
-                viewModel.beginAppleAuthorization(onTimeout: onTimeout)
+            beginAuthorization: {
+                viewModel.beginAppleAuthorization()
             },
             hashNonce: { rawNonce in
                 viewModel.sha256(rawNonce)
@@ -234,7 +234,7 @@ private struct AppleAuthorizationButton: UIViewRepresentable {
     }
 
     let isEnabled: Bool
-    let beginAuthorization: (@escaping @MainActor (UUID) -> Void) -> AuthenticationViewModel.AppleAuthorizationAttempt
+    let beginAuthorization: () -> AuthenticationViewModel.AppleAuthorizationAttempt
     let hashNonce: (String) -> String
     let onSuccess: (ASAuthorization, UUID) -> Void
     let onFailure: (Error, UUID) -> Void
@@ -272,7 +272,7 @@ private struct AppleAuthorizationButton: UIViewRepresentable {
         ASAuthorizationControllerDelegate,
         ASAuthorizationControllerPresentationContextProviding {
         weak var button: ASAuthorizationAppleIDButton?
-        var beginAuthorization: (@escaping @MainActor (UUID) -> Void) -> AuthenticationViewModel.AppleAuthorizationAttempt
+        var beginAuthorization: () -> AuthenticationViewModel.AppleAuthorizationAttempt
         var hashNonce: (String) -> String
         var onSuccess: (ASAuthorization, UUID) -> Void
         var onFailure: (Error, UUID) -> Void
@@ -280,9 +280,7 @@ private struct AppleAuthorizationButton: UIViewRepresentable {
         private var authorizationContexts: [ObjectIdentifier: AuthorizationContext] = [:]
 
         init(
-            beginAuthorization: @escaping (
-                @escaping @MainActor (UUID) -> Void
-            ) -> AuthenticationViewModel.AppleAuthorizationAttempt,
+            beginAuthorization: @escaping () -> AuthenticationViewModel.AppleAuthorizationAttempt,
             hashNonce: @escaping (String) -> String,
             onSuccess: @escaping (ASAuthorization, UUID) -> Void,
             onFailure: @escaping (Error, UUID) -> Void
@@ -294,9 +292,7 @@ private struct AppleAuthorizationButton: UIViewRepresentable {
         }
 
         @objc func startAuthorization() {
-            let attempt = beginAuthorization { [weak self] attemptID in
-                self?.cancelAuthorizationContext(for: attemptID)
-            }
+            let attempt = beginAuthorization()
             cancelAuthorizationContexts(except: attempt.id)
             guard !authorizationContexts.values.contains(where: { $0.attemptID == attempt.id }) else {
                 return
@@ -350,13 +346,6 @@ private struct AppleAuthorizationButton: UIViewRepresentable {
             }
         }
 
-        private func cancelAuthorizationContext(for attemptID: UUID) {
-            let expiredContexts = authorizationContexts.filter { $0.value.attemptID == attemptID }
-            for (identifier, context) in expiredContexts {
-                authorizationContexts.removeValue(forKey: identifier)
-                context.controller.cancel()
-            }
-        }
     }
 }
 

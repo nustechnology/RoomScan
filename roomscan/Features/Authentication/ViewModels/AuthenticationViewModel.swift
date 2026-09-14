@@ -27,16 +27,10 @@ final class AuthenticationViewModel {
     var toastStyle: ToastStyle = .error
 
     private let authenticationService: any AuthenticationService
-    private let appleAuthorizationTimeoutNanoseconds: UInt64
     private var activeAppleAuthorizationAttempt: AppleAuthorizationAttempt?
-    @ObservationIgnored private var appleAuthorizationTimeoutTask: Task<Void, Never>?
 
-    init(
-        authenticationService: any AuthenticationService,
-        appleAuthorizationTimeoutNanoseconds: UInt64 = 120_000_000_000
-    ) {
+    init(authenticationService: any AuthenticationService) {
         self.authenticationService = authenticationService
-        self.appleAuthorizationTimeoutNanoseconds = appleAuthorizationTimeoutNanoseconds
     }
 
     var isSigningIn: Bool {
@@ -73,22 +67,18 @@ final class AuthenticationViewModel {
         return hashedData.compactMap { String(format: "%02x", $0) }.joined()
     }
 
-    func beginAppleAuthorization(
-        onTimeout: @escaping @MainActor (UUID) -> Void = { _ in }
-    ) -> AppleAuthorizationAttempt {
+    func beginAppleAuthorization() -> AppleAuthorizationAttempt {
         if let activeAppleAuthorizationAttempt {
             return activeAppleAuthorizationAttempt
         }
 
         let attempt = AppleAuthorizationAttempt(id: UUID(), rawNonce: generateRawNonce())
         activeAppleAuthorizationAttempt = attempt
-        startAppleAuthorizationTimeout(for: attempt.id, onTimeout: onTimeout)
         return attempt
     }
 
     func endAppleAuthorization(attemptID: UUID) {
         guard activeAppleAuthorizationAttempt?.id == attemptID else { return }
-        cancelAppleAuthorizationTimeout()
         activeAppleAuthorizationAttempt = nil
     }
 
@@ -115,7 +105,6 @@ final class AuthenticationViewModel {
               attempt.id == attemptID
         else { return nil }
 
-        cancelAppleAuthorizationTimeout()
         viewState = .signingIn
         defer {
             if activeAppleAuthorizationAttempt?.id == attemptID {
@@ -188,36 +177,6 @@ final class AuthenticationViewModel {
     private var isCredentialExchangeInProgress: Bool {
         if case .signingIn = viewState { return true }
         return false
-    }
-
-    private func startAppleAuthorizationTimeout(
-        for attemptID: UUID,
-        onTimeout: @escaping @MainActor (UUID) -> Void
-    ) {
-        appleAuthorizationTimeoutTask?.cancel()
-        let timeoutNanoseconds = appleAuthorizationTimeoutNanoseconds
-        appleAuthorizationTimeoutTask = Task { [weak self] in
-            do {
-                try await Task.sleep(nanoseconds: timeoutNanoseconds)
-            } catch {
-                return
-            }
-
-            guard let self,
-                  !self.isCredentialExchangeInProgress,
-                  self.activeAppleAuthorizationAttempt?.id == attemptID
-            else { return }
-
-            onTimeout(attemptID)
-            self.activeAppleAuthorizationAttempt = nil
-            self.appleAuthorizationTimeoutTask = nil
-            self.handleError(.appleAuthorizationTimedOut)
-        }
-    }
-
-    private func cancelAppleAuthorizationTimeout() {
-        appleAuthorizationTimeoutTask?.cancel()
-        appleAuthorizationTimeoutTask = nil
     }
 
     func dismissError() {
