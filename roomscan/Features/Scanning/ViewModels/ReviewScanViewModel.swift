@@ -99,7 +99,10 @@ final class ReviewScanViewModel: ObservableObject {
                 } catch is CancellationError {
                     return
                 } catch {
+                    // Cannot keep a selection that is not in the list (the picker would
+                    // still show the placeholder). Tell the user why the preselection disappeared.
                     self.selectedProjectID = nil
+                    self.saveErrorMessage = String(localized: "review.error.load_projects_failed")
                 }
             }
 

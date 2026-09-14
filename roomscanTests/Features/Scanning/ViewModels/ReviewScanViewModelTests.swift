@@ -243,6 +243,10 @@ final class ReviewScanViewModelTests: XCTestCase {
 
         XCTAssertNil(viewModel.selectedProjectID)
         XCTAssertTrue(viewModel.projects.isEmpty)
+        XCTAssertEqual(
+            viewModel.saveErrorMessage,
+            String(localized: "review.error.load_projects_failed")
+        )
     }
 
     /// Cancellation during recovery keeps the selection and does not publish a partial list.

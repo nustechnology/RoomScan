@@ -72,6 +72,8 @@ struct ProjectsPresentationModifier: ViewModifier {
                 item: $selectedProject,
                 onDismiss: {
                     if let flow = ActiveScanFlowHandoff.consumePendingForPresentation(&pendingActiveScanFlow) {
+                        // Defer a turn: presenting a fullScreenCover from within another cover's
+                        // onDismiss is dropped if it happens in the same main-actor turn.
                         Task { @MainActor in
                             activeScanFlow = flow
                         }
