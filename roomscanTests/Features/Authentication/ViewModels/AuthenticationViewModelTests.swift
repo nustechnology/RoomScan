@@ -179,8 +179,33 @@ struct AuthenticationViewModelTests {
         let session = await viewModel.signInWithApple(attemptID: attempt.id) { _ in .mockAppleUser }
 
         #expect(session == nil)
-        #expect(viewModel.viewState == .idle)
+        #expect(viewModel.viewState == .failed(.appleSystemError))
+        #expect(viewModel.toastMessage == AuthenticationError.appleSystemError.errorDescription)
+    }
+
+    @Test func expiredAppleAuthorizationDoesNotInterruptRetry() async {
+        let viewModel = AuthenticationViewModel(
+            authenticationService: MockAuthenticationService(),
+            appleAuthorizationTimeoutNanoseconds: 1_000_000,
+            appleAuthorizationExpiryNanoseconds: 1_000_000
+        )
+        let expiredAttempt = viewModel.beginAppleAuthorization()
+        await waitUntilAppleAuthorizationFinishes(viewModel)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        let retryAttempt = viewModel.beginAppleAuthorization()
+        var didAuthenticate = false
+
+        let session = await viewModel.signInWithApple(attemptID: expiredAttempt.id) { _ in
+            didAuthenticate = true
+            return .mockAppleUser
+        }
+
+        #expect(session == nil)
+        #expect(!didAuthenticate)
         #expect(viewModel.toastMessage == nil)
+        #expect(viewModel.isAppleAuthorizationInProgress)
+        #expect(viewModel.beginAppleAuthorization() == retryAttempt)
+        viewModel.endAppleAuthorization(attemptID: retryAttempt.id)
     }
 
     @Test func timedOutAppleAuthorizationFailureShowsError() async {

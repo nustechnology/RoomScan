@@ -33,6 +33,9 @@ final class AuthenticationViewModel {
     /// The attempt that timed out but can still complete if Apple calls back before it expires.
     /// At most one exists: `beginAppleAuthorization` clears it before creating a new attempt.
     private var timedOutAppleAuthorizationAttempt: AppleAuthorizationAttempt?
+    /// An attempt whose grace period ended. Kept so a later sheet completion can tell the user
+    /// to try again, without retaining the nonce.
+    private var expiredAppleAuthorizationAttemptID: UUID?
     @ObservationIgnored private var appleAuthorizationTimeoutTask: Task<Void, Never>?
     @ObservationIgnored private var timedOutAppleAuthorizationExpiryTask: Task<Void, Never>?
 
@@ -87,6 +90,7 @@ final class AuthenticationViewModel {
 
         cancelTimedOutAppleAuthorizationExpiry()
         timedOutAppleAuthorizationAttempt = nil
+        expiredAppleAuthorizationAttemptID = nil
         let attempt = AppleAuthorizationAttempt(id: UUID(), rawNonce: generateRawNonce())
         activeAppleAuthorizationAttempt = attempt
         startAppleAuthorizationTimeout(for: attempt.id)
@@ -118,9 +122,16 @@ final class AuthenticationViewModel {
         attemptID: UUID,
         authenticate: (String) async throws -> AuthenticationSession
     ) async -> AuthenticationSession? {
-        guard !isCredentialExchangeInProgress,
-              let attempt = appleAuthorizationAttempt(for: attemptID)
-        else { return nil }
+        guard !isCredentialExchangeInProgress else {
+            consumeExpiredAppleAuthorizationAttempt(attemptID: attemptID)
+            return nil
+        }
+        guard let attempt = appleAuthorizationAttempt(for: attemptID) else {
+            if consumeExpiredAppleAuthorizationAttempt(attemptID: attemptID) {
+                handleError(.appleSystemError)
+            }
+            return nil
+        }
 
         cancelAppleAuthorizationTimeout()
         viewState = .signingIn
@@ -146,9 +157,10 @@ final class AuthenticationViewModel {
 
     func handleAppleSignInError(_ error: Error, attemptID: UUID) {
         let removedCompletableAttempt = clearTimedOutAppleAuthorizationAttempt(attemptID: attemptID)
+        let isExpiredAttempt = consumeExpiredAppleAuthorizationAttempt(attemptID: attemptID)
         guard !isCredentialExchangeInProgress else { return }
         guard activeAppleAuthorizationAttempt?.id == attemptID else {
-            guard removedCompletableAttempt != nil else { return }
+            guard removedCompletableAttempt != nil || isExpiredAttempt else { return }
             reportAppleSignInFailure(error)
             return
         }
@@ -246,20 +258,29 @@ final class AuthenticationViewModel {
             }
 
             guard let self,
+                  !self.isCredentialExchangeInProgress,
                   self.timedOutAppleAuthorizationAttempt?.id == attemptID
             else { return }
 
             self.timedOutAppleAuthorizationAttempt = nil
+            self.expiredAppleAuthorizationAttemptID = attemptID
             self.timedOutAppleAuthorizationExpiryTask = nil
         }
     }
 
+    @discardableResult
     private func clearTimedOutAppleAuthorizationAttempt(attemptID: UUID) -> AppleAuthorizationAttempt? {
         guard timedOutAppleAuthorizationAttempt?.id == attemptID else { return nil }
         cancelTimedOutAppleAuthorizationExpiry()
         let attempt = timedOutAppleAuthorizationAttempt
         timedOutAppleAuthorizationAttempt = nil
         return attempt
+    }
+
+    private func consumeExpiredAppleAuthorizationAttempt(attemptID: UUID) -> Bool {
+        guard expiredAppleAuthorizationAttemptID == attemptID else { return false }
+        expiredAppleAuthorizationAttemptID = nil
+        return true
     }
 
     private func cancelTimedOutAppleAuthorizationExpiry() {
