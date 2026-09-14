@@ -13,6 +13,13 @@ nonisolated enum InvitationScope: String, Equatable, Sendable, Hashable {
 }
 
 /// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so value
+/// equality works from actors and nonisolated tests.
+nonisolated enum InvitationLinkType: String, Equatable, Sendable {
+    case invitation
+    case shareLink = "share-link"
+}
+
+/// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so value
 /// equality and hashing work from actors and nonisolated tests.
 nonisolated struct PendingInvitation: Equatable, Hashable, Sendable, Identifiable {
     var id: String { "\(scope.rawValue)-\(token)" }
@@ -26,6 +33,7 @@ struct InvitationDetails: Equatable, Sendable, Identifiable {
 
     let token: String
     let scope: InvitationScope
+    let type: InvitationLinkType
     let title: String
     let ownerName: String
     /// Email the invitation was issued to; nil means any authenticated user may accept.

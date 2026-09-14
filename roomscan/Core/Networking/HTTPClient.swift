@@ -327,14 +327,12 @@ nonisolated struct LiveHTTPClient: HTTPClient {
     private static func logRequest(_ request: URLRequest) {
         let method = request.httpMethod ?? "?"
         let url = request.url?.absoluteString ?? "<nil>"
-        let headers = redactedHeaders(from: request.allHTTPHeaderFields ?? [:])
         let bodyBytes = request.httpBody?.count ?? 0
         let cachePolicy = request.cachePolicy.rawValue
         print(
             """
             [HTTP] → \(method) \(url)
             cachePolicy=\(cachePolicy)
-            headers=\(headers)
             bodyBytes=\(bodyBytes)
             """
         )
@@ -343,11 +341,9 @@ nonisolated struct LiveHTTPClient: HTTPClient {
     private static func logResponse(_ response: HTTPURLResponse, data: Data, for request: URLRequest) {
         let method = request.httpMethod ?? "?"
         let url = request.url?.absoluteString ?? response.url?.absoluteString ?? "<nil>"
-        let headers = redactedHeaders(from: response.allHeaderFields)
         print(
             """
             [HTTP] ← \(response.statusCode) \(method) \(url)
-            headers=\(headers)
             bodyBytes=\(data.count)
             """
         )

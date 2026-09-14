@@ -154,6 +154,10 @@ final class InvitationViewModel {
     }
 
     func requestDecline() {
+        if invitation?.type == .shareLink {
+            navigationOutcome = .dismissedToHome(toastMessage: "")
+            return
+        }
         showsDeclineConfirmation = true
     }
 

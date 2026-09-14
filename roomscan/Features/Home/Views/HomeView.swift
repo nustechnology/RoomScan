@@ -39,6 +39,7 @@ struct HomeView: View {
     @State private var isShowingProjectsDetail = false
     @State private var activeInvitation: PendingInvitation?
     @State private var isInvitationCoverPresented = false
+    @State private var invitationOverlayPresenter = InvitationOverlayWindowPresenter()
     @State private var pendingAcceptedDestination: AcceptedInvitationDestination?
     @State private var acceptedProject: ProjectSummary?
     @State private var acceptedViewerInput: ViewerInput?
@@ -172,24 +173,6 @@ struct HomeView: View {
                 createdProjectDetailCover(for: project)
             }
         )
-        .fullScreenCover(
-            item: $activeInvitation,
-            onDismiss: handleInvitationCoverDismissed
-        ) { invitation in
-            InvitationView(
-                viewModel: InvitationViewModel(
-                    pendingInvitation: invitation,
-                    service: invitationService,
-                    currentUserEmail: session.user.email
-                ),
-                onFinished: { outcome in
-                    handleInvitationFinished(outcome, for: invitation)
-                }
-            )
-            .onDisappear {
-                handleInvitationDismissed(invitation)
-            }
-        }
         .fullScreenCover(item: $acceptedProject) { project in
             ProjectDetailView(
                 project: project,
@@ -223,14 +206,17 @@ struct HomeView: View {
         }
         .onChange(of: pendingInvitation) { _, invitation in
             guard let invitation else { return }
-            activeInvitation = invitation
-            isInvitationCoverPresented = true
+            presentInvitationOverlay(invitation)
         }
         .onAppear {
             if let pendingInvitation {
-                activeInvitation = pendingInvitation
-                isInvitationCoverPresented = true
+                presentInvitationOverlay(pendingInvitation)
             }
+        }
+        .onDisappear {
+            invitationOverlayPresenter.dismissWithoutNotifying()
+            isInvitationCoverPresented = false
+            activeInvitation = nil
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
@@ -278,6 +264,28 @@ struct HomeView: View {
 }
 
 private extension HomeView {
+    func presentInvitationOverlay(_ invitation: PendingInvitation) {
+        activeInvitation = invitation
+        isInvitationCoverPresented = true
+        invitationOverlayPresenter.present(
+            invitation: invitation,
+            onDismiss: handleInvitationCoverDismissed,
+            onReplaced: handleInvitationDismissed,
+            content: {
+                InvitationView(
+                    viewModel: InvitationViewModel(
+                        pendingInvitation: invitation,
+                        service: invitationService,
+                        currentUserEmail: session.user.email
+                    ),
+                    onFinished: { outcome in
+                        handleInvitationFinished(outcome, for: invitation)
+                    }
+                )
+            }
+        )
+    }
+
     func handleInvitationFinished(
         _ outcome: InvitationViewModel.NavigationOutcome,
         for invitation: PendingInvitation
@@ -285,6 +293,7 @@ private extension HomeView {
         guard activeInvitation?.id == invitation.id else { return }
         activeInvitation = nil
         clearPendingInvitation(matching: invitation)
+        invitationOverlayPresenter.dismiss()
 
         switch outcome {
         case .dismissedToHome(let toastMessage):

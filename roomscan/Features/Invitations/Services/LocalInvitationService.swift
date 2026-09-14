@@ -142,6 +142,10 @@ actor LocalInvitationService: InvitationService {
         }
     }
 
+    private func linkType(for token: String) -> InvitationLinkType {
+        token.hasPrefix("share-link-") ? .shareLink : .invitation
+    }
+
     private func details(for scope: InvitationScope, token: String) throws -> InvitationDetails {
         switch scope {
         case .project:
@@ -156,6 +160,7 @@ actor LocalInvitationService: InvitationService {
             return InvitationDetails(
                 token: token,
                 scope: .project,
+                type: linkType(for: token),
                 title: "Empty Shared Project",
                 ownerName: "Nguyen Minh Anh",
                 invitedEmail: nil,
@@ -191,6 +196,7 @@ actor LocalInvitationService: InvitationService {
         return InvitationDetails(
             token: token,
             scope: .project,
+            type: linkType(for: token),
             title: project.name,
             ownerName: project.ownerName,
             invitedEmail: token.hasPrefix("mismatch-") ? "viewer@example.com" : nil,
@@ -224,6 +230,7 @@ actor LocalInvitationService: InvitationService {
         return InvitationDetails(
             token: token,
             scope: .scan,
+            type: linkType(for: token),
             title: scan.name,
             ownerName: "Nguyen Minh Anh",
             invitedEmail: token.hasPrefix("mismatch-") ? "viewer@example.com" : nil,

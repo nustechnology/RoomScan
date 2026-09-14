@@ -178,6 +178,28 @@ struct InvitationViewModelTests {
         #expect(item.detailScan != nil)
     }
 
+    @Test func requestDeclineOnShareLinkDismissesWithoutConfirmation() async {
+        let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
+        let viewModel = InvitationViewModel(
+            pendingInvitation: PendingInvitation(scope: .project, token: "share-link-project"),
+            service: service,
+            currentUserEmail: nil
+        )
+
+        await viewModel.loadInvitation()
+        #expect(viewModel.invitation?.type == .shareLink)
+
+        viewModel.requestDecline()
+
+        #expect(viewModel.showsDeclineConfirmation == false)
+        guard let outcome = viewModel.navigationOutcome,
+              case .dismissedToHome(let toast) = outcome else {
+            Issue.record("Expected share-link decline to close the invitation")
+            return
+        }
+        #expect(toast.isEmpty)
+    }
+
     @Test func confirmDeclineReturnsHomeWithToast() async {
         let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
         let viewModel = InvitationViewModel(
@@ -187,6 +209,7 @@ struct InvitationViewModelTests {
         )
 
         await viewModel.loadInvitation()
+        #expect(viewModel.invitation?.type == .invitation)
         viewModel.requestDecline()
         #expect(viewModel.showsDeclineConfirmation)
         await viewModel.confirmDecline()
@@ -563,6 +586,7 @@ private actor ExistingAccessInvitationService: InvitationService {
         return InvitationDetails(
             token: token,
             scope: .project,
+            type: .invitation,
             title: project.name,
             ownerName: project.ownerName,
             invitedEmail: nil,
