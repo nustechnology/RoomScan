@@ -63,9 +63,9 @@ final class ReviewScanViewModel: ObservableObject {
 
     /// Loads projects for the review picker and recovers a missing preselected project.
     ///
-    /// When the selected project is absent from the paginated list, fetches it by ID and
-    /// prepends it before publishing. Cancellation during recovery leaves `projects`
-    /// unchanged so a partial list without the selection is never shown.
+    /// The paginated list is published before recovering a missing selection, so a slow
+    /// `fetchProject` does not keep the picker empty. The recovered project is inserted
+    /// when that request returns.
     func loadProjects() async {
         isLoadingProjects = true
         saveErrorMessage = nil
@@ -91,26 +91,35 @@ final class ReviewScanViewModel: ObservableObject {
                 #endif
             }
 
+            self.projects = fetchedProjects
+            isLoadingProjects = false
+
             if let selectedProjectID,
                !fetchedProjects.contains(where: { $0.id == selectedProjectID }) {
-                do {
-                    let project = try await projectsService.fetchProject(id: selectedProjectID)
-                    fetchedProjects.insert(project, at: 0)
-                } catch is CancellationError {
-                    return
-                } catch {
-                    // Cannot keep a selection that is not in the list (the picker would
-                    // still show the placeholder). Tell the user why the preselection disappeared.
-                    self.selectedProjectID = nil
-                    self.saveErrorMessage = String(localized: "review.error.preselected_project_unavailable")
-                }
+                try await recoverMissingPreselectedProject(id: selectedProjectID)
             }
-
-            self.projects = fetchedProjects
         } catch is CancellationError {
             return
         } catch {
             self.saveErrorMessage = String(localized: "review.error.load_projects_failed")
+        }
+    }
+
+    /// Fetches a preselected project that was missing from the published list and prepends it.
+    private func recoverMissingPreselectedProject(id: String) async throws {
+        do {
+            let project = try await projectsService.fetchProject(id: id)
+            guard selectedProjectID == id else { return }
+            guard !projects.contains(where: { $0.id == project.id }) else { return }
+            projects.insert(project, at: 0)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            guard selectedProjectID == id else { return }
+            // Cannot keep a selection that is not in the list (the picker would
+            // still show the placeholder). Tell the user why the preselection disappeared.
+            selectedProjectID = nil
+            saveErrorMessage = String(localized: "review.error.preselected_project_unavailable")
         }
     }
 

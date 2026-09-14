@@ -138,6 +138,42 @@ final class ScanningUITests: XCTestCase {
         doneButton.tap()
     }
 
+    /// Add Scan from project detail must present the scan flow and keep that project selected on review.
+    @MainActor
+    func testProjectDetail_addScan_presentsScanFlowWithPreselectedProject() throws {
+        let app = launchApp(arguments: ["-UITesting", "-UITestSignedIn"])
+
+        XCTAssertTrue(app.scrollViews["projects.list"].waitForExistence(timeout: 5))
+
+        let projectCard = app.staticTexts["projects.card.title.project-1"]
+        XCTAssertTrue(projectCard.waitForExistence(timeout: 5))
+        projectCard.tap()
+
+        let addScanButton = app.buttons["projects.detail.addScan"]
+        XCTAssertTrue(addScanButton.waitForExistence(timeout: 5))
+        addScanButton.tap()
+
+        let startScanButton = app.buttons["scancheck.startScan"]
+        XCTAssertTrue(startScanButton.waitForExistence(timeout: 5))
+        let startEnabledPredicate = NSPredicate(format: "isEnabled == true")
+        expectation(for: startEnabledPredicate, evaluatedWith: startScanButton, handler: nil)
+        waitForExpectations(timeout: 5)
+        startScanButton.tap()
+
+        let finishButton = app.buttons["scanning.finishButton"]
+        XCTAssertTrue(finishButton.waitForExistence(timeout: 5))
+        let isEnabledPredicate = NSPredicate(format: "isEnabled == true")
+        expectation(for: isEnabledPredicate, evaluatedWith: finishButton, handler: nil)
+        waitForExpectations(timeout: 5)
+        finishButton.tap()
+
+        let projectDropdown = app.buttons["review.selectProjectDropdown"]
+        XCTAssertTrue(projectDropdown.waitForExistence(timeout: 5))
+        let preselectedProjectPredicate = NSPredicate(format: "label CONTAINS %@", "Lakeside Remodel")
+        expectation(for: preselectedProjectPredicate, evaluatedWith: projectDropdown, handler: nil)
+        waitForExpectations(timeout: 10)
+    }
+
     @MainActor
     func testNewProjectDetail_addScanPresentsScanReadiness() throws {
         let app = launchApp(arguments: ["-UITesting", "-UITestSignedIn"])

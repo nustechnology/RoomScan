@@ -249,21 +249,20 @@ final class ReviewScanViewModelTests: XCTestCase {
         )
     }
 
-    /// Cancellation during recovery keeps the selection and does not publish a partial list.
-    func testLoadProjects_whenRecoveryCancelled_keepsSelectionAndDoesNotPublishPartialList() async {
+    /// Cancellation during recovery keeps the selection and leaves the already published list in place.
+    func testLoadProjects_whenRecoveryCancelled_keepsSelectionAndPublishedList() async {
+        let listedProject = ProjectSummary(
+            id: "listed-only",
+            name: "Listed Only",
+            ownerName: "You",
+            createdAt: Date(),
+            updatedAt: Date(),
+            description: "",
+            sharedUserCount: 0,
+            roomScans: []
+        )
         let service = SelectiveProjectsService(
-            listedProjects: [
-                ProjectSummary(
-                    id: "listed-only",
-                    name: "Listed Only",
-                    ownerName: "You",
-                    createdAt: Date(),
-                    updatedAt: Date(),
-                    description: "",
-                    sharedUserCount: 0,
-                    roomScans: []
-                )
-            ],
+            listedProjects: [listedProject],
             fetchableProjects: [],
             fetchProjectBehavior: .cancellation
         )
@@ -276,8 +275,52 @@ final class ReviewScanViewModelTests: XCTestCase {
         await viewModel.loadProjects()
 
         XCTAssertEqual(viewModel.selectedProjectID, "preselected-project")
-        XCTAssertTrue(viewModel.projects.isEmpty)
+        XCTAssertEqual(viewModel.projects.map(\.id), [listedProject.id])
         XCTAssertNil(viewModel.saveErrorMessage)
+        XCTAssertFalse(viewModel.isLoadingProjects)
+    }
+
+    /// The paginated list is visible before the missing-project recovery request finishes.
+    func testLoadProjects_publishesListBeforePreselectedProjectRecovery() async {
+        let listedProject = ProjectSummary(
+            id: "listed-only",
+            name: "Listed Only",
+            ownerName: "You",
+            createdAt: Date(),
+            updatedAt: Date(),
+            description: "",
+            sharedUserCount: 0,
+            roomScans: []
+        )
+        let recoveredProject = ProjectSummary(
+            id: "preselected-project",
+            name: "Recovered Project",
+            ownerName: "You",
+            createdAt: Date(),
+            updatedAt: Date(),
+            description: "",
+            sharedUserCount: 0,
+            roomScans: []
+        )
+        let service = SuspendedFetchProjectService(listedProjects: [listedProject])
+        let viewModel = ReviewScanViewModel(
+            draft: dummyDraft,
+            preselectedProjectID: recoveredProject.id,
+            projectsService: service
+        )
+
+        let loadTask = Task { await viewModel.loadProjects() }
+        await service.waitUntilFetchProjectStarted()
+
+        XCTAssertEqual(viewModel.projects.map(\.id), [listedProject.id])
+        XCTAssertEqual(viewModel.selectedProjectID, recoveredProject.id)
+        XCTAssertFalse(viewModel.isLoadingProjects)
+
+        await service.resumeFetchProject(with: recoveredProject)
+        await loadTask.value
+
+        XCTAssertEqual(viewModel.projects.map(\.id), [recoveredProject.id, listedProject.id])
+        XCTAssertFalse(viewModel.isLoadingProjects)
     }
 }
 
@@ -400,6 +443,55 @@ private actor SelectiveProjectsService: ReviewScanUnusedProjectsServiceStubs {
 
     /// Returns the listed projects sorted by the stub's fixed order.
     func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] { listedProjects }
+}
+
+/// Holds `fetchProject` until the test resumes it, so list publication can be observed first.
+private actor SuspendedFetchProjectService: ReviewScanUnusedProjectsServiceStubs {
+    private let listedProjects: [ProjectSummary]
+    private var didStartFetch = false
+    private var fetchStartedWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseFetch: CheckedContinuation<ProjectSummary, Error>?
+
+    /// Creates a stub whose list returns immediately and whose single-project fetch waits.
+    init(listedProjects: [ProjectSummary]) {
+        self.listedProjects = listedProjects
+    }
+
+    /// Returns the configured listed page for page 1, otherwise an empty page.
+    func fetchProjects(page: Int, pageSize: Int) async throws -> ProjectPage {
+        guard page == 1 else {
+            return ProjectPage(projects: [], hasMore: false)
+        }
+        return ProjectPage(projects: listedProjects, hasMore: false)
+    }
+
+    /// Suspends until `resumeFetchProject(with:)` supplies the recovered project.
+    func fetchProject(id: String) async throws -> ProjectSummary {
+        didStartFetch = true
+        let waiters = fetchStartedWaiters
+        fetchStartedWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+        return try await withCheckedThrowingContinuation { continuation in
+            releaseFetch = continuation
+        }
+    }
+
+    /// Returns the listed projects in the stub's fixed order.
+    func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] { listedProjects }
+
+    /// Waits until `fetchProject` has started, which is after the list has been published.
+    func waitUntilFetchProjectStarted() async {
+        if didStartFetch { return }
+        await withCheckedContinuation { continuation in
+            fetchStartedWaiters.append(continuation)
+        }
+    }
+
+    /// Completes the suspended `fetchProject` call.
+    func resumeFetchProject(with project: ProjectSummary) {
+        releaseFetch?.resume(returning: project)
+        releaseFetch = nil
+    }
 }
 
 private final class FailingScanStorageService: ScanStorageService, @unchecked Sendable {

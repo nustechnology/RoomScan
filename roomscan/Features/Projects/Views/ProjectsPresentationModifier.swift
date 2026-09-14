@@ -32,13 +32,24 @@ struct ActiveScanFlow: Identifiable, Equatable {
 
 /// Moves a pending Add Scan request into the active scan presentation after project detail dismisses.
 enum ActiveScanFlowHandoff {
-    /// Takes ownership of `pending` for presentation and clears it.
-    /// - Parameter pending: Pending scan flow set when Add Scan is tapped from project detail.
-    /// - Returns: The flow to present, or `nil` when nothing is pending.
-    static func consumePendingForPresentation(_ pending: inout ActiveScanFlow?) -> ActiveScanFlow? {
-        let flow = pending
+    /// Returns the flow still waiting to be presented, without clearing it.
+    ///
+    /// Pending stays set until `acknowledgePresented` so a dropped cover can be retried.
+    static func flowAwaitingPresentation(_ pending: ActiveScanFlow?) -> ActiveScanFlow? {
+        pending
+    }
+
+    /// The pending flow to assign now, or `nil` when nothing is waiting or that cover is already active.
+    static func flowToAssign(pending: ActiveScanFlow?, active: ActiveScanFlow?) -> ActiveScanFlow? {
+        guard let pending else { return nil }
+        guard active?.id != pending.id else { return nil }
+        return pending
+    }
+
+    /// Clears `pending` only after the matching scan cover has actually appeared.
+    static func acknowledgePresented(_ presented: ActiveScanFlow, pending: inout ActiveScanFlow?) {
+        guard pending?.id == presented.id else { return }
         pending = nil
-        return flow
     }
 }
 
@@ -71,13 +82,7 @@ struct ProjectsPresentationModifier: ViewModifier {
             .fullScreenCover(
                 item: $selectedProject,
                 onDismiss: {
-                    if let flow = ActiveScanFlowHandoff.consumePendingForPresentation(&pendingActiveScanFlow) {
-                        // Defer a turn: presenting a fullScreenCover from within another cover's
-                        // onDismiss is dropped if it happens in the same main-actor turn.
-                        Task { @MainActor in
-                            activeScanFlow = flow
-                        }
-                    }
+                    presentPendingScanFlowAfterDetailDismiss()
                 },
                 content: { project in
                     projectDetailCover(for: project)
@@ -123,6 +128,12 @@ struct ProjectsPresentationModifier: ViewModifier {
                             activeScanFlow = nil
                         }
                     )
+                    .onAppear {
+                        ActiveScanFlowHandoff.acknowledgePresented(
+                            flow,
+                            pending: &pendingActiveScanFlow
+                        )
+                    }
                 }
             )
             .fullScreenCover(item: $savedScanForDetails) { savedScan in
@@ -199,6 +210,32 @@ struct ProjectsPresentationModifier: ViewModifier {
                 }
             }
             .ignoresSafeArea(.keyboard, edges: .bottom)
+    }
+
+    /// Presents a pending Add Scan after detail dismiss, retrying once if the first assignment is rejected.
+    ///
+    /// The pending value is cleared only when the scan cover appears, so a swallowed presentation can be retried.
+    private func presentPendingScanFlowAfterDetailDismiss() {
+        guard ActiveScanFlowHandoff.flowAwaitingPresentation(pendingActiveScanFlow) != nil else { return }
+        Task { @MainActor in
+            // Defer a turn: presenting a fullScreenCover from within another cover's
+            // onDismiss is dropped if it happens in the same main-actor turn.
+            await Task.yield()
+            assignPendingScanFlowIfNeeded()
+            await Task.yield()
+            // Retry only if SwiftUI rejected the assignment and cleared the item.
+            // A cover that appeared already cleared pending in onAppear.
+            assignPendingScanFlowIfNeeded()
+        }
+    }
+
+    /// Assigns the still-pending flow when no matching cover is currently presented.
+    private func assignPendingScanFlowIfNeeded() {
+        guard let flow = ActiveScanFlowHandoff.flowToAssign(
+            pending: pendingActiveScanFlow,
+            active: activeScanFlow
+        ) else { return }
+        activeScanFlow = flow
     }
 
     private func checkDraftRecovery() {
