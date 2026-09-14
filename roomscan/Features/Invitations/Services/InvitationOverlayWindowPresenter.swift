@@ -20,8 +20,12 @@ final class InvitationOverlayWindowPresenter {
         overlayWindow != nil
     }
 
-    init(windowFactory: @escaping WindowFactory = InvitationOverlayWindowPresenter.defaultWindowFactory) {
+    init(windowFactory: @escaping WindowFactory) {
         makeWindow = windowFactory
+    }
+
+    convenience init() {
+        self.init(windowFactory: Self.defaultWindowFactory)
     }
 
     /// Shows `content` for `invitation` above the app's existing modal stack.
