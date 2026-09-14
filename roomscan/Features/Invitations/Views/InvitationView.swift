@@ -183,18 +183,20 @@ struct InvitationView: View {
 
     private var actionButtons: some View {
         HStack(spacing: AppSpacing.medium) {
-            PrimaryActionButton(
-                title: String(localized: "invitation.action.decline"),
-                systemImageName: nil,
-                color: AppColors.background,
-                action: { viewModel.requestDecline() },
-                foregroundColor: AppColors.primaryText,
-                borderColor: AppColors.borderDefault,
-                cornerRadius: 18,
-                accessibilityIdentifier: "invitation.action.decline"
-            )
+            if !viewModel.hasExistingAccess {
+                PrimaryActionButton(
+                    title: String(localized: "invitation.action.decline"),
+                    systemImageName: nil,
+                    color: AppColors.background,
+                    action: { viewModel.requestDecline() },
+                    foregroundColor: AppColors.primaryText,
+                    borderColor: AppColors.borderDefault,
+                    cornerRadius: 18,
+                    accessibilityIdentifier: "invitation.action.decline"
+                )
+            }
 
-           PrimaryActionButton(
+            PrimaryActionButton(
                 title: primaryActionTitle,
                 systemImageName: nil,
                 color: AppColors.brandPrimary,
