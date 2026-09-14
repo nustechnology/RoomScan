@@ -178,6 +178,36 @@ struct RemoteInvitationServiceTests {
         #expect(details.type == .invitation)
     }
 
+    @Test func fetchInvitation_mapsShareLinkTypeWithUnderscore() async throws {
+        let client = FakeInvitationHTTPClient { _ in
+            .success(Self.previewJSON(type: "SHARE_LINK", hasAccess: true))
+        }
+        let service = RemoteInvitationService(httpClient: client)
+
+        let details = try await service.fetchInvitation(
+            scope: .project,
+            token: "share-link-underscore-token",
+            currentUserEmail: "viewer@example.com"
+        )
+
+        #expect(details.type == .shareLink)
+    }
+
+    @Test func fetchInvitation_rejectsUnknownLinkType() async {
+        let client = FakeInvitationHTTPClient { _ in
+            .success(Self.previewJSON(type: "unknown-type", hasAccess: false))
+        }
+        let service = RemoteInvitationService(httpClient: client)
+
+        await #expect(throws: InvitationServiceError.unavailable) {
+            try await service.fetchInvitation(
+                scope: .project,
+                token: "unknown-type-token",
+                currentUserEmail: "viewer@example.com"
+            )
+        }
+    }
+
     @Test func fetchInvitation_maps404ToNotFound() async {
         let client = FakeInvitationHTTPClient { _ in
             .failure(.serverError(statusCode: 404, apiError: nil))

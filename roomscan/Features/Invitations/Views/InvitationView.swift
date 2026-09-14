@@ -185,14 +185,14 @@ struct InvitationView: View {
         HStack(spacing: AppSpacing.medium) {
             if !viewModel.hasExistingAccess {
                 PrimaryActionButton(
-                    title: String(localized: "invitation.action.decline"),
+                    title: secondaryActionTitle,
                     systemImageName: nil,
                     color: AppColors.background,
                     action: { viewModel.requestDecline() },
                     foregroundColor: AppColors.primaryText,
                     borderColor: AppColors.borderDefault,
                     cornerRadius: 18,
-                    accessibilityIdentifier: "invitation.action.decline"
+                    accessibilityIdentifier: secondaryActionAccessibilityIdentifier
                 )
             }
 
@@ -205,6 +205,19 @@ struct InvitationView: View {
                 accessibilityIdentifier: primaryActionAccessibilityIdentifier
             )
         }
+    }
+
+    private var secondaryActionTitle: String {
+        if viewModel.invitation?.type == .shareLink {
+            return String(localized: "invitation.action.cancel")
+        }
+        return String(localized: "invitation.action.decline")
+    }
+
+    private var secondaryActionAccessibilityIdentifier: String {
+        viewModel.invitation?.type == .shareLink
+            ? "invitation.action.cancel"
+            : "invitation.action.decline"
     }
 
     private var primaryActionTitle: String {
