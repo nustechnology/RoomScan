@@ -258,7 +258,6 @@ final class AuthenticationViewModel {
             }
 
             guard let self,
-                  !self.isCredentialExchangeInProgress,
                   self.timedOutAppleAuthorizationAttempt?.id == attemptID
             else { return }
 
