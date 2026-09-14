@@ -1991,6 +1991,17 @@
         }
       }
     },
+    "review.error.preselected_project_unavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't load the selected project. Please choose one."
+          }
+        }
+      }
+    },
     "review.error.save_failed" : {
       "localizations" : {
         "en" : {

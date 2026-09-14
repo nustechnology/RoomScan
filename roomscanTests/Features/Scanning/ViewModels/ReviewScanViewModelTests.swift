@@ -245,7 +245,7 @@ final class ReviewScanViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.projects.isEmpty)
         XCTAssertEqual(
             viewModel.saveErrorMessage,
-            String(localized: "review.error.load_projects_failed")
+            String(localized: "review.error.preselected_project_unavailable")
         )
     }
 
