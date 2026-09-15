@@ -129,22 +129,41 @@ enum CreatedProjectOwnerActionHandoff {
         }
     }
 
-    /// Runs assign retries, waits for acknowledgment, then tears down unconfirmed edit state.
+    /// Runs assign retries, polls live session state for acknowledgment, then tears down
+    /// unconfirmed edit work.
+    ///
+    /// `load` / `store` must read and write the same storage the UI acknowledgments mutate
+    /// (HomeView bindings or a test-held session) so an `onAppear` clear of `pending` is
+    /// visible to the poll loop.
     @MainActor
     static func runPresentationAttempts(
-        session: inout CreatedProjectOwnerActionHandoffSession,
-        sleepNanoseconds: @MainActor (UInt64) async -> Void = { try? await Task.sleep(nanoseconds: $0) }
+        load: @MainActor () -> CreatedProjectOwnerActionHandoffSession,
+        store: @MainActor (CreatedProjectOwnerActionHandoffSession) -> Void,
+        sleepNanoseconds: @MainActor (UInt64) async -> Void = {
+            try? await Task.sleep(nanoseconds: $0)
+        }
     ) async {
         await Task.yield()
-        session.assignIfNeeded()
+        mutate(load: load, store: store) { $0.assignIfNeeded() }
         await Task.yield()
-        session.assignIfNeeded()
+        mutate(load: load, store: store) { $0.assignIfNeeded() }
 
         for _ in 0..<acknowledgmentPollCount {
-            if session.pending == nil { return }
+            if load().pending == nil { return }
             await sleepNanoseconds(acknowledgmentPollNanoseconds)
         }
 
-        session.finishUnacknowledgedPresentation()
+        mutate(load: load, store: store) { $0.finishUnacknowledgedPresentation() }
+    }
+
+    @MainActor
+    private static func mutate(
+        load: @MainActor () -> CreatedProjectOwnerActionHandoffSession,
+        store: @MainActor (CreatedProjectOwnerActionHandoffSession) -> Void,
+        _ body: (inout CreatedProjectOwnerActionHandoffSession) -> Void
+    ) {
+        var session = load()
+        body(&session)
+        store(session)
     }
 }

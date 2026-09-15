@@ -96,19 +96,6 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         XCTAssertEqual(session.pending, .edit(project))
     }
 
-    func testSession_assignIfNeeded_setsDeleteBinding() {
-        var session = CreatedProjectOwnerActionHandoffSession(
-            pending: .delete(project),
-            activeEdit: nil,
-            activeDelete: nil
-        )
-
-        session.assignIfNeeded()
-
-        XCTAssertEqual(session.activeDelete, project)
-        XCTAssertEqual(session.pending, .delete(project))
-    }
-
     func testSession_finishUnacknowledgedPresentation_clearsStuckEditBindingAndPending() {
         var session = CreatedProjectOwnerActionHandoffSession(
             pending: .edit(project),
@@ -151,19 +138,6 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         XCTAssertEqual(session.activeDelete, project)
     }
 
-    func testSession_finishUnacknowledgedPresentation_clearsPendingWhenAssignmentNeverStuck() {
-        var session = CreatedProjectOwnerActionHandoffSession(
-            pending: .edit(project),
-            activeEdit: nil,
-            activeDelete: nil
-        )
-
-        session.finishUnacknowledgedPresentation()
-
-        XCTAssertNil(session.pending)
-        XCTAssertNil(session.activeEdit)
-    }
-
     @MainActor
     func testRunPresentationAttempts_tearsDownEditWhenNeverAcknowledged() async {
         var session = CreatedProjectOwnerActionHandoffSession(
@@ -173,12 +147,37 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         )
 
         await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
-            session: &session,
+            load: { session },
+            store: { session = $0 },
             sleepNanoseconds: { _ in }
         )
 
         XCTAssertNil(session.pending)
         XCTAssertNil(session.activeEdit)
+    }
+
+    @MainActor
+    func testRunPresentationAttempts_observesLiveAcknowledgmentDuringPoll() async {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+        var pollCount = 0
+
+        await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
+            load: { session },
+            store: { session = $0 },
+            sleepNanoseconds: { _ in
+                pollCount += 1
+                // Mimic CreatedProjectOwnerActionPresentation.onAppear writing live state.
+                session.acknowledgeEditPresentation(self.project)
+            }
+        )
+
+        XCTAssertEqual(pollCount, 1)
+        XCTAssertNil(session.pending)
+        XCTAssertEqual(session.activeEdit, project)
     }
 
     @MainActor
@@ -192,46 +191,39 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         session.acknowledgeEditPresentation(project)
 
         await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
-            session: &session,
+            load: { session },
+            store: { session = $0 },
             sleepNanoseconds: { _ in
                 XCTFail("Should not poll after pending is already cleared")
             }
         )
 
-        // First assign inside runPresentationAttempts is a no-op (already active);
-        // pending is nil so the poll loop returns before sleep / finish.
         XCTAssertNil(session.pending)
         XCTAssertEqual(session.activeEdit, project)
     }
 
-    func testSession_retrySequence_assignAckFinishKeepsPresentedEdit() {
+    @MainActor
+    func testRunPresentationAttempts_deleteAcknowledgedViaLiveStoreSurvivesFinish() async {
         var session = CreatedProjectOwnerActionHandoffSession(
-            pending: .edit(project),
+            pending: .delete(project),
             activeEdit: nil,
             activeDelete: nil
         )
 
-        session.assignIfNeeded()
-        session.assignIfNeeded()
-        session.acknowledgeEditPresentation(project)
-        session.finishUnacknowledgedPresentation()
-
-        XCTAssertNil(session.pending)
-        XCTAssertEqual(session.activeEdit, project)
-    }
-
-    func testSession_retrySequence_assignWithoutAckFinishClearsStuckEdit() {
-        var session = CreatedProjectOwnerActionHandoffSession(
-            pending: .edit(project),
-            activeEdit: nil,
-            activeDelete: nil
+        await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
+            load: { session },
+            store: { updated in
+                session = updated
+                if let project = updated.activeDelete, updated.pending != nil {
+                    session.acknowledgeDeleteAssignment(project)
+                }
+            },
+            sleepNanoseconds: { _ in
+                XCTFail("Delete acknowledgment on store should clear pending before poll sleep")
+            }
         )
 
-        session.assignIfNeeded()
-        session.assignIfNeeded()
-        session.finishUnacknowledgedPresentation()
-
         XCTAssertNil(session.pending)
-        XCTAssertNil(session.activeEdit)
+        XCTAssertEqual(session.activeDelete, project)
     }
 }
