@@ -217,6 +217,67 @@ struct AuthenticationViewModelTests {
         #expect(viewModel.toastMessage == AuthenticationError.appleSystemError.errorDescription)
     }
 
+    @Test func expiredAppleAuthorizationDuringUnrelatedExchangeShowsError() async {
+        let service = MockAuthenticationService(
+            configuration: .init(
+                initialSession: nil,
+                signInOutcome: .success,
+                restoreFails: false,
+                simulatedDelayNanoseconds: 200_000_000
+            )
+        )
+        let viewModel = AuthenticationViewModel(
+            authenticationService: service,
+            appleAuthorizationTimeoutNanoseconds: 1_000_000,
+            appleAuthorizationExpiryNanoseconds: 1_000_000
+        )
+        let expiredAttempt = viewModel.beginAppleAuthorization()
+        await waitUntilAppleAuthorizationFinishes(viewModel)
+        await waitForAppleAuthorizationGracePeriod()
+
+        async let session = viewModel.signInWithApple()
+        await service.waitUntilSignInStarted()
+
+        var didAuthenticate = false
+        let lateSession = await viewModel.signInWithApple(attemptID: expiredAttempt.id) { _ in
+            didAuthenticate = true
+            return .mockAppleUser
+        }
+
+        #expect(lateSession == nil)
+        #expect(!didAuthenticate)
+        #expect(viewModel.toastMessage == AuthenticationError.appleSystemError.errorDescription)
+        #expect(await session == .mockAppleUser)
+        #expect(viewModel.toastMessage == AuthenticationError.appleSystemError.errorDescription)
+    }
+
+    @Test func timedOutAppleAuthorizationExchangeClaimsAttemptBeforeExpiry() async {
+        let viewModel = AuthenticationViewModel(
+            authenticationService: MockAuthenticationService(),
+            appleAuthorizationTimeoutNanoseconds: 1_000_000,
+            appleAuthorizationExpiryNanoseconds: 50_000_000
+        )
+        let attempt = viewModel.beginAppleAuthorization()
+        await waitUntilAppleAuthorizationFinishes(viewModel)
+
+        let session = await viewModel.signInWithApple(attemptID: attempt.id) { rawNonce in
+            // Wait past the configured grace period. Claiming the attempt must have
+            // cancelled expiry so this exchange still succeeds.
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            for _ in 0..<5 {
+                await Task.yield()
+            }
+            #expect(rawNonce == attempt.rawNonce)
+            return .mockAppleUser
+        }
+
+        #expect(session == .mockAppleUser)
+        #expect(viewModel.viewState == .idle)
+        #expect(viewModel.toastMessage == nil)
+        #expect(await viewModel.signInWithApple(attemptID: attempt.id) { _ in .mockAppleUser } == nil)
+        #expect(viewModel.toastMessage == nil)
+    }
+
     @Test func timedOutAppleAuthorizationFailureShowsError() async {
         let viewModel = AuthenticationViewModel(
             authenticationService: MockAuthenticationService(),

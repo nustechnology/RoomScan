@@ -126,7 +126,13 @@ final class AuthenticationViewModel {
         authenticate: (String) async throws -> AuthenticationSession
     ) async -> AuthenticationSession? {
         guard !isCredentialExchangeInProgress else {
-            consumeExpiredAppleAuthorizationAttempt(attemptID: attemptID)
+            let wasExpired = consumeExpiredAppleAuthorizationAttempt(attemptID: attemptID)
+            let wasTimedOut = clearTimedOutAppleAuthorizationAttempt(attemptID: attemptID) != nil
+            if wasExpired || wasTimedOut {
+                // The Apple credential cannot be replayed after this callback returns.
+                toastMessage = AuthenticationError.appleSystemError.errorDescription
+                toastStyle = .error
+            }
             return nil
         }
         guard let attempt = appleAuthorizationAttempt(for: attemptID) else {
@@ -137,9 +143,12 @@ final class AuthenticationViewModel {
         }
 
         cancelAppleAuthorizationTimeout()
+        // Claim the attempt before awaiting so the grace-period expiry cannot mark it
+        // expired mid-exchange and leave a stale marker after success.
+        clearTimedOutAppleAuthorizationAttempt(attemptID: attemptID)
         viewState = .signingIn
         defer {
-            clearTimedOutAppleAuthorizationAttempt(attemptID: attemptID)
+            consumeExpiredAppleAuthorizationAttempt(attemptID: attemptID)
             if activeAppleAuthorizationAttempt?.id == attemptID {
                 activeAppleAuthorizationAttempt = nil
             }
@@ -262,6 +271,8 @@ final class AuthenticationViewModel {
             } catch {
                 return
             }
+
+            guard !Task.isCancelled else { return }
 
             guard let self,
                   self.timedOutAppleAuthorizationAttempt?.id == attemptID
