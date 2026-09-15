@@ -36,7 +36,7 @@ struct HomeView: View {
     @State private var projectToEditAfterCreation: ProjectSummary?
     @State private var projectPendingDeleteAfterCreation: ProjectSummary?
     @State private var ownerActionPresentationTask: Task<Void, Never>?
-    @State private var ownerActionPresentationGeneration = 0
+    @State private var ownerActionPresentationFlight = CreatedProjectOwnerActionFlight()
     // Separate from ProjectsView's pending scan state: this request originates
     // from the project-creation cover and is published when HomeView's cover dismisses.
     @State private var scanRequestAfterProjectCreation: String?
@@ -406,9 +406,8 @@ private extension HomeView {
 
     /// Presents a pending Edit/Delete after the created-project detail dismisses.
     ///
-    /// Uses the shared handoff runner against live HomeView state: each poll force
-    /// nil-then-reassigns so covers can appear after detail dismiss, and `onAppear`
-    /// acknowledgments stop the loop before unconfirmed edit state is torn down.
+    /// Uses the shared handoff runner against live HomeView state. Assigns once, waits for
+    /// `onAppear`/`onChange` acknowledgment, and only clear+reassigns if still pending.
     /// Only one presentation loop runs at a time (cancelled + generation-gated).
     func presentPendingOwnerActionAfterCreatedDetailDismiss() {
         guard CreatedProjectOwnerActionHandoff.actionAwaitingPresentation(
@@ -425,13 +424,13 @@ private extension HomeView {
                     )
                 },
                 store: { session in
-                    guard generation == ownerActionPresentationGeneration else { return }
+                    guard ownerActionPresentationFlight.isCurrent(generation) else { return }
                     pendingOwnerActionAfterCreatedDetail = session.pending
                     projectToEditAfterCreation = session.activeEdit
                     projectPendingDeleteAfterCreation = session.activeDelete
                 },
                 isCurrent: {
-                    !Task.isCancelled && generation == ownerActionPresentationGeneration
+                    !Task.isCancelled && ownerActionPresentationFlight.isCurrent(generation)
                 }
             )
         }
@@ -442,8 +441,7 @@ private extension HomeView {
     func beginOwnerActionPresentationFlight() -> Int {
         ownerActionPresentationTask?.cancel()
         ownerActionPresentationTask = nil
-        ownerActionPresentationGeneration &+= 1
-        return ownerActionPresentationGeneration
+        return ownerActionPresentationFlight.begin()
     }
 
     func beginOwnerActionAfterCreatedDetail(_ action: CreatedProjectOwnerAction) {

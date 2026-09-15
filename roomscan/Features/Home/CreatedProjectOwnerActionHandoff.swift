@@ -18,6 +18,22 @@ enum CreatedProjectOwnerAction: Equatable {
     }
 }
 
+/// Single-flight token for post-create Edit/Delete presentation loops.
+struct CreatedProjectOwnerActionFlight: Equatable {
+    private(set) var generation = 0
+
+    /// Cancels conceptual ownership of any prior flight and returns the new generation.
+    mutating func begin() -> Int {
+        generation &+= 1
+        return generation
+    }
+
+    /// Whether `flightGeneration` is still the active handoff.
+    func isCurrent(_ flightGeneration: Int) -> Bool {
+        flightGeneration == generation
+    }
+}
+
 /// Mutable presentation state for Edit/Delete after the created-project detail dismisses.
 struct CreatedProjectOwnerActionHandoffSession: Equatable {
     var pending: CreatedProjectOwnerAction?
@@ -90,7 +106,7 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
 
 /// Moves a pending Edit/Delete request into presentation after the created-project detail dismisses.
 enum CreatedProjectOwnerActionHandoff {
-    /// Retries (nil-then-set) while waiting for edit-cover `onAppear` acknowledgment.
+    /// Retries while waiting for edit-cover `onAppear` acknowledgment.
     /// ~2s window so slower detail-dismiss transitions still have time to present.
     static let acknowledgmentPollCount = 20
     static let acknowledgmentPollNanoseconds: UInt64 = 100_000_000
@@ -134,16 +150,14 @@ enum CreatedProjectOwnerActionHandoff {
         }
     }
 
-    /// Defers one turn, then repeatedly force-retriggers presentation until acknowledged.
+    /// Defers one turn, assigns once, then waits for acknowledgment before any retrigger.
     ///
-    /// Each poll clears the matching active binding and reassigns on a separate store so
-    /// SwiftUI can present after the created-detail cover finishes dismissing. `load` /
-    /// `store` must share storage with UI acknowledgments so an `onAppear` clear of
-    /// `pending` stops the loop. After the ~2s window, pending is cleared to prevent
-    /// replay while an assigned edit binding is kept for a late-appearing cover.
+    /// Clear+reassign only happens when a prior assignment stayed unacknowledged after the
+    /// wait — so a slow `onAppear` / `onChange` is not torn down mid-presentation.
+    /// `load` / `store` must share storage with UI acknowledgments. After the ~2s window,
+    /// pending is cleared while an assigned edit binding is kept for a late cover.
     ///
-    /// `isCurrent` must become false when a newer handoff supersedes this run (generation
-    /// token / cancelled task) so stale loops do not nil out live presentation bindings.
+    /// `isCurrent` must become false when a newer handoff supersedes this run.
     @MainActor
     static func runPresentationAttempts(
         load: @MainActor () -> CreatedProjectOwnerActionHandoffSession,
@@ -157,21 +171,29 @@ enum CreatedProjectOwnerActionHandoff {
         await Task.yield()
         guard isCurrent() else { return }
 
+        var shouldRetrigger = false
+
         for _ in 0..<acknowledgmentPollCount {
             guard isCurrent() else { return }
             if load().pending == nil { return }
 
-            // Force nil-then-set across separate stores so item-based covers retrigger.
-            mutate(load: load, store: store, isCurrent: isCurrent) {
-                $0.clearActivePresentationMatchingPending()
+            if shouldRetrigger {
+                // Previous assignment was not acknowledged in time — force a new presentation.
+                mutate(load: load, store: store, isCurrent: isCurrent) {
+                    $0.clearActivePresentationMatchingPending()
+                }
+                await Task.yield()
+                guard isCurrent() else { return }
             }
-            await Task.yield()
-            guard isCurrent() else { return }
+
             mutate(load: load, store: store, isCurrent: isCurrent) { $0.assignIfNeeded() }
 
             guard isCurrent() else { return }
             if load().pending == nil { return }
+
+            // Wait for SwiftUI onAppear/onChange before considering a retrigger.
             await sleepNanoseconds(acknowledgmentPollNanoseconds)
+            shouldRetrigger = true
         }
 
         guard isCurrent() else { return }

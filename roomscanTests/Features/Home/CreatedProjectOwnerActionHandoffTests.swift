@@ -84,46 +84,90 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         XCTAssertEqual(session.activeEdit, project)
     }
 
-    func testSession_finishUnacknowledgedPresentation_noopWhenEditWasAcknowledged() {
-        var session = CreatedProjectOwnerActionHandoffSession(
-            pending: .edit(project),
-            activeEdit: project,
-            activeDelete: nil
-        )
+    func testFlight_beginInvalidatesPriorGeneration() {
+        var flight = CreatedProjectOwnerActionFlight()
+        let first = flight.begin()
+        let second = flight.begin()
 
-        session.acknowledgeEditPresentation(project)
-        session.finishUnacknowledgedPresentation()
+        XCTAssertTrue(flight.isCurrent(second))
+        XCTAssertFalse(flight.isCurrent(first))
+    }
 
-        XCTAssertNil(session.pending)
-        XCTAssertEqual(session.activeEdit, project)
+    func testFlight_staleStoreGuardMatchesHomeViewPattern() {
+        var flight = CreatedProjectOwnerActionFlight()
+        let stale = flight.begin()
+        _ = flight.begin()
+
+        var didStore = false
+        if flight.isCurrent(stale) {
+            didStore = true
+        }
+
+        XCTAssertFalse(didStore)
     }
 
     @MainActor
-    func testRunPresentationAttempts_forceReassignsEachPollUntilAcknowledged() async {
+    func testRunPresentationAttempts_doesNotClearBeforeFirstAcknowledgmentWait() async {
         var session = CreatedProjectOwnerActionHandoffSession(
             pending: .edit(project),
             activeEdit: nil,
             activeDelete: nil
         )
-        var clearThenAssignCycles = 0
-        var sawClearedBinding = false
+        var clearCount = 0
+        var assignCount = 0
         var pollCount = 0
 
         await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
             load: { session },
             store: { updated in
-                if updated.activeEdit == nil, session.pending != nil {
-                    sawClearedBinding = true
+                if updated.activeEdit == nil, session.activeEdit != nil {
+                    clearCount += 1
                 }
-                if updated.activeEdit != nil, sawClearedBinding {
-                    clearThenAssignCycles += 1
-                    sawClearedBinding = false
+                if updated.activeEdit != nil, session.activeEdit == nil {
+                    assignCount += 1
                 }
                 session = updated
             },
             sleepNanoseconds: { _ in
                 pollCount += 1
-                // Allow at least one full clear→assign→sleep cycle before acknowledging.
+                if pollCount == 1 {
+                    // Acknowledge during the first wait — cover never needs a retrigger clear.
+                    session.acknowledgeEditPresentation(self.project)
+                }
+            }
+        )
+
+        XCTAssertEqual(pollCount, 1)
+        XCTAssertEqual(assignCount, 1)
+        XCTAssertEqual(clearCount, 0)
+        XCTAssertNil(session.pending)
+        XCTAssertEqual(session.activeEdit, project)
+    }
+
+    @MainActor
+    func testRunPresentationAttempts_retriggersOnlyAfterUnacknowledgedWait() async {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+        var clearCount = 0
+        var assignCount = 0
+        var pollCount = 0
+
+        await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
+            load: { session },
+            store: { updated in
+                if updated.activeEdit == nil, session.activeEdit != nil {
+                    clearCount += 1
+                }
+                if updated.activeEdit != nil, session.activeEdit == nil {
+                    assignCount += 1
+                }
+                session = updated
+            },
+            sleepNanoseconds: { _ in
+                pollCount += 1
                 if pollCount == 2 {
                     session.acknowledgeEditPresentation(self.project)
                 }
@@ -131,7 +175,9 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         )
 
         XCTAssertEqual(pollCount, 2)
-        XCTAssertGreaterThanOrEqual(clearThenAssignCycles, 2)
+        // First poll: assign only. Second poll: clear + assign after failed wait.
+        XCTAssertEqual(assignCount, 2)
+        XCTAssertEqual(clearCount, 1)
         XCTAssertNil(session.pending)
         XCTAssertEqual(session.activeEdit, project)
     }
@@ -150,30 +196,6 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
             sleepNanoseconds: { _ in }
         )
 
-        XCTAssertNil(session.pending)
-        // Binding stays so a late fullScreenCover is not torn down after the window.
-        XCTAssertEqual(session.activeEdit, project)
-    }
-
-    @MainActor
-    func testRunPresentationAttempts_observesLiveAcknowledgmentDuringPoll() async {
-        var session = CreatedProjectOwnerActionHandoffSession(
-            pending: .edit(project),
-            activeEdit: nil,
-            activeDelete: nil
-        )
-        var pollCount = 0
-
-        await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
-            load: { session },
-            store: { session = $0 },
-            sleepNanoseconds: { _ in
-                pollCount += 1
-                session.acknowledgeEditPresentation(self.project)
-            }
-        )
-
-        XCTAssertEqual(pollCount, 1)
         XCTAssertNil(session.pending)
         XCTAssertEqual(session.activeEdit, project)
     }
@@ -247,9 +269,70 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
             }
         )
 
-        // One clear + one assign, then sleep invalidates the flight; no further stores.
-        XCTAssertEqual(storeCount, 2)
+        // First poll assigns once, then sleep invalidates the flight.
+        XCTAssertEqual(storeCount, 1)
         XCTAssertEqual(session.activeEdit, project)
         XCTAssertEqual(session.pending, .edit(project))
+    }
+
+    @MainActor
+    func testOverlappingFlights_staleFlightPerformsNoStore() async {
+        var flight = CreatedProjectOwnerActionFlight()
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+        let staleGeneration = flight.begin()
+        var staleStoreCount = 0
+
+        // Newer flight supersedes before the stale loop mutates.
+        _ = flight.begin()
+
+        await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
+            load: { session },
+            store: { updated in
+                guard flight.isCurrent(staleGeneration) else { return }
+                staleStoreCount += 1
+                session = updated
+            },
+            isCurrent: { flight.isCurrent(staleGeneration) },
+            sleepNanoseconds: { _ in
+                XCTFail("Superseded flight should exit before sleeping")
+            }
+        )
+
+        XCTAssertEqual(staleStoreCount, 0)
+        XCTAssertNil(session.activeEdit)
+        XCTAssertEqual(session.pending, .edit(project))
+    }
+
+    func testPresentationAcknowledgment_editOnAppearClearsPending() {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: project,
+            activeDelete: nil
+        )
+
+        // Mirrors CreatedProjectOwnerActionPresentation.onAppear wiring.
+        session.acknowledgeEditPresentation(project)
+
+        XCTAssertNil(session.pending)
+        XCTAssertEqual(session.activeEdit, project)
+    }
+
+    func testPresentationAcknowledgment_deleteOnChangeClearsPending() {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .delete(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+        session.assignIfNeeded()
+
+        // Mirrors CreatedProjectOwnerActionPresentation.onChange(of: projectPendingDelete).
+        session.acknowledgeDeleteAssignment(project)
+
+        XCTAssertNil(session.pending)
+        XCTAssertEqual(session.activeDelete, project)
     }
 }
