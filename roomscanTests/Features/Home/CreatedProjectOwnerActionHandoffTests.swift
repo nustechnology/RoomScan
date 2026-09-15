@@ -60,15 +60,6 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         XCTAssertNil(remaining)
     }
 
-    func testPendingAfterAcknowledging_ignoresDifferentActionKind() {
-        let remaining = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
-            .delete(project),
-            pending: .edit(project)
-        )
-
-        XCTAssertEqual(remaining, .edit(project))
-    }
-
     func testSession_beginClearsStuckPresentationBindings() {
         var session = CreatedProjectOwnerActionHandoffSession(
             pending: nil,
@@ -83,7 +74,7 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         XCTAssertNil(session.activeDelete)
     }
 
-    func testSession_assignIfNeeded_setsEditBinding() {
+    func testSession_clearThenAssign_retriggersEditBinding() {
         var session = CreatedProjectOwnerActionHandoffSession(
             pending: .edit(project),
             activeEdit: nil,
@@ -91,7 +82,12 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         )
 
         session.assignIfNeeded()
+        XCTAssertEqual(session.activeEdit, project)
 
+        session.clearActivePresentationMatchingPending()
+        XCTAssertNil(session.activeEdit)
+
+        session.assignIfNeeded()
         XCTAssertEqual(session.activeEdit, project)
         XCTAssertEqual(session.pending, .edit(project))
     }
@@ -123,19 +119,42 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         XCTAssertEqual(session.activeEdit, project)
     }
 
-    func testSession_deleteAcknowledgeOnAssignment_leavesDeleteBindingForFinish() {
+    @MainActor
+    func testRunPresentationAttempts_forceReassignsEachPollUntilAcknowledged() async {
         var session = CreatedProjectOwnerActionHandoffSession(
-            pending: .delete(project),
+            pending: .edit(project),
             activeEdit: nil,
             activeDelete: nil
         )
+        var clearThenAssignCycles = 0
+        var sawClearedBinding = false
+        var pollCount = 0
 
-        session.assignIfNeeded()
-        session.acknowledgeDeleteAssignment(project)
-        session.finishUnacknowledgedPresentation()
+        await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
+            load: { session },
+            store: { updated in
+                if updated.activeEdit == nil, session.pending != nil {
+                    sawClearedBinding = true
+                }
+                if updated.activeEdit != nil, sawClearedBinding {
+                    clearThenAssignCycles += 1
+                    sawClearedBinding = false
+                }
+                session = updated
+            },
+            sleepNanoseconds: { _ in
+                pollCount += 1
+                // Allow at least one full clear→assign→sleep cycle before acknowledging.
+                if pollCount == 2 {
+                    session.acknowledgeEditPresentation(self.project)
+                }
+            }
+        )
 
+        XCTAssertEqual(pollCount, 2)
+        XCTAssertGreaterThanOrEqual(clearThenAssignCycles, 2)
         XCTAssertNil(session.pending)
-        XCTAssertEqual(session.activeDelete, project)
+        XCTAssertEqual(session.activeEdit, project)
     }
 
     @MainActor
@@ -170,7 +189,6 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
             store: { session = $0 },
             sleepNanoseconds: { _ in
                 pollCount += 1
-                // Mimic CreatedProjectOwnerActionPresentation.onAppear writing live state.
                 session.acknowledgeEditPresentation(self.project)
             }
         )

@@ -17,6 +17,35 @@ enum ProjectOwnerActionAlerts {
     }
 }
 
+/// Binding side-effects for the shared project delete confirmation alert.
+enum ProjectDeleteConfirmationActions {
+    /// Clears the pending project when SwiftUI dismisses the alert.
+    static func handleIsPresentedChange(
+        _ isPresented: Bool,
+        projectPendingDelete: inout ProjectSummary?
+    ) {
+        if !isPresented {
+            projectPendingDelete = nil
+        }
+    }
+
+    /// Dismisses the confirmation without deleting.
+    static func handleCancel(projectPendingDelete: inout ProjectSummary?) {
+        projectPendingDelete = nil
+    }
+
+    /// Clears the confirmation binding, then invokes delete for the presented project id.
+    static func handleConfirm(
+        project: ProjectSummary,
+        projectPendingDelete: inout ProjectSummary?,
+        onConfirmDelete: (ProjectSummary.ID) -> Void
+    ) {
+        let projectID = project.id
+        projectPendingDelete = nil
+        onConfirmDelete(projectID)
+    }
+}
+
 private struct ProjectDeleteConfirmationAlertModifier: ViewModifier {
     @Binding var projectPendingDelete: ProjectSummary?
     let onConfirmDelete: (ProjectSummary.ID) -> Void
@@ -26,17 +55,26 @@ private struct ProjectDeleteConfirmationAlertModifier: ViewModifier {
             String(localized: "projects.delete.title"),
             isPresented: Binding(
                 get: { projectPendingDelete != nil },
-                set: { if !$0 { projectPendingDelete = nil } }
+                set: { isPresented in
+                    ProjectDeleteConfirmationActions.handleIsPresentedChange(
+                        isPresented,
+                        projectPendingDelete: &projectPendingDelete
+                    )
+                }
             ),
             presenting: projectPendingDelete
         ) { project in
             Button(String(localized: "projects.delete.cancel"), role: .cancel) {
-                projectPendingDelete = nil
+                ProjectDeleteConfirmationActions.handleCancel(
+                    projectPendingDelete: &projectPendingDelete
+                )
             }
             Button(String(localized: "projects.delete.confirm"), role: .destructive) {
-                let projectID = project.id
-                projectPendingDelete = nil
-                onConfirmDelete(projectID)
+                ProjectDeleteConfirmationActions.handleConfirm(
+                    project: project,
+                    projectPendingDelete: &projectPendingDelete,
+                    onConfirmDelete: onConfirmDelete
+                )
             }
         } message: { project in
             ProjectOwnerActionAlerts.deleteMessage(for: project)

@@ -404,9 +404,9 @@ private extension HomeView {
 
     /// Presents a pending Edit/Delete after the created-project detail dismisses.
     ///
-    /// Detail dismisses itself before firing `onEdit`/`onDelete`. Uses the shared handoff
-    /// runner against live HomeView state so edit-cover `onAppear` acknowledgments stop
-    /// the poll; unconfirmed edit bindings are torn down afterward.
+    /// Uses the shared handoff runner against live HomeView state: each poll force
+    /// nil-then-reassigns so covers can appear after detail dismiss, and `onAppear`
+    /// acknowledgments stop the loop before unconfirmed edit state is torn down.
     func presentPendingOwnerActionAfterCreatedDetailDismiss() {
         guard CreatedProjectOwnerActionHandoff.actionAwaitingPresentation(
             pendingOwnerActionAfterCreatedDetail

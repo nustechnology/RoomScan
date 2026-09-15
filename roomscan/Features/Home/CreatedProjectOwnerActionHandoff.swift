@@ -46,6 +46,22 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
         }
     }
 
+    /// Clears the active edit/delete binding for the pending action so a later
+    /// `assignIfNeeded` can retrigger `fullScreenCover(item:)` / alert presentation.
+    mutating func clearActivePresentationMatchingPending() {
+        guard let pending else { return }
+        switch pending {
+        case .edit(let project):
+            if activeEdit?.id == project.id {
+                activeEdit = nil
+            }
+        case .delete(let project):
+            if activeDelete?.id == project.id {
+                activeDelete = nil
+            }
+        }
+    }
+
     /// Clears pending after the edit cover actually appears.
     mutating func acknowledgeEditPresentation(_ project: ProjectSummary) {
         pending = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
@@ -62,14 +78,11 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
         )
     }
 
-    /// After assign retries + an acknowledgment window, drop unconfirmed work.
+    /// After the retry window, drop unconfirmed work.
     ///
-    /// Edit is acknowledged only when the cover appears (`acknowledgeEditPresentation`).
-    /// If pending is still set, the cover never confirmed — clear the stuck edit binding
-    /// and pending so the action cannot replay on the next detail dismiss.
-    ///
-    /// Delete is acknowledged when the alert binding is assigned, so pending is usually
-    /// already nil here; leftover pending only means assignment never stuck.
+    /// Edit is acknowledged only when the cover appears. If pending is still set, clear the
+    /// stuck edit binding and pending so the action cannot replay on the next detail dismiss.
+    /// Delete is usually acknowledged on assignment; leftover pending means assignment never stuck.
     mutating func finishUnacknowledgedPresentation() {
         guard let pending else { return }
         switch pending {
@@ -86,7 +99,7 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
 
 /// Moves a pending Edit/Delete request into presentation after the created-project detail dismisses.
 enum CreatedProjectOwnerActionHandoff {
-    /// How long to wait for edit-cover `onAppear` acknowledgment after assign retries.
+    /// Retries (nil-then-set) while waiting for edit-cover `onAppear` acknowledgment.
     static let acknowledgmentPollCount = 6
     static let acknowledgmentPollNanoseconds: UInt64 = 50_000_000
 
@@ -129,12 +142,12 @@ enum CreatedProjectOwnerActionHandoff {
         }
     }
 
-    /// Runs assign retries, polls live session state for acknowledgment, then tears down
-    /// unconfirmed edit work.
+    /// Defers one turn, then repeatedly force-retriggers presentation until acknowledged.
     ///
-    /// `load` / `store` must read and write the same storage the UI acknowledgments mutate
-    /// (HomeView bindings or a test-held session) so an `onAppear` clear of `pending` is
-    /// visible to the poll loop.
+    /// Each poll clears the matching active binding and reassigns on a separate store so
+    /// SwiftUI can present after the created-detail cover finishes dismissing. `load` /
+    /// `store` must share storage with UI acknowledgments so an `onAppear` clear of
+    /// `pending` stops the loop.
     @MainActor
     static func runPresentationAttempts(
         load: @MainActor () -> CreatedProjectOwnerActionHandoffSession,
@@ -143,12 +156,17 @@ enum CreatedProjectOwnerActionHandoff {
             try? await Task.sleep(nanoseconds: $0)
         }
     ) async {
+        // Let the created-project detail cover begin dismissing first.
         await Task.yield()
-        mutate(load: load, store: store) { $0.assignIfNeeded() }
-        await Task.yield()
-        mutate(load: load, store: store) { $0.assignIfNeeded() }
 
         for _ in 0..<acknowledgmentPollCount {
+            if load().pending == nil { return }
+
+            // Force nil-then-set across separate stores so item-based covers retrigger.
+            mutate(load: load, store: store) { $0.clearActivePresentationMatchingPending() }
+            await Task.yield()
+            mutate(load: load, store: store) { $0.assignIfNeeded() }
+
             if load().pending == nil { return }
             await sleepNanoseconds(acknowledgmentPollNanoseconds)
         }
