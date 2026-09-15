@@ -57,8 +57,6 @@ struct NewProjectView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-
             ScrollView {
                 VStack(alignment: .leading, spacing: AppSpacing.extraLarge) {
                     nameField
@@ -79,6 +77,28 @@ struct NewProjectView: View {
             actions
         }
         .background(AppColors.background)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(AppColors.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button(action: cancel) {
+                    Image(systemName: "chevron.left")
+                        .font(.headline.weight(.semibold))
+                        .frame(width: 36, height: 36)
+                }
+                .foregroundStyle(.primary)
+                .accessibilityLabel(String(localized: "common.back"))
+                .accessibilityIdentifier("\(accessibilityRootID).back")
+                .disabled(isSaving)
+            }
+
+            ToolbarItem(placement: .principal) {
+                Text(titleKey)
+                    .appTypography(AppTypography.headingLarge)
+                    .foregroundStyle(AppColors.primaryText)
+            }
+        }
         .interactiveDismissDisabled(isDirty || isSaving)
         .alert(discardTitleKey, isPresented: $showsDiscardAlert) {
             Button("projects.form.discard.keepEditing", role: .cancel) {}
@@ -125,33 +145,6 @@ struct NewProjectView: View {
             originalDescription: initialDescription,
             mode: mode
         )
-    }
-
-    private var header: some View {
-        ZStack {
-            Text(titleKey)
-                .appTypography(AppTypography.headingLarge)
-                .foregroundStyle(AppColors.primaryText)
-
-            HStack {
-                Button(action: cancel) {
-                    Image(systemName: "chevron.left")
-                        .font(.title2.weight(.medium))
-                        .foregroundStyle(AppColors.primaryText)
-                        .frame(width: 48, height: 48)
-                }
-                .buttonStyle(.plain)
-                .background(.quaternary.opacity(0.45), in: Circle())
-                .accessibilityLabel(String(localized: "common.back"))
-                .accessibilityIdentifier("\(accessibilityRootID).back")
-                .disabled(isSaving)
-
-                Spacer()
-            }
-        }
-        .padding(.horizontal, AppSpacing.extraLarge)
-        .padding(.top, AppSpacing.small)
-        .padding(.bottom, AppSpacing.medium)
     }
 
     private var nameField: some View {

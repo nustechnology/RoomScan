@@ -31,8 +31,7 @@ struct ShareView: View {
                         } label: {
                             Image(systemName: "chevron.left")
                                 .font(.headline.weight(.semibold))
-                                .frame(width: 44, height: 44)
-                                .contentShape(Rectangle())
+                                .frame(width: 36, height: 36)
                         }
                         .foregroundStyle(.primary)
                         .accessibilityLabel(String(localized: "common.back"))

@@ -32,31 +32,6 @@ struct ReviewScanView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header Bar
-            HStack {
-                Button {
-                    viewModel.showDiscardConfirmation = true
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.title3.weight(.semibold))
-                        .foregroundColor(.primary)
-                        .padding(10)
-                        .background(Color(uiColor: UIColor.secondarySystemBackground))
-                        .clipShape(Circle())
-                }
-                .accessibilityIdentifier("review.backButton")
-
-                Spacer()
-
-                Text(String(localized: "review.title"))
-                    .font(.headline.weight(.semibold))
-
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 16)
-
             ScrollView {
                 VStack(spacing: 24) {
                     // 3D Model Preview Component
@@ -181,6 +156,24 @@ struct ReviewScanView: View {
         .background(Color.white.ignoresSafeArea())
         .foregroundStyle(Color.black)
         .preferredColorScheme(.light)
+        .navigationTitle(String(localized: "review.title"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.white, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    viewModel.showDiscardConfirmation = true
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.headline.weight(.semibold))
+                        .frame(width: 36, height: 36)
+                }
+                .foregroundStyle(.primary)
+                .accessibilityLabel(String(localized: "common.back"))
+                .accessibilityIdentifier("review.backButton")
+            }
+        }
         .task {
             await viewModel.loadProjects()
         }

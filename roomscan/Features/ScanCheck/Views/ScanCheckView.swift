@@ -38,9 +38,12 @@ struct ScanCheckView: View {
                     onCancel?()
                     dismiss()
                 } label: {
-                    Text(String(localized: "scanning.action.cancel"))
-                        .font(.body)
+                    Image(systemName: "chevron.left")
+                        .font(.headline.weight(.semibold))
+                        .frame(width: 36, height: 36)
                 }
+                .foregroundStyle(.primary)
+                .accessibilityLabel(String(localized: "common.back"))
                 .accessibilityIdentifier("scancheck.cancelButton")
             }
         }

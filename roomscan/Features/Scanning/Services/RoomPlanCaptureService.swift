@@ -466,20 +466,27 @@ private extension RoomPlanCaptureService {
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
-            let box = TimeoutResumeBox(continuation)
+            let resumeGate = TimeoutResumeGate()
 
             let work = Task {
                 do {
-                    box.resume(with: .success(try await operation()))
+                    let value = try await operation()
+                    resumeGate.resume {
+                        continuation.resume(returning: value)
+                    }
                 } catch {
-                    box.resume(with: .failure(error))
+                    resumeGate.resume {
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
 
             Task {
                 try? await Task.sleep(nanoseconds: nanoseconds)
                 work.cancel()
-                box.resume(with: .failure(timeoutError()))
+                resumeGate.resume {
+                    continuation.resume(throwing: timeoutError())
+                }
             }
         }
     }
@@ -555,20 +562,19 @@ private enum RoomPlanCaptureError: LocalizedError, Sendable {
 /// Resumes a continuation at most once so a timeout can return without waiting
 /// for non-cancellable work such as RoomPlan USDZ export.
 @available(iOS 16.0, *)
-private final class TimeoutResumeBox<Value: Sendable>: @unchecked Sendable {
+private final class TimeoutResumeGate: @unchecked Sendable {
     private let lock = NSLock()
-    private var continuation: CheckedContinuation<Value, Error>?
+    private var hasResumed = false
 
-    init(_ continuation: CheckedContinuation<Value, Error>) {
-        self.continuation = continuation
-    }
-
-    func resume(with result: Result<Value, Error>) {
+    func resume(_ action: () -> Void) {
         lock.lock()
-        let continuation = self.continuation
-        self.continuation = nil
+        guard !hasResumed else {
+            lock.unlock()
+            return
+        }
+        hasResumed = true
         lock.unlock()
-        continuation?.resume(with: result)
+        action()
     }
 }
 #endif

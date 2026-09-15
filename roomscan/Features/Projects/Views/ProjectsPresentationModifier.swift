@@ -244,27 +244,29 @@ struct ProjectsPresentationModifier: ViewModifier {
     }
 
     private func editProjectCover(for project: ProjectSummary) -> some View {
-        return NewProjectView(
-            mode: .edit,
-            initialName: project.name,
-            initialDescription: project.description,
-            onSave: { form in
-                let didUpdate = await viewModel.updateProject(
-                    id: project.id,
-                    name: form.name,
-                    description: form.projectDescription,
-                    revision: project.revision
-                )
-                if didUpdate {
+        NavigationStack {
+            NewProjectView(
+                mode: .edit,
+                initialName: project.name,
+                initialDescription: project.description,
+                onSave: { form in
+                    let didUpdate = await viewModel.updateProject(
+                        id: project.id,
+                        name: form.name,
+                        description: form.projectDescription,
+                        revision: project.revision
+                    )
+                    if didUpdate {
+                        projectToEdit = nil
+                    }
+                    return didUpdate
+                },
+                onCancel: {
                     projectToEdit = nil
+                    viewModel.dismissActionErrorToast()
                 }
-                return didUpdate
-            },
-            onCancel: {
-                projectToEdit = nil
-                viewModel.dismissActionErrorToast()
-            }
-        )
+            )
+        }
         .alert(
             String(localized: "projects.action.error"),
             isPresented: Binding(
