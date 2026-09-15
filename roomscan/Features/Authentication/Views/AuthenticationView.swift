@@ -339,9 +339,10 @@ private struct AppleAuthorizationButton: UIViewRepresentable {
         }
 
         private func cancelAuthorizationContexts(except attemptID: UUID) {
-            let staleContexts = authorizationContexts.filter { $0.value.attemptID != attemptID }
-            for (identifier, context) in staleContexts {
-                authorizationContexts.removeValue(forKey: identifier)
+            // Cancel stale controllers but keep their contexts until the delegate fires.
+            // Apple's sheet often stays up after cancel(); dropping the context would make a
+            // late Face ID/password submit disappear with no callback into the view model.
+            for context in authorizationContexts.values where context.attemptID != attemptID {
                 context.controller.cancel()
             }
         }

@@ -181,7 +181,9 @@ struct AuthenticationViewModelTests {
         }
 
         await expectStaleAppleSignInRejected(retried)
-        #expect(retried.viewModel.toastMessage == nil)
+        #expect(
+            retried.viewModel.toastMessage == AuthenticationError.appleSystemError.errorDescription
+        )
     }
 
     @Test func timedOutAppleAuthorizationExpiresDuringUnrelatedExchange() async {
@@ -500,6 +502,9 @@ struct AuthenticationViewModelTests {
 
         #expect(session == nil)
         #expect(!didAuthenticate)
+        #expect(
+            retried.viewModel.toastMessage == AuthenticationError.appleSystemError.errorDescription
+        )
         #expect(retried.viewModel.isAppleAuthorizationInProgress)
         #expect(retried.viewModel.beginAppleAuthorization() == retried.retryAttempt)
         retried.viewModel.endAppleAuthorization(attemptID: retried.retryAttempt.id)
