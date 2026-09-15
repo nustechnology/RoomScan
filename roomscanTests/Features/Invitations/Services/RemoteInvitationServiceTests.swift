@@ -193,19 +193,19 @@ struct RemoteInvitationServiceTests {
         #expect(details.type == .shareLink)
     }
 
-    @Test func fetchInvitation_rejectsUnknownLinkType() async {
+    @Test func fetchInvitation_defaultsUnknownLinkTypeToInvitation() async throws {
         let client = FakeInvitationHTTPClient { _ in
             .success(Self.previewJSON(type: "unknown-type", hasAccess: false))
         }
         let service = RemoteInvitationService(httpClient: client)
 
-        await #expect(throws: InvitationServiceError.unavailable) {
-            try await service.fetchInvitation(
-                scope: .project,
-                token: "unknown-type-token",
-                currentUserEmail: "viewer@example.com"
-            )
-        }
+        let details = try await service.fetchInvitation(
+            scope: .project,
+            token: "unknown-type-token",
+            currentUserEmail: "viewer@example.com"
+        )
+
+        #expect(details.type == .invitation)
     }
 
     @Test func fetchInvitation_maps404ToNotFound() async {

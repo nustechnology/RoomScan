@@ -197,7 +197,7 @@ struct InvitationViewModelTests {
             Issue.record("Expected share-link decline to close the invitation")
             return
         }
-        #expect(toast.isEmpty)
+        #expect(toast == nil)
     }
 
     @Test func confirmDeclineReturnsHomeWithToast() async {
@@ -239,7 +239,7 @@ struct InvitationViewModelTests {
             Issue.record("Expected dismissed navigation outcome")
             return
         }
-        #expect(toast.isEmpty)
+        #expect(toast == nil)
         #expect(viewModel.blockingAlert == nil)
     }
 

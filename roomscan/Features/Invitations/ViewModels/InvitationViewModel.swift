@@ -40,7 +40,7 @@ final class InvitationViewModel {
     }
 
     enum NavigationOutcome: Equatable {
-        case dismissedToHome(toastMessage: String)
+        case dismissedToHome(toastMessage: String?)
         case accepted(AcceptedInvitationDestination, toastMessage: String)
         case opened(AcceptedInvitationDestination)
     }
@@ -155,7 +155,7 @@ final class InvitationViewModel {
 
     func requestDecline() {
         if invitation?.type == .shareLink {
-            navigationOutcome = .dismissedToHome(toastMessage: "")
+            navigationOutcome = .dismissedToHome(toastMessage: nil)
             return
         }
         showsDeclineConfirmation = true
@@ -234,7 +234,7 @@ final class InvitationViewModel {
     func dismissBlockingAlert() {
         guard blockingAlert != nil else { return }
         blockingAlert = nil
-        navigationOutcome = .dismissedToHome(toastMessage: "")
+        navigationOutcome = .dismissedToHome(toastMessage: nil)
     }
 
     func clearNavigationOutcome() {

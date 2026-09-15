@@ -242,7 +242,7 @@ struct InvitationView: View {
     private var backButton: some View {
         Button {
             onFinished(
-                .dismissedToHome(toastMessage: "")
+                .dismissedToHome(toastMessage: nil)
             )
         } label: {
             Image(systemName: "chevron.left")

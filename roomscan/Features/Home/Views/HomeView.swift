@@ -297,7 +297,9 @@ private extension HomeView {
 
         switch outcome {
         case .dismissedToHome(let toastMessage):
-            if !toastMessage.isEmpty { feedbackToastMessage = toastMessage }
+            if let toastMessage {
+                feedbackToastMessage = toastMessage
+            }
         case .accepted(let destination, let toastMessage):
             acceptedInvitations.store(destination)
             feedbackToastMessage = toastMessage
