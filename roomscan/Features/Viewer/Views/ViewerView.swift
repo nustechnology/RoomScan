@@ -92,20 +92,22 @@ struct ViewerView: View {
                         || viewModel.isLoadingNotes
                         || !viewModel.notes.isEmpty
 
-                    if showsNotesSection {
+                    if showsNotesSection || viewModel.isPlacementActive {
                         ZStack(alignment: .top) {
-                            NotesListSection(
-                                notes: viewModel.notes,
-                                selectedNoteID: viewModel.selectedNoteID,
-                                isLoading: viewModel.isLoadingNotes,
-                                isAddEnabled: viewModel.isModelReady && viewModel.allowsOwnerActions && !viewModel.isLoadingNotes,
-                                showsOwnerActions: viewModel.allowsOwnerActions,
-                                onAddNote: { viewModel.beginAddNote() },
-                                onSelectNote: { viewModel.selectNote(id: $0.id) },
-                                onEditNote: { viewModel.openEditor(for: $0) },
-                                onMoveNote: { viewModel.beginMoveNote($0) },
-                                onDeleteNote: { viewModel.requestDelete($0) }
-                            )
+                            if showsNotesSection {
+                                NotesListSection(
+                                    notes: viewModel.notes,
+                                    selectedNoteID: viewModel.selectedNoteID,
+                                    isLoading: viewModel.isLoadingNotes,
+                                    isAddEnabled: viewModel.isModelReady && viewModel.allowsOwnerActions && !viewModel.isLoadingNotes,
+                                    showsOwnerActions: viewModel.allowsOwnerActions,
+                                    onAddNote: { viewModel.beginAddNote() },
+                                    onSelectNote: { viewModel.selectNote(id: $0.id) },
+                                    onEditNote: { viewModel.openEditor(for: $0) },
+                                    onMoveNote: { viewModel.beginMoveNote($0) },
+                                    onDeleteNote: { viewModel.requestDelete($0) }
+                                )
+                            }
 
                             if viewModel.isPlacementActive {
                                 PinPlacementBanner(
