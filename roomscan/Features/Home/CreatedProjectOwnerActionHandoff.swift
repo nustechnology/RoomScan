@@ -146,6 +146,16 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
     mutating func finishUnacknowledgedPresentation() {
         pending = nil
     }
+
+    /// Drops an in-flight handoff that has not been acknowledged yet (e.g. user left Projects).
+    ///
+    /// No-op when `pending` is already nil so an on-screen edit cover is left alone.
+    mutating func abandonUnacknowledgedPresentation() {
+        guard pending != nil else { return }
+        pending = nil
+        activeEdit = nil
+        activeDelete = nil
+    }
 }
 
 /// Moves a pending Edit/Delete request into presentation after the created-project detail dismisses.

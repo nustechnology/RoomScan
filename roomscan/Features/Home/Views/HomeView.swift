@@ -246,6 +246,10 @@ struct HomeView: View {
                 isInvitationCoverPresented = true
             }
         }
+        .onChange(of: selectedTab) { _, _ in
+            // Avoid presenting a delayed edit/delete cover over a different tab.
+            cancelUnacknowledgedOwnerActionPresentation()
+        }
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
@@ -444,6 +448,20 @@ private extension HomeView {
         ownerActionPresentationTask?.cancel()
         ownerActionPresentationTask = nil
         return ownerActionPresentationFlight.begin()
+    }
+
+    /// Stops an unacknowledged Edit/Delete handoff (e.g. user left the Projects tab).
+    ///
+    /// Leaves an already-presented edit cover alone (`pending` is nil after onAppear).
+    func cancelUnacknowledgedOwnerActionPresentation() {
+        beginOwnerActionPresentationFlight()
+        CreatedProjectOwnerActionHandoffSession.mutate(
+            pending: &pendingOwnerActionAfterCreatedDetail,
+            activeEdit: &projectToEditAfterCreation,
+            activeDelete: &projectPendingDeleteAfterCreation
+        ) { session in
+            session.abandonUnacknowledgedPresentation()
+        }
     }
 
     func beginOwnerActionAfterCreatedDetail(_ action: CreatedProjectOwnerAction) {
