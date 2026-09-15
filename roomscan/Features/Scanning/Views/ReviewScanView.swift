@@ -162,16 +162,10 @@ struct ReviewScanView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    viewModel.showDiscardConfirmation = true
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.headline.weight(.semibold))
-                        .frame(width: 36, height: 36)
-                }
-                .foregroundStyle(.primary)
-                .accessibilityLabel(String(localized: "common.back"))
-                .accessibilityIdentifier("review.backButton")
+                ToolbarBackButton(
+                    action: { viewModel.showDiscardConfirmation = true },
+                    accessibilityIdentifier: "review.backButton"
+                )
             }
         }
         .task {

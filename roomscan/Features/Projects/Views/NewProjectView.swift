@@ -82,15 +82,11 @@ struct NewProjectView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button(action: cancel) {
-                    Image(systemName: "chevron.left")
-                        .font(.headline.weight(.semibold))
-                        .frame(width: 36, height: 36)
-                }
-                .foregroundStyle(.primary)
-                .accessibilityLabel(String(localized: "common.back"))
-                .accessibilityIdentifier("\(accessibilityRootID).back")
-                .disabled(isSaving)
+                ToolbarBackButton(
+                    action: cancel,
+                    accessibilityIdentifier: "\(accessibilityRootID).back",
+                    isDisabled: isSaving
+                )
             }
 
             ToolbarItem(placement: .principal) {

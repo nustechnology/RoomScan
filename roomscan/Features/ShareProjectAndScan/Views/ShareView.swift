@@ -26,16 +26,10 @@ struct ShareView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            dismiss()
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.headline.weight(.semibold))
-                                .frame(width: 36, height: 36)
-                        }
-                        .foregroundStyle(.primary)
-                        .accessibilityLabel(String(localized: "common.back"))
-                        .accessibilityIdentifier("share.back")
+                        ToolbarBackButton(
+                            action: { dismiss() },
+                            accessibilityIdentifier: "share.back"
+                        )
                     }
 
                     ToolbarItem(placement: .principal) {
