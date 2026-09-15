@@ -292,7 +292,9 @@ private extension HomeView {
         clearPendingInvitation(matching: invitation)
         invitationOverlayPresenter.dismiss()
 
-        feedbackToastMessage = outcome.feedbackToastMessage
+        if let toast = outcome.feedbackToastMessage {
+            feedbackToastMessage = toast
+        }
 
         switch outcome {
         case .dismissedToHome:

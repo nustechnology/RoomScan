@@ -142,10 +142,6 @@ actor LocalInvitationService: InvitationService {
         }
     }
 
-    private func linkType(for token: String) -> InvitationLinkType {
-        token.hasPrefix("share-link-") ? .shareLink : .invitation
-    }
-
     private func details(for scope: InvitationScope, token: String) throws -> InvitationDetails {
         switch scope {
         case .project:
@@ -160,7 +156,7 @@ actor LocalInvitationService: InvitationService {
             return InvitationDetails(
                 token: token,
                 scope: .project,
-                type: linkType(for: token),
+                type: .invitation,
                 title: "Empty Shared Project",
                 ownerName: "Nguyen Minh Anh",
                 invitedEmail: nil,
@@ -181,6 +177,17 @@ actor LocalInvitationService: InvitationService {
             )
         }
 
+        if token.hasPrefix("share-link-") {
+            return makeProjectInvitation(token: token, type: .shareLink)
+        }
+
+        return makeProjectInvitation(token: token, type: .invitation)
+    }
+
+    private func makeProjectInvitation(
+        token: String,
+        type: InvitationLinkType
+    ) -> InvitationDetails {
         let scans = makeProjectScans()
         let project = ProjectSummary(
             id: "shared-project-floor-3",
@@ -196,7 +203,7 @@ actor LocalInvitationService: InvitationService {
         return InvitationDetails(
             token: token,
             scope: .project,
-            type: linkType(for: token),
+            type: type,
             title: project.name,
             ownerName: project.ownerName,
             invitedEmail: token.hasPrefix("mismatch-") ? "viewer@example.com" : nil,
@@ -209,6 +216,16 @@ actor LocalInvitationService: InvitationService {
     }
 
     private func scanInvitation(token: String) -> InvitationDetails {
+        if token.hasPrefix("share-link-") {
+            return makeScanInvitation(token: token, type: .shareLink)
+        }
+        return makeScanInvitation(token: token, type: .invitation)
+    }
+
+    private func makeScanInvitation(
+        token: String,
+        type: InvitationLinkType
+    ) -> InvitationDetails {
         let scan = RoomScanSummary(
             id: "shared-scan-meeting-3a",
             name: "Meeting Room 3A",
@@ -230,7 +247,7 @@ actor LocalInvitationService: InvitationService {
         return InvitationDetails(
             token: token,
             scope: .scan,
-            type: linkType(for: token),
+            type: type,
             title: scan.name,
             ownerName: "Nguyen Minh Anh",
             invitedEmail: token.hasPrefix("mismatch-") ? "viewer@example.com" : nil,

@@ -94,7 +94,7 @@ nonisolated enum InvitationAPIMapping {
             return InvitationDetails(
                 token: token,
                 scope: .project,
-                type: linkType(from: response),
+                type: try linkType(from: response),
                 title: summary.name,
                 ownerName: summary.ownerName,
                 invitedEmail: response.recipientEmail,
@@ -133,7 +133,7 @@ nonisolated enum InvitationAPIMapping {
             return InvitationDetails(
                 token: token,
                 scope: .scan,
-                type: linkType(from: response),
+                type: try linkType(from: response),
                 title: summary.name,
                 ownerName: summary.creatorDisplayName,
                 invitedEmail: response.recipientEmail,
@@ -148,12 +148,14 @@ nonisolated enum InvitationAPIMapping {
 
     private nonisolated static func linkType(
         from response: InvitationPreviewAPIResponse
-    ) -> InvitationLinkType {
-        let normalized = response.type
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-            .replacingOccurrences(of: "_", with: "-")
-        return InvitationLinkType(rawValue: normalized) ?? .invitation
+    ) throws -> InvitationLinkType {
+        guard let type = InvitationLinkType.parse(response.type) else {
+            #if DEBUG
+            print("[Invitations] unknown link type=\(response.type)")
+            #endif
+            throw InvitationServiceError.unavailable
+        }
+        return type
     }
 
     private nonisolated static func hasThumbnail(_ thumbnail: String?) -> Bool {

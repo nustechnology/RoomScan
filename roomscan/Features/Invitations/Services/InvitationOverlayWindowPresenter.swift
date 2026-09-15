@@ -81,10 +81,14 @@ final class InvitationOverlayWindowPresenter {
         onDismiss = nil
         presentedInvitation = nil
 
-        let window = overlayWindow
+        guard let window = overlayWindow else {
+            windowToRestore = nil
+            return
+        }
+
         overlayWindow = nil
-        window?.isHidden = true
-        window?.rootViewController = nil
+        window.isHidden = true
+        window.rootViewController = nil
 
         if restoreKeyWindow {
             let previous = windowToRestore

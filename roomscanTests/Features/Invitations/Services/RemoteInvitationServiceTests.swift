@@ -193,19 +193,34 @@ struct RemoteInvitationServiceTests {
         #expect(details.type == .shareLink)
     }
 
-    @Test func fetchInvitation_defaultsUnknownLinkTypeToInvitation() async throws {
+    @Test func fetchInvitation_mapsShareLinkTypeCamelCase() async throws {
         let client = FakeInvitationHTTPClient { _ in
-            .success(Self.previewJSON(type: "unknown-type", hasAccess: false))
+            .success(Self.previewJSON(type: "shareLink", hasAccess: true))
         }
         let service = RemoteInvitationService(httpClient: client)
 
         let details = try await service.fetchInvitation(
             scope: .project,
-            token: "unknown-type-token",
+            token: "share-link-camel-token",
             currentUserEmail: "viewer@example.com"
         )
 
-        #expect(details.type == .invitation)
+        #expect(details.type == .shareLink)
+    }
+
+    @Test func fetchInvitation_rejectsUnknownLinkType() async {
+        let client = FakeInvitationHTTPClient { _ in
+            .success(Self.previewJSON(type: "unknown-type", hasAccess: false))
+        }
+        let service = RemoteInvitationService(httpClient: client)
+
+        await #expect(throws: InvitationServiceError.unavailable) {
+            try await service.fetchInvitation(
+                scope: .project,
+                token: "unknown-type-token",
+                currentUserEmail: "viewer@example.com"
+            )
+        }
     }
 
     @Test func fetchInvitation_maps404ToNotFound() async {

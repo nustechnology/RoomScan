@@ -42,3 +42,20 @@ struct InvitationDetailsTests {
         #expect(details.type == .shareLink)
     }
 }
+
+struct InvitationLinkTypeParsingTests {
+    @Test func parsesKnownSpellings() {
+        #expect(InvitationLinkType.parse("invitation") == .invitation)
+        #expect(InvitationLinkType.parse("INVITATION") == .invitation)
+        #expect(InvitationLinkType.parse("share-link") == .shareLink)
+        #expect(InvitationLinkType.parse("SHARE_LINK") == .shareLink)
+        #expect(InvitationLinkType.parse("shareLink") == .shareLink)
+        #expect(InvitationLinkType.parse("  share-link  ") == .shareLink)
+    }
+
+    @Test func rejectsEmptyAndUnknownValues() {
+        #expect(InvitationLinkType.parse("") == nil)
+        #expect(InvitationLinkType.parse("   ") == nil)
+        #expect(InvitationLinkType.parse("unknown-type") == nil)
+    }
+}

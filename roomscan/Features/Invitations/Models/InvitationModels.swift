@@ -17,6 +17,30 @@ nonisolated enum InvitationScope: String, Equatable, Sendable, Hashable {
 nonisolated enum InvitationLinkType: String, Equatable, Sendable {
     case invitation
     case shareLink = "share-link"
+
+    /// Parses API / payload spellings such as `share-link`, `SHARE_LINK`, or `shareLink`.
+    /// Returns `nil` for empty or unrecognized values so callers can fail closed.
+    nonisolated static func parse(_ raw: String) -> InvitationLinkType? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let normalized = trimmed
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+
+        if let type = InvitationLinkType(rawValue: normalized) {
+            return type
+        }
+
+        switch normalized.replacingOccurrences(of: "-", with: "") {
+        case "invitation":
+            return .invitation
+        case "sharelink":
+            return .shareLink
+        default:
+            return nil
+        }
+    }
 }
 
 /// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so value

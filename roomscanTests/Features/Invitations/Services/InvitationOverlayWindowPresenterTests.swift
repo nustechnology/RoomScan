@@ -125,6 +125,23 @@ struct InvitationOverlayWindowPresenterTests {
         #expect(!presenter.isPresented)
     }
 
+    @Test func dismissWithoutNotifyingWhenNotPresentedDoesNotStealKeyWindow() async throws {
+        let scene = try InvitationOverlayTestSupport.requireWindowScene()
+        let originalKey = scene.keyWindow
+        let systemWindow = InvitationOverlayTestSupport.makeSystemLikeWindow(windowScene: scene)
+        systemWindow.makeKey()
+        #expect(systemWindow.isKeyWindow)
+
+        let presenter = InvitationOverlayWindowPresenter()
+        presenter.dismissWithoutNotifying()
+
+        #expect(!presenter.isPresented)
+        #expect(systemWindow.isKeyWindow)
+
+        systemWindow.isHidden = true
+        originalKey?.makeKey()
+    }
+
     @Test func preferredKeyWindowRestoresPreviousAppWindowInsteadOfHigherLevelSystemWindow() {
         let appWindow = InvitationOverlayTestSupport.makeWindow(level: .normal)
         let overlay = InvitationOverlayTestSupport.makeWindow(

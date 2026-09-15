@@ -122,6 +122,17 @@ struct HomeViewInvitationOverlayTests {
         #expect(dismissedWithToast.feedbackToastMessage == String(localized: "invitation.toast.declined"))
         #expect(accepted.feedbackToastMessage == String(localized: "invitation.toast.accepted"))
         #expect(opened.feedbackToastMessage == nil)
+
+        var feedbackToastMessage: String? = "existing-toast"
+        if let toast = opened.feedbackToastMessage {
+            feedbackToastMessage = toast
+        }
+        #expect(feedbackToastMessage == "existing-toast")
+
+        if let toast = accepted.feedbackToastMessage {
+            feedbackToastMessage = toast
+        }
+        #expect(feedbackToastMessage == String(localized: "invitation.toast.accepted"))
     }
 
     private func waitUntil(
