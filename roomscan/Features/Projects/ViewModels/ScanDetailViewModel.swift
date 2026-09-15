@@ -99,13 +99,11 @@ final class ScanDetailViewModel {
         locale: Locale = .current,
         timeZone: TimeZone = .current
     ) -> String {
-        var style = Date.FormatStyle()
-            .month(.abbreviated)
-            .day()
-            .year()
-            .locale(locale)
-        style.timeZone = timeZone
-        return date.formatted(style)
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "MMM d, yyyy"
+        return formatter.string(from: date)
     }
 
     var notesCountText: String {
