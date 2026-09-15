@@ -32,6 +32,9 @@ final class AuthenticationViewModel {
     private var activeAppleAuthorizationAttempt: AppleAuthorizationAttempt?
     /// The attempt that timed out but can still complete if Apple calls back before it expires.
     /// At most one exists: `beginAppleAuthorization` clears it before creating a new attempt.
+    /// The live `ASAuthorizationController` is intentionally not cancelled here —
+    /// `cancel()` does not reliably dismiss Apple's sheet, and dropping the controller
+    /// context would discard a late successful credential from that same sheet.
     private var timedOutAppleAuthorizationAttempt: AppleAuthorizationAttempt?
     /// An attempt whose grace period ended. Kept so a later sheet completion can tell the user
     /// to try again, without retaining the nonce.
@@ -240,6 +243,9 @@ final class AuthenticationViewModel {
                   attempt.id == attemptID
             else { return }
 
+            // Unlock the button only. Do not cancel the ASAuthorizationController: Apple's
+            // password sheet often stays up after cancel(), and a late submit from that
+            // sheet must still be able to exchange the retained nonce during the grace period.
             self.activeAppleAuthorizationAttempt = nil
             self.timedOutAppleAuthorizationAttempt = attempt
             self.appleAuthorizationTimeoutTask = nil
@@ -276,6 +282,7 @@ final class AuthenticationViewModel {
         return attempt
     }
 
+    @discardableResult
     private func consumeExpiredAppleAuthorizationAttempt(attemptID: UUID) -> Bool {
         guard expiredAppleAuthorizationAttemptID == attemptID else { return false }
         expiredAppleAuthorizationAttemptID = nil
