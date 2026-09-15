@@ -32,6 +32,7 @@ struct HomeView: View {
     @State private var showsNewProject = false
     @State private var pendingCreatedProject: ProjectSummary?
     @State private var selectedCreatedProject: ProjectSummary?
+    @State private var pendingOwnerActionAfterCreatedDetail: CreatedProjectOwnerAction?
     @State private var projectToEditAfterCreation: ProjectSummary?
     @State private var projectPendingDeleteAfterCreation: ProjectSummary?
     // Separate from ProjectsView's pending scan state: this request originates
@@ -169,41 +170,20 @@ struct HomeView: View {
         )
         .fullScreenCover(
             item: $selectedCreatedProject,
-            onDismiss: publishPendingProjectScanRequest,
+            onDismiss: {
+                presentPendingOwnerActionAfterCreatedDetailDismiss()
+                publishPendingProjectScanRequest()
+            },
             content: { project in
                 createdProjectDetailCover(for: project)
             }
         )
-        .fullScreenCover(item: $projectToEditAfterCreation) { project in
-            editCreatedProjectCover(for: project)
-        }
-        .alert(
-            String(localized: "projects.delete.title"),
-            isPresented: Binding(
-                get: { projectPendingDeleteAfterCreation != nil },
-                set: { if !$0 { projectPendingDeleteAfterCreation = nil } }
-            ),
-            presenting: projectPendingDeleteAfterCreation
-        ) { project in
-            Button(String(localized: "projects.delete.cancel"), role: .cancel) {
-                projectPendingDeleteAfterCreation = nil
-            }
-            Button(String(localized: "projects.delete.confirm"), role: .destructive) {
-                let projectID = project.id
-                projectPendingDeleteAfterCreation = nil
-                Task {
-                    await projectsViewModel.deleteProject(id: projectID)
-                }
-            }
-        } message: { project in
-            Text(
-                String.localizedStringWithFormat(
-                    String(localized: "projects.delete.message.format"),
-                    max(project.scanCount, project.roomScans.count),
-                    project.name
-                )
-            )
-        }
+        .createdProjectOwnerActionPresentation(
+            projectToEdit: $projectToEditAfterCreation,
+            projectPendingDelete: $projectPendingDeleteAfterCreation,
+            pendingOwnerAction: $pendingOwnerActionAfterCreatedDetail,
+            projectsViewModel: projectsViewModel
+        )
         .fullScreenCover(
             item: $activeInvitation,
             onDismiss: handleInvitationCoverDismissed
@@ -267,8 +247,11 @@ struct HomeView: View {
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
+}
+
+private extension HomeView {
     @ViewBuilder
-    private var currentTabContent: some View {
+    var currentTabContent: some View {
         switch selectedTab {
         case .projects:
             ProjectsView(
@@ -307,9 +290,6 @@ struct HomeView: View {
         }
     }
 
-}
-
-private extension HomeView {
     func handleInvitationFinished(
         _ outcome: InvitationViewModel.NavigationOutcome,
         for invitation: PendingInvitation
@@ -421,6 +401,47 @@ private extension HomeView {
         requestedScanSourceProjectID = scanRequestAfterProjectCreation
         self.scanRequestAfterProjectCreation = nil
     }
+
+    /// Presents a pending Edit/Delete after the created-project detail dismisses.
+    ///
+    /// Detail dismisses itself before firing `onEdit`/`onDelete`; presenting from that
+    /// callback (or while the cover is still up) can be dropped by SwiftUI. Pending is
+    /// cleared only when the edit cover appears or the delete alert becomes active.
+    func presentPendingOwnerActionAfterCreatedDetailDismiss() {
+        guard CreatedProjectOwnerActionHandoff.actionAwaitingPresentation(
+            pendingOwnerActionAfterCreatedDetail
+        ) != nil else { return }
+        Task { @MainActor in
+            await Task.yield()
+            assignPendingOwnerActionIfNeeded()
+            await Task.yield()
+            assignPendingOwnerActionIfNeeded()
+        }
+    }
+
+    func assignPendingOwnerActionIfNeeded() {
+        guard let action = CreatedProjectOwnerActionHandoff.actionToAssign(
+            pending: pendingOwnerActionAfterCreatedDetail,
+            activeEdit: projectToEditAfterCreation,
+            activeDelete: projectPendingDeleteAfterCreation
+        ) else { return }
+        switch action {
+        case .edit(let project):
+            projectToEditAfterCreation = project
+        case .delete(let project):
+            projectPendingDeleteAfterCreation = project
+        }
+    }
+
+    func beginOwnerActionAfterCreatedDetail(_ action: CreatedProjectOwnerAction) {
+        pendingOwnerActionAfterCreatedDetail = action
+        if selectedCreatedProject != nil {
+            selectedCreatedProject = nil
+        } else {
+            presentPendingOwnerActionAfterCreatedDetailDismiss()
+        }
+    }
+
     func createdProjectDetailCover(for project: ProjectSummary) -> some View {
         ProjectDetailView(
             project: project,
@@ -441,47 +462,12 @@ private extension HomeView {
                 selectedCreatedProject = nil
             },
             onEdit: { project in
-                projectToEditAfterCreation = project
+                beginOwnerActionAfterCreatedDetail(.edit(project))
             },
             onDelete: { project in
-                projectPendingDeleteAfterCreation = project
+                beginOwnerActionAfterCreatedDetail(.delete(project))
             }
         )
-    }
-
-    func editCreatedProjectCover(for project: ProjectSummary) -> some View {
-        NewProjectView(
-            mode: .edit,
-            initialName: project.name,
-            initialDescription: project.description,
-            onSave: { form in
-                let didUpdate = await projectsViewModel.updateProject(
-                    id: project.id,
-                    name: form.name,
-                    description: form.projectDescription,
-                    revision: project.revision
-                )
-                if didUpdate {
-                    projectToEditAfterCreation = nil
-                }
-                return didUpdate
-            },
-            onCancel: {
-                projectToEditAfterCreation = nil
-                projectsViewModel.dismissActionErrorToast()
-            }
-        )
-        .alert(
-            String(localized: "projects.action.error"),
-            isPresented: Binding(
-                get: { projectsViewModel.showsActionErrorToast },
-                set: { if !$0 { projectsViewModel.dismissActionErrorToast() } }
-            )
-        ) {
-            Button(String(localized: "projects.action.error.dismiss"), role: .cancel) {
-                projectsViewModel.dismissActionErrorToast()
-            }
-        }
     }
 
     /// Covers Home header, tab content, and bottom nav while a project delete is in flight.
