@@ -83,4 +83,22 @@ enum CreatedProjectOwnerActionHandoff {
             return pending
         }
     }
+
+    /// After bounded presentation retries, drop pending unless a matching UI is already active.
+    ///
+    /// Keeps pending briefly while the edit cover or delete alert is up (until acknowledgment).
+    /// Clears otherwise so a dropped presentation cannot replay on the next detail dismiss.
+    static func pendingAfterPresentationAttempts(
+        pending: CreatedProjectOwnerAction?,
+        activeEdit: ProjectSummary?,
+        activeDelete: ProjectSummary?
+    ) -> CreatedProjectOwnerAction? {
+        guard let pending else { return nil }
+        switch pending {
+        case .edit(let project):
+            return activeEdit?.id == project.id ? pending : nil
+        case .delete(let project):
+            return activeDelete?.id == project.id ? pending : nil
+        }
+    }
 }

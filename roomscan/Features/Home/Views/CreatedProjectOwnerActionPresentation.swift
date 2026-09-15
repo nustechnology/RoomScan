@@ -41,7 +41,6 @@ struct CreatedProjectOwnerActionPresentation: ViewModifier {
                         pending: pendingOwnerAction
                     )
             }
-            .projectActionErrorAlert(viewModel: projectsViewModel)
     }
 }
 

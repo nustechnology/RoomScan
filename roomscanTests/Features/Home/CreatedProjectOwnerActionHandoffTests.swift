@@ -202,4 +202,34 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         )
         XCTAssertNil(pending)
     }
+
+    func testPendingAfterPresentationAttempts_clearsWhenNothingBecameActive() {
+        let remaining = CreatedProjectOwnerActionHandoff.pendingAfterPresentationAttempts(
+            pending: .edit(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+
+        XCTAssertNil(remaining)
+    }
+
+    func testPendingAfterPresentationAttempts_keepsPendingWhileMatchingEditIsActive() {
+        let remaining = CreatedProjectOwnerActionHandoff.pendingAfterPresentationAttempts(
+            pending: .edit(project),
+            activeEdit: project,
+            activeDelete: nil
+        )
+
+        XCTAssertEqual(remaining, .edit(project))
+    }
+
+    func testPendingAfterPresentationAttempts_keepsPendingWhileMatchingDeleteIsActive() {
+        let remaining = CreatedProjectOwnerActionHandoff.pendingAfterPresentationAttempts(
+            pending: .delete(project),
+            activeEdit: nil,
+            activeDelete: project
+        )
+
+        XCTAssertEqual(remaining, .delete(project))
+    }
 }

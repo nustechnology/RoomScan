@@ -405,8 +405,8 @@ private extension HomeView {
     /// Presents a pending Edit/Delete after the created-project detail dismisses.
     ///
     /// Detail dismisses itself before firing `onEdit`/`onDelete`; presenting from that
-    /// callback (or while the cover is still up) can be dropped by SwiftUI. Pending is
-    /// cleared only when the edit cover appears or the delete alert becomes active.
+    /// callback (or while the cover is still up) can be dropped by SwiftUI. Retries twice,
+    /// then drops pending if nothing became active so a stale action cannot replay later.
     func presentPendingOwnerActionAfterCreatedDetailDismiss() {
         guard CreatedProjectOwnerActionHandoff.actionAwaitingPresentation(
             pendingOwnerActionAfterCreatedDetail
@@ -416,6 +416,12 @@ private extension HomeView {
             assignPendingOwnerActionIfNeeded()
             await Task.yield()
             assignPendingOwnerActionIfNeeded()
+            pendingOwnerActionAfterCreatedDetail =
+                CreatedProjectOwnerActionHandoff.pendingAfterPresentationAttempts(
+                    pending: pendingOwnerActionAfterCreatedDetail,
+                    activeEdit: projectToEditAfterCreation,
+                    activeDelete: projectPendingDeleteAfterCreation
+                )
         }
     }
 
