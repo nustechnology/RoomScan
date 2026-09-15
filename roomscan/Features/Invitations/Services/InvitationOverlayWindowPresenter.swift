@@ -44,12 +44,12 @@ final class InvitationOverlayWindowPresenter {
             return
         }
 
+        guard let window = makeWindow() else { return }
+
         if let previous = presentedInvitation, previous.id != invitation.id {
             tearDownWindow(notifyDismiss: false, restoreKeyWindow: false)
             onReplaced?(previous)
         }
-
-        guard let window = makeWindow() else { return }
 
         if windowToRestore == nil {
             windowToRestore = Self.currentKeyWindow(excluding: window)

@@ -292,9 +292,7 @@ private extension HomeView {
         clearPendingInvitation(matching: invitation)
         invitationOverlayPresenter.dismiss()
 
-        if let toastMessage = outcome.feedbackToastMessage {
-            feedbackToastMessage = toastMessage
-        }
+        feedbackToastMessage = outcome.feedbackToastMessage
 
         switch outcome {
         case .dismissedToHome:
@@ -312,7 +310,7 @@ private extension HomeView {
     }
 
     func handleInvitationDismissed(_ invitation: PendingInvitation) {
-        // Replacement tears down the previous invite before the new one is assigned,
+        // Replacement assigns the new invite after tearing down the previous overlay,
         // so this is no longer the presented item and its pending token can be cleared.
         guard invitationOverlayPresenter.presentedInvitation?.id != invitation.id else { return }
         clearPendingInvitation(matching: invitation)

@@ -41,8 +41,12 @@ struct HomeViewInvitationOverlayTests {
         let invitation = PendingInvitation(scope: .project, token: "home-on-appear")
         let model = HomeViewInvitationOverlayHarnessModel()
         model.pendingInvitation = invitation
-        let presenter = InvitationOverlayWindowPresenter(windowFactory: makeTestWindow)
-        let window = try install(HomeViewInvitationOverlayHarness(model: model, presenter: presenter))
+        let presenter = InvitationOverlayWindowPresenter(
+            windowFactory: InvitationOverlayTestSupport.makeTestWindow
+        )
+        let window = try InvitationOverlayTestSupport.installHostingWindow(
+            HomeViewInvitationOverlayHarness(model: model, presenter: presenter)
+        )
 
         await waitUntil { presenter.isPresented }
 
@@ -62,8 +66,12 @@ struct HomeViewInvitationOverlayTests {
         let second = PendingInvitation(scope: .scan, token: "home-second")
         let model = HomeViewInvitationOverlayHarnessModel()
         model.pendingInvitation = first
-        let presenter = InvitationOverlayWindowPresenter(windowFactory: makeTestWindow)
-        let window = try install(HomeViewInvitationOverlayHarness(model: model, presenter: presenter))
+        let presenter = InvitationOverlayWindowPresenter(
+            windowFactory: InvitationOverlayTestSupport.makeTestWindow
+        )
+        let window = try InvitationOverlayTestSupport.installHostingWindow(
+            HomeViewInvitationOverlayHarness(model: model, presenter: presenter)
+        )
 
         await waitUntil { presenter.presentedInvitation == first }
         #expect(presenter.presentedInvitation == first)
@@ -114,30 +122,6 @@ struct HomeViewInvitationOverlayTests {
         #expect(dismissedWithToast.feedbackToastMessage == String(localized: "invitation.toast.declined"))
         #expect(accepted.feedbackToastMessage == String(localized: "invitation.toast.accepted"))
         #expect(opened.feedbackToastMessage == nil)
-    }
-
-    private func install(_ view: some View) throws -> UIWindow {
-        let scene = try requireWindowScene()
-        let host = UIHostingController(rootView: view)
-        let window = UIWindow(windowScene: scene)
-        window.windowLevel = .normal
-        window.rootViewController = host
-        window.makeKeyAndVisible()
-        host.loadViewIfNeeded()
-        return window
-    }
-
-    private func requireWindowScene() throws -> UIWindowScene {
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        let scene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first
-        return try #require(scene)
-    }
-
-    private func makeTestWindow() -> UIWindow? {
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
-        window.windowLevel = InvitationOverlayWindowPresenter.overlayWindowLevel
-        window.backgroundColor = .clear
-        return window
     }
 
     private func waitUntil(
