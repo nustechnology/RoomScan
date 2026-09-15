@@ -35,6 +35,8 @@ struct HomeView: View {
     @State private var pendingOwnerActionAfterCreatedDetail: CreatedProjectOwnerAction?
     @State private var projectToEditAfterCreation: ProjectSummary?
     @State private var projectPendingDeleteAfterCreation: ProjectSummary?
+    @State private var ownerActionPresentationTask: Task<Void, Never>?
+    @State private var ownerActionPresentationGeneration = 0
     // Separate from ProjectsView's pending scan state: this request originates
     // from the project-creation cover and is published when HomeView's cover dismisses.
     @State private var scanRequestAfterProjectCreation: String?
@@ -407,11 +409,13 @@ private extension HomeView {
     /// Uses the shared handoff runner against live HomeView state: each poll force
     /// nil-then-reassigns so covers can appear after detail dismiss, and `onAppear`
     /// acknowledgments stop the loop before unconfirmed edit state is torn down.
+    /// Only one presentation loop runs at a time (cancelled + generation-gated).
     func presentPendingOwnerActionAfterCreatedDetailDismiss() {
         guard CreatedProjectOwnerActionHandoff.actionAwaitingPresentation(
             pendingOwnerActionAfterCreatedDetail
         ) != nil else { return }
-        Task { @MainActor in
+        let generation = beginOwnerActionPresentationFlight()
+        ownerActionPresentationTask = Task { @MainActor in
             await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
                 load: {
                     CreatedProjectOwnerActionHandoffSession(
@@ -421,15 +425,30 @@ private extension HomeView {
                     )
                 },
                 store: { session in
+                    guard generation == ownerActionPresentationGeneration else { return }
                     pendingOwnerActionAfterCreatedDetail = session.pending
                     projectToEditAfterCreation = session.activeEdit
                     projectPendingDeleteAfterCreation = session.activeDelete
+                },
+                isCurrent: {
+                    !Task.isCancelled && generation == ownerActionPresentationGeneration
                 }
             )
         }
     }
 
+    /// Cancels any in-flight handoff loop and bumps the generation so stale stores no-op.
+    @discardableResult
+    func beginOwnerActionPresentationFlight() -> Int {
+        ownerActionPresentationTask?.cancel()
+        ownerActionPresentationTask = nil
+        ownerActionPresentationGeneration &+= 1
+        return ownerActionPresentationGeneration
+    }
+
     func beginOwnerActionAfterCreatedDetail(_ action: CreatedProjectOwnerAction) {
+        // Invalidate any in-flight clear/assign loop before replacing pending state.
+        beginOwnerActionPresentationFlight()
         var session = CreatedProjectOwnerActionHandoffSession(
             pending: pendingOwnerActionAfterCreatedDetail,
             activeEdit: projectToEditAfterCreation,

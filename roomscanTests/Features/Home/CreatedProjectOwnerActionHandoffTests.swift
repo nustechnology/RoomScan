@@ -224,4 +224,32 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         XCTAssertNil(session.pending)
         XCTAssertEqual(session.activeDelete, project)
     }
+
+    @MainActor
+    func testRunPresentationAttempts_stopsWhenIsCurrentBecomesFalse() async {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+        var isCurrent = true
+        var storeCount = 0
+
+        await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
+            load: { session },
+            store: { updated in
+                storeCount += 1
+                session = updated
+            },
+            isCurrent: { isCurrent },
+            sleepNanoseconds: { _ in
+                isCurrent = false
+            }
+        )
+
+        // One clear + one assign, then sleep invalidates the flight; no further stores.
+        XCTAssertEqual(storeCount, 2)
+        XCTAssertEqual(session.activeEdit, project)
+        XCTAssertEqual(session.pending, .edit(project))
+    }
 }

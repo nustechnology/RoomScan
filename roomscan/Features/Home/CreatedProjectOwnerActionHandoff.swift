@@ -141,40 +141,56 @@ enum CreatedProjectOwnerActionHandoff {
     /// `store` must share storage with UI acknowledgments so an `onAppear` clear of
     /// `pending` stops the loop. After the ~2s window, pending is cleared to prevent
     /// replay while an assigned edit binding is kept for a late-appearing cover.
+    ///
+    /// `isCurrent` must become false when a newer handoff supersedes this run (generation
+    /// token / cancelled task) so stale loops do not nil out live presentation bindings.
     @MainActor
     static func runPresentationAttempts(
         load: @MainActor () -> CreatedProjectOwnerActionHandoffSession,
         store: @MainActor (CreatedProjectOwnerActionHandoffSession) -> Void,
+        isCurrent: @MainActor () -> Bool = { true },
         sleepNanoseconds: @MainActor (UInt64) async -> Void = {
             try? await Task.sleep(nanoseconds: $0)
         }
     ) async {
         // Let the created-project detail cover begin dismissing first.
         await Task.yield()
+        guard isCurrent() else { return }
 
         for _ in 0..<acknowledgmentPollCount {
+            guard isCurrent() else { return }
             if load().pending == nil { return }
 
             // Force nil-then-set across separate stores so item-based covers retrigger.
-            mutate(load: load, store: store) { $0.clearActivePresentationMatchingPending() }
+            mutate(load: load, store: store, isCurrent: isCurrent) {
+                $0.clearActivePresentationMatchingPending()
+            }
             await Task.yield()
-            mutate(load: load, store: store) { $0.assignIfNeeded() }
+            guard isCurrent() else { return }
+            mutate(load: load, store: store, isCurrent: isCurrent) { $0.assignIfNeeded() }
 
+            guard isCurrent() else { return }
             if load().pending == nil { return }
             await sleepNanoseconds(acknowledgmentPollNanoseconds)
         }
 
-        mutate(load: load, store: store) { $0.finishUnacknowledgedPresentation() }
+        guard isCurrent() else { return }
+        mutate(load: load, store: store, isCurrent: isCurrent) {
+            $0.finishUnacknowledgedPresentation()
+        }
     }
 
     @MainActor
     private static func mutate(
         load: @MainActor () -> CreatedProjectOwnerActionHandoffSession,
         store: @MainActor (CreatedProjectOwnerActionHandoffSession) -> Void,
+        isCurrent: @MainActor () -> Bool,
         _ body: (inout CreatedProjectOwnerActionHandoffSession) -> Void
     ) {
+        guard isCurrent() else { return }
         var session = load()
         body(&session)
+        guard isCurrent() else { return }
         store(session)
     }
 }
