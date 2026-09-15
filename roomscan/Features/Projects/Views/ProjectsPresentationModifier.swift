@@ -166,7 +166,11 @@ struct ProjectsPresentationModifier: ViewModifier {
                 Text(String(localized: "scan.recovery.message"))
             }
             .fullScreenCover(item: $projectToEdit) { project in
-                editProjectCover(for: project)
+                ProjectEditCoverView(
+                    project: project,
+                    viewModel: viewModel,
+                    onDismiss: { projectToEdit = nil }
+                )
             }
             .projectDeleteConfirmationAlert(projectPendingDelete: $projectPendingDelete) { projectID in
                 Task {
@@ -286,28 +290,4 @@ struct ProjectsPresentationModifier: ViewModifier {
         )
     }
 
-    private func editProjectCover(for project: ProjectSummary) -> some View {
-        return NewProjectView(
-            mode: .edit,
-            initialName: project.name,
-            initialDescription: project.description,
-            onSave: { form in
-                let didUpdate = await viewModel.updateProject(
-                    id: project.id,
-                    name: form.name,
-                    description: form.projectDescription,
-                    revision: project.revision
-                )
-                if didUpdate {
-                    projectToEdit = nil
-                }
-                return didUpdate
-            },
-            onCancel: {
-                projectToEdit = nil
-                viewModel.dismissActionErrorToast()
-            }
-        )
-        .projectActionErrorAlert(viewModel: viewModel)
-    }
 }

@@ -108,4 +108,98 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
 
         XCTAssertEqual(remaining, .edit(project))
     }
+
+    func testPresentationTarget_mapsPendingEditToEditCover() {
+        let target = CreatedProjectOwnerActionHandoff.presentationTarget(
+            pending: .edit(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+
+        XCTAssertEqual(target, .edit(project))
+    }
+
+    func testPresentationTarget_mapsPendingDeleteToDeleteAlert() {
+        let target = CreatedProjectOwnerActionHandoff.presentationTarget(
+            pending: .delete(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+
+        XCTAssertEqual(target, .delete(project))
+    }
+
+    func testPresentationTarget_skipsWhenMatchingPresentationIsAlreadyActive() {
+        let editTarget = CreatedProjectOwnerActionHandoff.presentationTarget(
+            pending: .edit(project),
+            activeEdit: project,
+            activeDelete: nil
+        )
+        let deleteTarget = CreatedProjectOwnerActionHandoff.presentationTarget(
+            pending: .delete(project),
+            activeEdit: nil,
+            activeDelete: project
+        )
+
+        XCTAssertNil(editTarget)
+        XCTAssertNil(deleteTarget)
+    }
+
+    func testPresentationLifecycle_clearsPendingAfterEditAcknowledged() {
+        var pending: CreatedProjectOwnerAction? = .edit(project)
+
+        let target = CreatedProjectOwnerActionHandoff.presentationTarget(
+            pending: pending,
+            activeEdit: nil,
+            activeDelete: nil
+        )
+        XCTAssertEqual(target, .edit(project))
+
+        XCTAssertNil(
+            CreatedProjectOwnerActionHandoff.presentationTarget(
+                pending: pending,
+                activeEdit: project,
+                activeDelete: nil
+            )
+        )
+
+        pending = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
+            .edit(project),
+            pending: pending
+        )
+        XCTAssertNil(pending)
+
+        XCTAssertNil(
+            CreatedProjectOwnerActionHandoff.presentationTarget(
+                pending: pending,
+                activeEdit: project,
+                activeDelete: nil
+            )
+        )
+    }
+
+    func testPresentationLifecycle_clearsPendingAfterDeleteAcknowledged() {
+        var pending: CreatedProjectOwnerAction? = .delete(project)
+
+        let target = CreatedProjectOwnerActionHandoff.presentationTarget(
+            pending: pending,
+            activeEdit: nil,
+            activeDelete: nil
+        )
+        XCTAssertEqual(target, .delete(project))
+
+        XCTAssertNil(
+            CreatedProjectOwnerActionHandoff.presentationTarget(
+                pending: pending,
+                activeEdit: nil,
+                activeDelete: project
+            )
+        )
+
+        pending = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
+            .delete(project),
+            pending: pending
+        )
+        XCTAssertNil(pending)
+    }
 }

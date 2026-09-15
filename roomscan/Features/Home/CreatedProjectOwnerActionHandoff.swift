@@ -18,6 +18,12 @@ enum CreatedProjectOwnerAction: Equatable {
     }
 }
 
+/// Presentation target derived from a pending owner action after detail dismisses.
+enum CreatedProjectOwnerActionTarget: Equatable {
+    case edit(ProjectSummary)
+    case delete(ProjectSummary)
+}
+
 /// Moves a pending Edit/Delete request into presentation after the created-project detail dismisses.
 enum CreatedProjectOwnerActionHandoff {
     /// Returns the action still waiting to be presented, without clearing it.
@@ -41,6 +47,25 @@ enum CreatedProjectOwnerActionHandoff {
         case .delete(let project):
             guard activeDelete?.id != project.id else { return nil }
             return pending
+        }
+    }
+
+    /// Maps a pending action to the edit cover or delete alert that should become active.
+    static func presentationTarget(
+        pending: CreatedProjectOwnerAction?,
+        activeEdit: ProjectSummary?,
+        activeDelete: ProjectSummary?
+    ) -> CreatedProjectOwnerActionTarget? {
+        guard let action = actionToAssign(
+            pending: pending,
+            activeEdit: activeEdit,
+            activeDelete: activeDelete
+        ) else { return nil }
+        switch action {
+        case .edit(let project):
+            return .edit(project)
+        case .delete(let project):
+            return .delete(project)
         }
     }
 

@@ -420,12 +420,12 @@ private extension HomeView {
     }
 
     func assignPendingOwnerActionIfNeeded() {
-        guard let action = CreatedProjectOwnerActionHandoff.actionToAssign(
+        guard let target = CreatedProjectOwnerActionHandoff.presentationTarget(
             pending: pendingOwnerActionAfterCreatedDetail,
             activeEdit: projectToEditAfterCreation,
             activeDelete: projectPendingDeleteAfterCreation
         ) else { return }
-        switch action {
+        switch target {
         case .edit(let project):
             projectToEditAfterCreation = project
         case .delete(let project):
