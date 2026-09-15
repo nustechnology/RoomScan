@@ -189,7 +189,7 @@ struct CameraScanView: View {
                         .padding(.horizontal, 24)
                         .padding(.vertical, 14)
                         .background(
-                            viewModel.hasMinimalStructure && !viewModel.isPaused
+                            viewModel.hasMinimalStructure
                                 ? Color.blue
                                 : Color.blue.opacity(0.4)
                         )
@@ -197,7 +197,6 @@ struct CameraScanView: View {
                 }
                 .disabled(
                     !viewModel.hasMinimalStructure
-                        || viewModel.isPaused
                         || viewModel.isProcessingFinish
                 )
                 .accessibilityIdentifier("scanning.finishButton")
