@@ -14,6 +14,7 @@ struct CreatedProjectOwnerActionPresentation: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .projectActionErrorAlert(viewModel: projectsViewModel)
             .fullScreenCover(item: $projectToEdit) { project in
                 editCover(for: project)
                     .onAppear {
@@ -24,32 +25,10 @@ struct CreatedProjectOwnerActionPresentation: ViewModifier {
                             )
                     }
             }
-            .alert(
-                String(localized: "projects.delete.title"),
-                isPresented: Binding(
-                    get: { projectPendingDelete != nil },
-                    set: { if !$0 { projectPendingDelete = nil } }
-                ),
-                presenting: projectPendingDelete
-            ) { project in
-                Button(String(localized: "projects.delete.cancel"), role: .cancel) {
-                    projectPendingDelete = nil
+            .projectDeleteConfirmationAlert(projectPendingDelete: $projectPendingDelete) { projectID in
+                Task {
+                    await projectsViewModel.deleteProject(id: projectID)
                 }
-                Button(String(localized: "projects.delete.confirm"), role: .destructive) {
-                    let projectID = project.id
-                    projectPendingDelete = nil
-                    Task {
-                        await projectsViewModel.deleteProject(id: projectID)
-                    }
-                }
-            } message: { project in
-                Text(
-                    String.localizedStringWithFormat(
-                        String(localized: "projects.delete.message.format"),
-                        max(project.scanCount, project.roomScans.count),
-                        project.name
-                    )
-                )
             }
             .onChange(of: projectPendingDelete) { _, project in
                 guard let project else { return }
@@ -83,17 +62,6 @@ struct CreatedProjectOwnerActionPresentation: ViewModifier {
                 projectsViewModel.dismissActionErrorToast()
             }
         )
-        .alert(
-            String(localized: "projects.action.error"),
-            isPresented: Binding(
-                get: { projectsViewModel.showsActionErrorToast },
-                set: { if !$0 { projectsViewModel.dismissActionErrorToast() } }
-            )
-        ) {
-            Button(String(localized: "projects.action.error.dismiss"), role: .cancel) {
-                projectsViewModel.dismissActionErrorToast()
-            }
-        }
     }
 }
 

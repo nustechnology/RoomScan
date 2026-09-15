@@ -168,32 +168,10 @@ struct ProjectsPresentationModifier: ViewModifier {
             .fullScreenCover(item: $projectToEdit) { project in
                 editProjectCover(for: project)
             }
-            .alert(
-                String(localized: "projects.delete.title"),
-                isPresented: Binding(
-                    get: { projectPendingDelete != nil },
-                    set: { if !$0 { projectPendingDelete = nil } }
-                ),
-                presenting: projectPendingDelete
-            ) { project in
-                Button(String(localized: "projects.delete.cancel"), role: .cancel) {
-                    projectPendingDelete = nil
+            .projectDeleteConfirmationAlert(projectPendingDelete: $projectPendingDelete) { projectID in
+                Task {
+                    await viewModel.deleteProject(id: projectID)
                 }
-                Button(String(localized: "projects.delete.confirm"), role: .destructive) {
-                    let projectID = project.id
-                    projectPendingDelete = nil
-                    Task {
-                        await viewModel.deleteProject(id: projectID)
-                    }
-                }
-            } message: { project in
-                Text(
-                    String.localizedStringWithFormat(
-                        String(localized: "projects.delete.message.format"),
-                        max(project.scanCount, project.roomScans.count),
-                        project.name
-                    )
-                )
             }
             .onChange(of: viewModel.showsDeleteSuccessToast) { _, showsToast in
                 guard showsToast else { return }
@@ -330,16 +308,6 @@ struct ProjectsPresentationModifier: ViewModifier {
                 viewModel.dismissActionErrorToast()
             }
         )
-        .alert(
-            String(localized: "projects.action.error"),
-            isPresented: Binding(
-                get: { viewModel.showsActionErrorToast },
-                set: { if !$0 { viewModel.dismissActionErrorToast() } }
-            )
-        ) {
-            Button(String(localized: "projects.action.error.dismiss"), role: .cancel) {
-                viewModel.dismissActionErrorToast()
-            }
-        }
+        .projectActionErrorAlert(viewModel: viewModel)
     }
 }
