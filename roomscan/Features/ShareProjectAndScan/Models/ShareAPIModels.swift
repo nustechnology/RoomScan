@@ -98,7 +98,7 @@ nonisolated enum ShareAPIMapping {
         )
     }
 
-    @MainActor static func toInvitedMember(_ viewer: ProjectViewerDTO) -> InvitedMember {
+    static func toInvitedMember(_ viewer: ProjectViewerDTO) -> InvitedMember {
         let email = nonBlank(viewer.recipientUser.email) ?? ""
         let displayName = nonBlank(viewer.recipientUser.displayName)
         let initials: String
