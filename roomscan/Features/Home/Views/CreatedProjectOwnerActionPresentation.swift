@@ -37,13 +37,14 @@ struct CreatedProjectOwnerActionPresentation: ViewModifier {
                         await projectsViewModel.deleteProject(id: projectID)
                     }
                 },
-                onPresented: { project in
+                onUserDismissed: {
                     CreatedProjectOwnerActionHandoffSession.mutate(
                         pending: &pendingOwnerAction,
                         activeEdit: &projectToEdit,
                         activeDelete: &projectPendingDelete
                     ) { session in
-                        session.acknowledgeDeletePresentation(project)
+                        guard case .delete = session.pending else { return }
+                        session.pending = nil
                     }
                 }
             )

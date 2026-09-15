@@ -26,12 +26,31 @@ final class ProjectDeleteConfirmationActionsTests: XCTestCase {
     func testHandleCancel_clearsPendingWithoutInvokingCallback() {
         var pending: ProjectSummary? = project
         var confirmedID: ProjectSummary.ID?
+        var didDismiss = false
 
-        ProjectDeleteConfirmationActions.handleCancel(projectPendingDelete: &pending)
-        // Cancel path must not call onConfirmDelete; leave confirmedID nil intentionally.
+        ProjectDeleteConfirmationActions.handleCancel(
+            projectPendingDelete: &pending,
+            onUserDismissed: { didDismiss = true }
+        )
 
         XCTAssertNil(pending)
         XCTAssertNil(confirmedID)
+        XCTAssertTrue(didDismiss)
+    }
+
+    func testHandleConfirm_notifiesUserDismissedBeforeDeleteCallback() {
+        var pending: ProjectSummary? = project
+        var sequence: [String] = []
+
+        ProjectDeleteConfirmationActions.handleConfirm(
+            project: project,
+            projectPendingDelete: &pending,
+            onConfirmDelete: { _ in sequence.append("confirm") },
+            onUserDismissed: { sequence.append("dismiss") }
+        )
+
+        XCTAssertEqual(sequence, ["dismiss", "confirm"])
+        XCTAssertNil(pending)
     }
 
     func testHandleIsPresentedChange_falseClearsPending() {

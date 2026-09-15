@@ -30,18 +30,24 @@ enum ProjectDeleteConfirmationActions {
     }
 
     /// Dismisses the confirmation without deleting.
-    static func handleCancel(projectPendingDelete: inout ProjectSummary?) {
+    static func handleCancel(
+        projectPendingDelete: inout ProjectSummary?,
+        onUserDismissed: (() -> Void)? = nil
+    ) {
         projectPendingDelete = nil
+        onUserDismissed?()
     }
 
     /// Clears the confirmation binding, then invokes delete for the presented project id.
     static func handleConfirm(
         project: ProjectSummary,
         projectPendingDelete: inout ProjectSummary?,
-        onConfirmDelete: (ProjectSummary.ID) -> Void
+        onConfirmDelete: (ProjectSummary.ID) -> Void,
+        onUserDismissed: (() -> Void)? = nil
     ) {
         let projectID = project.id
         projectPendingDelete = nil
+        onUserDismissed?()
         onConfirmDelete(projectID)
     }
 }
@@ -49,7 +55,7 @@ enum ProjectDeleteConfirmationActions {
 private struct ProjectDeleteConfirmationAlertModifier: ViewModifier {
     @Binding var projectPendingDelete: ProjectSummary?
     let onConfirmDelete: (ProjectSummary.ID) -> Void
-    var onPresented: ((ProjectSummary) -> Void)?
+    var onUserDismissed: (() -> Void)?
 
     func body(content: Content) -> some View {
         content.alert(
@@ -67,21 +73,20 @@ private struct ProjectDeleteConfirmationAlertModifier: ViewModifier {
         ) { project in
             Button(String(localized: "projects.delete.cancel"), role: .cancel) {
                 ProjectDeleteConfirmationActions.handleCancel(
-                    projectPendingDelete: &projectPendingDelete
+                    projectPendingDelete: &projectPendingDelete,
+                    onUserDismissed: onUserDismissed
                 )
             }
             Button(String(localized: "projects.delete.confirm"), role: .destructive) {
                 ProjectDeleteConfirmationActions.handleConfirm(
                     project: project,
                     projectPendingDelete: &projectPendingDelete,
-                    onConfirmDelete: onConfirmDelete
+                    onConfirmDelete: onConfirmDelete,
+                    onUserDismissed: onUserDismissed
                 )
             }
         } message: { project in
             ProjectOwnerActionAlerts.deleteMessage(for: project)
-                .onAppear {
-                    onPresented?(project)
-                }
         }
     }
 }
@@ -108,13 +113,13 @@ extension View {
     func projectDeleteConfirmationAlert(
         projectPendingDelete: Binding<ProjectSummary?>,
         onConfirmDelete: @escaping (ProjectSummary.ID) -> Void,
-        onPresented: ((ProjectSummary) -> Void)? = nil
+        onUserDismissed: (() -> Void)? = nil
     ) -> some View {
         modifier(
             ProjectDeleteConfirmationAlertModifier(
                 projectPendingDelete: projectPendingDelete,
                 onConfirmDelete: onConfirmDelete,
-                onPresented: onPresented
+                onUserDismissed: onUserDismissed
             )
         )
     }

@@ -167,7 +167,7 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         XCTAssertEqual(session.activeEdit, project)
     }
 
-    func testPresentationAcknowledgment_deleteOnAppearClearsPending() {
+    func testPresentationAcknowledgment_deleteSettleClearsPending() {
         var session = CreatedProjectOwnerActionHandoffSession(
             pending: .delete(project),
             activeEdit: nil,
@@ -175,7 +175,7 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         )
         session.assignIfNeeded()
 
-        // Mirrors ProjectDeleteConfirmationAlertModifier message onAppear.
+        // Mirrors handoff-loop settle ack after one clear+reassign (not alert onAppear).
         session.acknowledgeDeletePresentation(project)
 
         XCTAssertNil(session.pending)

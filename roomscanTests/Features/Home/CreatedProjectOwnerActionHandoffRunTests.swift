@@ -83,27 +83,37 @@ final class CreatedProjectOwnerActionHandoffRunTests: XCTestCase {
     }
 
     @MainActor
-    func testRunPresentationAttempts_deleteAcknowledgedOnAppearSurvivesFinish() async {
+    func testRunPresentationAttempts_deleteSettlesAfterOneRetriggerWithoutExternalAck() async {
+        let grace = CreatedProjectOwnerActionHandoff.retriggerGracePollCount
         var session = CreatedProjectOwnerActionHandoffSession(
             pending: .delete(project),
             activeEdit: nil,
             activeDelete: nil
         )
+        var clearCount = 0
+        var assignCount = 0
         var pollCount = 0
 
         await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
             load: { session },
-            store: { session = $0 },
+            store: { updated in
+                if updated.activeDelete == nil, session.activeDelete != nil {
+                    clearCount += 1
+                }
+                if updated.activeDelete != nil, session.activeDelete == nil {
+                    assignCount += 1
+                }
+                session = updated
+            },
             sleepNanoseconds: { _ in
                 pollCount += 1
-                // Mirrors alert message onAppear after the binding is assigned.
-                if session.activeDelete != nil {
-                    session.acknowledgeDeletePresentation(self.project)
-                }
             }
         )
 
-        XCTAssertEqual(pollCount, 1)
+        // grace waits + clear-gap sleep + grace waits, then settle-ack (no second clear).
+        XCTAssertEqual(pollCount, grace * 2 + 1)
+        XCTAssertEqual(assignCount, 2)
+        XCTAssertEqual(clearCount, 1)
         XCTAssertNil(session.pending)
         XCTAssertEqual(session.activeDelete, project)
     }
@@ -135,45 +145,6 @@ final class CreatedProjectOwnerActionHandoffRunTests: XCTestCase {
         XCTAssertEqual(pollCount, lastSleep)
         XCTAssertNil(session.pending)
         XCTAssertEqual(session.activeEdit, project)
-    }
-
-    @MainActor
-    func testRunPresentationAttempts_deleteRetriggersWhenNotAcknowledged() async {
-        let grace = CreatedProjectOwnerActionHandoff.retriggerGracePollCount
-        var session = CreatedProjectOwnerActionHandoffSession(
-            pending: .delete(project),
-            activeEdit: nil,
-            activeDelete: nil
-        )
-        var clearCount = 0
-        var assignCount = 0
-        var pollCount = 0
-
-        await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
-            load: { session },
-            store: { updated in
-                if updated.activeDelete == nil, session.activeDelete != nil {
-                    clearCount += 1
-                }
-                if updated.activeDelete != nil, session.activeDelete == nil {
-                    assignCount += 1
-                }
-                session = updated
-            },
-            sleepNanoseconds: { _ in
-                pollCount += 1
-                // Ack only after clear+reassign gap + wait (same as edit grace).
-                if pollCount == grace + 2 {
-                    session.acknowledgeDeletePresentation(self.project)
-                }
-            }
-        )
-
-        XCTAssertEqual(pollCount, grace + 2)
-        XCTAssertEqual(assignCount, 2)
-        XCTAssertEqual(clearCount, 1)
-        XCTAssertNil(session.pending)
-        XCTAssertEqual(session.activeDelete, project)
     }
 
     @MainActor
