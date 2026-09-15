@@ -30,21 +30,23 @@ struct CreatedProjectOwnerActionPresentation: ViewModifier {
                     }
                 }
             }
-            .projectDeleteConfirmationAlert(projectPendingDelete: $projectPendingDelete) { projectID in
-                Task {
-                    await projectsViewModel.deleteProject(id: projectID)
+            .projectDeleteConfirmationAlert(
+                projectPendingDelete: $projectPendingDelete,
+                onConfirmDelete: { projectID in
+                    Task {
+                        await projectsViewModel.deleteProject(id: projectID)
+                    }
+                },
+                onPresented: { project in
+                    CreatedProjectOwnerActionHandoffSession.mutate(
+                        pending: &pendingOwnerAction,
+                        activeEdit: &projectToEdit,
+                        activeDelete: &projectPendingDelete
+                    ) { session in
+                        session.acknowledgeDeletePresentation(project)
+                    }
                 }
-            }
-            .onChange(of: projectPendingDelete) { _, project in
-                guard let project else { return }
-                CreatedProjectOwnerActionHandoffSession.mutate(
-                    pending: &pendingOwnerAction,
-                    activeEdit: &projectToEdit,
-                    activeDelete: &projectPendingDelete
-                ) { session in
-                    session.acknowledgeDeleteAssignment(project)
-                }
-            }
+            )
     }
 }
 

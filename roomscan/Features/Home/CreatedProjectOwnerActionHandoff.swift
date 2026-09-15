@@ -130,8 +130,8 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
         )
     }
 
-    /// Clears pending when the delete alert binding becomes active.
-    mutating func acknowledgeDeleteAssignment(_ project: ProjectSummary) {
+    /// Clears pending after the delete confirmation alert actually appears.
+    mutating func acknowledgeDeletePresentation(_ project: ProjectSummary) {
         pending = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
             .delete(project),
             pending: pending
@@ -162,7 +162,7 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
 
 /// Moves a pending Edit/Delete request into presentation after the created-project detail dismisses.
 enum CreatedProjectOwnerActionHandoff {
-    /// Total poll budget (~2s) while waiting for edit-cover `onAppear` acknowledgment.
+    /// Total poll budget (~2s) while waiting for edit-cover / delete-alert presentation acknowledgment.
     static let acknowledgmentPollCount = 20
     static let acknowledgmentPollNanoseconds: UInt64 = 100_000_000
 
@@ -261,7 +261,22 @@ enum CreatedProjectOwnerActionHandoff {
             waitCyclesSinceAssign += 1
         }
 
+        await finishIfStillUnacknowledged(
+            load: load,
+            store: store,
+            isCurrent: isCurrent
+        )
+    }
+
+    /// Completes only when pending survived the full window (ack may land on the last sleep).
+    @MainActor
+    private static func finishIfStillUnacknowledged(
+        load: @MainActor () -> CreatedProjectOwnerActionHandoffSession,
+        store: @MainActor (CreatedProjectOwnerActionHandoffSession) -> Void,
+        isCurrent: @MainActor () -> Bool
+    ) async {
         guard isCurrent() else { return }
+        guard load().pending != nil else { return }
         mutate(load: load, store: store, isCurrent: isCurrent) {
             $0.finishUnacknowledgedPresentation()
         }

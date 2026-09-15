@@ -49,6 +49,7 @@ enum ProjectDeleteConfirmationActions {
 private struct ProjectDeleteConfirmationAlertModifier: ViewModifier {
     @Binding var projectPendingDelete: ProjectSummary?
     let onConfirmDelete: (ProjectSummary.ID) -> Void
+    var onPresented: ((ProjectSummary) -> Void)?
 
     func body(content: Content) -> some View {
         content.alert(
@@ -78,6 +79,9 @@ private struct ProjectDeleteConfirmationAlertModifier: ViewModifier {
             }
         } message: { project in
             ProjectOwnerActionAlerts.deleteMessage(for: project)
+                .onAppear {
+                    onPresented?(project)
+                }
         }
     }
 }
@@ -103,12 +107,14 @@ private struct ProjectActionErrorAlertModifier: ViewModifier {
 extension View {
     func projectDeleteConfirmationAlert(
         projectPendingDelete: Binding<ProjectSummary?>,
-        onConfirmDelete: @escaping (ProjectSummary.ID) -> Void
+        onConfirmDelete: @escaping (ProjectSummary.ID) -> Void,
+        onPresented: ((ProjectSummary) -> Void)? = nil
     ) -> some View {
         modifier(
             ProjectDeleteConfirmationAlertModifier(
                 projectPendingDelete: projectPendingDelete,
-                onConfirmDelete: onConfirmDelete
+                onConfirmDelete: onConfirmDelete,
+                onPresented: onPresented
             )
         )
     }
