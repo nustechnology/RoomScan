@@ -138,13 +138,15 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
         )
     }
 
-    /// After the retry window, drop pending so the action cannot replay on the next dismiss.
+    /// After the retry window, drop the unacknowledged handoff entirely.
     ///
-    /// Keeps an assigned `activeEdit` binding: tearing it down here would discard a cover
-    /// that is still appearing after a slow detail-dismiss transition. Stuck bindings are
-    /// cleared on the next `begin(_:)`.
+    /// Clears pending and any assigned edit/delete bindings so a timed-out presentation
+    /// cannot later surface over another tab. Acknowledged covers already cleared `pending`
+    /// via onAppear and are unaffected by this path.
     mutating func finishUnacknowledgedPresentation() {
         pending = nil
+        activeEdit = nil
+        activeDelete = nil
     }
 
     /// Drops an in-flight handoff that has not been acknowledged yet (e.g. user left Projects).
@@ -211,7 +213,7 @@ enum CreatedProjectOwnerActionHandoff {
     /// before any clear+reassign retrigger.
     ///
     /// `load` / `store` must share storage with UI acknowledgments. After the ~2s window,
-    /// pending is cleared while an assigned edit binding is kept for a late cover.
+    /// unacknowledged pending and presentation bindings are cleared.
     ///
     /// `isCurrent` must become false when a newer handoff supersedes this run.
     @MainActor
@@ -241,7 +243,8 @@ enum CreatedProjectOwnerActionHandoff {
                 mutate(load: load, store: store, isCurrent: isCurrent) {
                     $0.clearActivePresentationMatchingPending()
                 }
-                await Task.yield()
+                // Real delay so fullScreenCover(item:) can observe nil before reassign.
+                await sleepNanoseconds(acknowledgmentPollNanoseconds)
                 guard isCurrent() else { return }
                 waitCyclesSinceAssign = 0
             }

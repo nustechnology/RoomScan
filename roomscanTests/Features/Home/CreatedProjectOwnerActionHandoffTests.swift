@@ -71,7 +71,7 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         XCTAssertEqual(session.pending, .edit(project))
     }
 
-    func testSession_finishUnacknowledgedPresentation_clearsPendingButKeepsAssignedEdit() {
+    func testSession_finishUnacknowledgedPresentation_clearsPendingAndActiveBindings() {
         var session = CreatedProjectOwnerActionHandoffSession(
             pending: .edit(project),
             activeEdit: project,
@@ -81,7 +81,8 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         session.finishUnacknowledgedPresentation()
 
         XCTAssertNil(session.pending)
-        XCTAssertEqual(session.activeEdit, project)
+        XCTAssertNil(session.activeEdit)
+        XCTAssertNil(session.activeDelete)
     }
 
     func testFlight_beginInvalidatesPriorGeneration() {
@@ -122,9 +123,10 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
     @MainActor
     func testRunPresentationAttempts_retriggersOnlyAfterDismissGraceExpires() async {
         let grace = CreatedProjectOwnerActionHandoff.retriggerGracePollCount
-        let result = await runEditPresentationAttempts(acknowledgeAfterPolls: grace + 1)
+        // Extra sleep is the clear→reassign gap; ack on the wait after reassign.
+        let result = await runEditPresentationAttempts(acknowledgeAfterPolls: grace + 2)
 
-        XCTAssertEqual(result.pollCount, grace + 1)
+        XCTAssertEqual(result.pollCount, grace + 2)
         XCTAssertEqual(result.assignCount, 2)
         XCTAssertEqual(result.clearCount, 1)
         XCTAssertNil(result.session.pending)
@@ -219,7 +221,7 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
     }
 
     @MainActor
-    func testRunPresentationAttempts_clearsPendingButKeepsEditWhenNeverAcknowledged() async {
+    func testRunPresentationAttempts_clearsTimedOutEditBinding() async {
         var session = CreatedProjectOwnerActionHandoffSession(
             pending: .edit(project),
             activeEdit: nil,
@@ -233,7 +235,7 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         )
 
         XCTAssertNil(session.pending)
-        XCTAssertEqual(session.activeEdit, project)
+        XCTAssertNil(session.activeEdit)
     }
 
     @MainActor
