@@ -404,9 +404,9 @@ private extension HomeView {
 
     /// Presents a pending Edit/Delete after the created-project detail dismisses.
     ///
-    /// Detail dismisses itself before firing `onEdit`/`onDelete`; presenting from that
-    /// callback (or while the cover is still up) can be dropped by SwiftUI. Retries twice,
-    /// then drops pending if nothing became active so a stale action cannot replay later.
+    /// Detail dismisses itself before firing `onEdit`/`onDelete`. Assigns after yields,
+    /// waits briefly for edit-cover `onAppear` acknowledgment on live view state, then
+    /// tears down any unconfirmed edit binding/pending so a dropped cover cannot replay.
     func presentPendingOwnerActionAfterCreatedDetailDismiss() {
         guard CreatedProjectOwnerActionHandoff.actionAwaitingPresentation(
             pendingOwnerActionAfterCreatedDetail
@@ -416,31 +416,48 @@ private extension HomeView {
             assignPendingOwnerActionIfNeeded()
             await Task.yield()
             assignPendingOwnerActionIfNeeded()
-            pendingOwnerActionAfterCreatedDetail =
-                CreatedProjectOwnerActionHandoff.pendingAfterPresentationAttempts(
-                    pending: pendingOwnerActionAfterCreatedDetail,
-                    activeEdit: projectToEditAfterCreation,
-                    activeDelete: projectPendingDeleteAfterCreation
+
+            for _ in 0..<CreatedProjectOwnerActionHandoff.acknowledgmentPollCount {
+                if pendingOwnerActionAfterCreatedDetail == nil { return }
+                try? await Task.sleep(
+                    nanoseconds: CreatedProjectOwnerActionHandoff.acknowledgmentPollNanoseconds
                 )
+            }
+
+            var session = CreatedProjectOwnerActionHandoffSession(
+                pending: pendingOwnerActionAfterCreatedDetail,
+                activeEdit: projectToEditAfterCreation,
+                activeDelete: projectPendingDeleteAfterCreation
+            )
+            session.finishUnacknowledgedPresentation()
+            pendingOwnerActionAfterCreatedDetail = session.pending
+            projectToEditAfterCreation = session.activeEdit
+            projectPendingDeleteAfterCreation = session.activeDelete
         }
     }
 
     func assignPendingOwnerActionIfNeeded() {
-        guard let target = CreatedProjectOwnerActionHandoff.presentationTarget(
+        var session = CreatedProjectOwnerActionHandoffSession(
             pending: pendingOwnerActionAfterCreatedDetail,
             activeEdit: projectToEditAfterCreation,
             activeDelete: projectPendingDeleteAfterCreation
-        ) else { return }
-        switch target {
-        case .edit(let project):
-            projectToEditAfterCreation = project
-        case .delete(let project):
-            projectPendingDeleteAfterCreation = project
-        }
+        )
+        session.assignIfNeeded()
+        pendingOwnerActionAfterCreatedDetail = session.pending
+        projectToEditAfterCreation = session.activeEdit
+        projectPendingDeleteAfterCreation = session.activeDelete
     }
 
     func beginOwnerActionAfterCreatedDetail(_ action: CreatedProjectOwnerAction) {
-        pendingOwnerActionAfterCreatedDetail = action
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: pendingOwnerActionAfterCreatedDetail,
+            activeEdit: projectToEditAfterCreation,
+            activeDelete: projectPendingDeleteAfterCreation
+        )
+        session.begin(action)
+        pendingOwnerActionAfterCreatedDetail = session.pending
+        projectToEditAfterCreation = session.activeEdit
+        projectPendingDeleteAfterCreation = session.activeDelete
         if selectedCreatedProject != nil {
             selectedCreatedProject = nil
         } else {

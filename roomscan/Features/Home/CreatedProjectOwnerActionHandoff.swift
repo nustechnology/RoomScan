@@ -18,14 +18,78 @@ enum CreatedProjectOwnerAction: Equatable {
     }
 }
 
-/// Presentation target derived from a pending owner action after detail dismisses.
-enum CreatedProjectOwnerActionTarget: Equatable {
-    case edit(ProjectSummary)
-    case delete(ProjectSummary)
+/// Mutable presentation state for Edit/Delete after the created-project detail dismisses.
+struct CreatedProjectOwnerActionHandoffSession: Equatable {
+    var pending: CreatedProjectOwnerAction?
+    var activeEdit: ProjectSummary?
+    var activeDelete: ProjectSummary?
+
+    /// Starts a new owner action, clearing any stuck presentation bindings first.
+    mutating func begin(_ action: CreatedProjectOwnerAction) {
+        activeEdit = nil
+        activeDelete = nil
+        pending = action
+    }
+
+    /// Assigns the pending action onto edit/delete presentation state when not already active.
+    mutating func assignIfNeeded() {
+        guard let action = CreatedProjectOwnerActionHandoff.actionToAssign(
+            pending: pending,
+            activeEdit: activeEdit,
+            activeDelete: activeDelete
+        ) else { return }
+        switch action {
+        case .edit(let project):
+            activeEdit = project
+        case .delete(let project):
+            activeDelete = project
+        }
+    }
+
+    /// Clears pending after the edit cover actually appears.
+    mutating func acknowledgeEditPresentation(_ project: ProjectSummary) {
+        pending = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
+            .edit(project),
+            pending: pending
+        )
+    }
+
+    /// Clears pending when the delete alert binding becomes active.
+    mutating func acknowledgeDeleteAssignment(_ project: ProjectSummary) {
+        pending = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
+            .delete(project),
+            pending: pending
+        )
+    }
+
+    /// After assign retries + an acknowledgment window, drop unconfirmed work.
+    ///
+    /// Edit is acknowledged only when the cover appears (`acknowledgeEditPresentation`).
+    /// If pending is still set, the cover never confirmed — clear the stuck edit binding
+    /// and pending so the action cannot replay on the next detail dismiss.
+    ///
+    /// Delete is acknowledged when the alert binding is assigned, so pending is usually
+    /// already nil here; leftover pending only means assignment never stuck.
+    mutating func finishUnacknowledgedPresentation() {
+        guard let pending else { return }
+        switch pending {
+        case .edit(let project):
+            if activeEdit?.id == project.id {
+                activeEdit = nil
+            }
+        case .delete:
+            break
+        }
+        self.pending = nil
+    }
 }
 
 /// Moves a pending Edit/Delete request into presentation after the created-project detail dismisses.
 enum CreatedProjectOwnerActionHandoff {
+    /// How long to wait for edit-cover `onAppear` acknowledgment after assign retries.
+    static let acknowledgmentPollCount = 6
+    static let acknowledgmentPollNanoseconds: UInt64 = 50_000_000
+
     /// Returns the action still waiting to be presented, without clearing it.
     static func actionAwaitingPresentation(
         _ pending: CreatedProjectOwnerAction?
@@ -50,25 +114,6 @@ enum CreatedProjectOwnerActionHandoff {
         }
     }
 
-    /// Maps a pending action to the edit cover or delete alert that should become active.
-    static func presentationTarget(
-        pending: CreatedProjectOwnerAction?,
-        activeEdit: ProjectSummary?,
-        activeDelete: ProjectSummary?
-    ) -> CreatedProjectOwnerActionTarget? {
-        guard let action = actionToAssign(
-            pending: pending,
-            activeEdit: activeEdit,
-            activeDelete: activeDelete
-        ) else { return nil }
-        switch action {
-        case .edit(let project):
-            return .edit(project)
-        case .delete(let project):
-            return .delete(project)
-        }
-    }
-
     /// Returns the remaining pending value after the matching edit cover or delete alert is active.
     static func pendingAfterAcknowledging(
         _ presented: CreatedProjectOwnerAction,
@@ -84,21 +129,22 @@ enum CreatedProjectOwnerActionHandoff {
         }
     }
 
-    /// After bounded presentation retries, drop pending unless a matching UI is already active.
-    ///
-    /// Keeps pending briefly while the edit cover or delete alert is up (until acknowledgment).
-    /// Clears otherwise so a dropped presentation cannot replay on the next detail dismiss.
-    static func pendingAfterPresentationAttempts(
-        pending: CreatedProjectOwnerAction?,
-        activeEdit: ProjectSummary?,
-        activeDelete: ProjectSummary?
-    ) -> CreatedProjectOwnerAction? {
-        guard let pending else { return nil }
-        switch pending {
-        case .edit(let project):
-            return activeEdit?.id == project.id ? pending : nil
-        case .delete(let project):
-            return activeDelete?.id == project.id ? pending : nil
+    /// Runs assign retries, waits for acknowledgment, then tears down unconfirmed edit state.
+    @MainActor
+    static func runPresentationAttempts(
+        session: inout CreatedProjectOwnerActionHandoffSession,
+        sleepNanoseconds: @MainActor (UInt64) async -> Void = { try? await Task.sleep(nanoseconds: $0) }
+    ) async {
+        await Task.yield()
+        session.assignIfNeeded()
+        await Task.yield()
+        session.assignIfNeeded()
+
+        for _ in 0..<acknowledgmentPollCount {
+            if session.pending == nil { return }
+            await sleepNanoseconds(acknowledgmentPollNanoseconds)
         }
+
+        session.finishUnacknowledgedPresentation()
     }
 }

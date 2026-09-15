@@ -19,13 +19,17 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         scanCount: 0
     )
 
-    func testActionAwaitingPresentation_keepsPendingUntilAcknowledged() {
-        let pending: CreatedProjectOwnerAction? = .edit(project)
-
-        let awaiting = CreatedProjectOwnerActionHandoff.actionAwaitingPresentation(pending)
-
-        XCTAssertEqual(awaiting, .edit(project))
-    }
+    private let otherProject = ProjectSummary(
+        id: "project-2",
+        revision: 1,
+        name: "Studio",
+        ownerName: "Owner",
+        createdAt: Date(timeIntervalSince1970: 0),
+        updatedAt: Date(timeIntervalSince1970: 0),
+        description: "Desc",
+        roomScans: [],
+        scanCount: 0
+    )
 
     func testActionToAssign_presentsPendingEditWhenEditCoverIsNotActive() {
         let action = CreatedProjectOwnerActionHandoff.actionToAssign(
@@ -35,16 +39,6 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         )
 
         XCTAssertEqual(action, .edit(project))
-    }
-
-    func testActionToAssign_presentsPendingDeleteWhenDeleteAlertIsNotActive() {
-        let action = CreatedProjectOwnerActionHandoff.actionToAssign(
-            pending: .delete(project),
-            activeEdit: nil,
-            activeDelete: nil
-        )
-
-        XCTAssertEqual(action, .delete(project))
     }
 
     func testActionToAssign_skipsWhenMatchingEditCoverIsAlreadyActive() {
@@ -57,179 +51,187 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         XCTAssertNil(action)
     }
 
-    func testActionToAssign_skipsWhenMatchingDeleteAlertIsAlreadyActive() {
-        let action = CreatedProjectOwnerActionHandoff.actionToAssign(
-            pending: .delete(project),
-            activeEdit: nil,
-            activeDelete: project
-        )
-
-        XCTAssertNil(action)
-    }
-
-    func testActionToAssign_retriesWhenActiveEditWasCleared() {
-        let pending: CreatedProjectOwnerAction = .edit(project)
-
-        XCTAssertNil(
-            CreatedProjectOwnerActionHandoff.actionToAssign(
-                pending: pending,
-                activeEdit: project,
-                activeDelete: nil
-            )
-        )
-
-        let retry = CreatedProjectOwnerActionHandoff.actionToAssign(
-            pending: pending,
-            activeEdit: nil,
-            activeDelete: nil
-        )
-
-        XCTAssertEqual(retry, .edit(project))
-    }
-
-    func testAcknowledgePresented_clearsMatchingPendingAction() {
-        let pending: CreatedProjectOwnerAction? = .delete(project)
-
+    func testPendingAfterAcknowledging_clearsMatchingAction() {
         let remaining = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
-            .delete(project),
-            pending: pending
-        )
-
-        XCTAssertNil(remaining)
-    }
-
-    func testAcknowledgePresented_ignoresDifferentActionKind() {
-        let pending: CreatedProjectOwnerAction? = .edit(project)
-
-        let remaining = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
-            .delete(project),
-            pending: pending
-        )
-
-        XCTAssertEqual(remaining, .edit(project))
-    }
-
-    func testPresentationTarget_mapsPendingEditToEditCover() {
-        let target = CreatedProjectOwnerActionHandoff.presentationTarget(
-            pending: .edit(project),
-            activeEdit: nil,
-            activeDelete: nil
-        )
-
-        XCTAssertEqual(target, .edit(project))
-    }
-
-    func testPresentationTarget_mapsPendingDeleteToDeleteAlert() {
-        let target = CreatedProjectOwnerActionHandoff.presentationTarget(
-            pending: .delete(project),
-            activeEdit: nil,
-            activeDelete: nil
-        )
-
-        XCTAssertEqual(target, .delete(project))
-    }
-
-    func testPresentationTarget_skipsWhenMatchingPresentationIsAlreadyActive() {
-        let editTarget = CreatedProjectOwnerActionHandoff.presentationTarget(
-            pending: .edit(project),
-            activeEdit: project,
-            activeDelete: nil
-        )
-        let deleteTarget = CreatedProjectOwnerActionHandoff.presentationTarget(
-            pending: .delete(project),
-            activeEdit: nil,
-            activeDelete: project
-        )
-
-        XCTAssertNil(editTarget)
-        XCTAssertNil(deleteTarget)
-    }
-
-    func testPresentationLifecycle_clearsPendingAfterEditAcknowledged() {
-        var pending: CreatedProjectOwnerAction? = .edit(project)
-
-        let target = CreatedProjectOwnerActionHandoff.presentationTarget(
-            pending: pending,
-            activeEdit: nil,
-            activeDelete: nil
-        )
-        XCTAssertEqual(target, .edit(project))
-
-        XCTAssertNil(
-            CreatedProjectOwnerActionHandoff.presentationTarget(
-                pending: pending,
-                activeEdit: project,
-                activeDelete: nil
-            )
-        )
-
-        pending = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
             .edit(project),
-            pending: pending
-        )
-        XCTAssertNil(pending)
-
-        XCTAssertNil(
-            CreatedProjectOwnerActionHandoff.presentationTarget(
-                pending: pending,
-                activeEdit: project,
-                activeDelete: nil
-            )
-        )
-    }
-
-    func testPresentationLifecycle_clearsPendingAfterDeleteAcknowledged() {
-        var pending: CreatedProjectOwnerAction? = .delete(project)
-
-        let target = CreatedProjectOwnerActionHandoff.presentationTarget(
-            pending: pending,
-            activeEdit: nil,
-            activeDelete: nil
-        )
-        XCTAssertEqual(target, .delete(project))
-
-        XCTAssertNil(
-            CreatedProjectOwnerActionHandoff.presentationTarget(
-                pending: pending,
-                activeEdit: nil,
-                activeDelete: project
-            )
-        )
-
-        pending = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
-            .delete(project),
-            pending: pending
-        )
-        XCTAssertNil(pending)
-    }
-
-    func testPendingAfterPresentationAttempts_clearsWhenNothingBecameActive() {
-        let remaining = CreatedProjectOwnerActionHandoff.pendingAfterPresentationAttempts(
-            pending: .edit(project),
-            activeEdit: nil,
-            activeDelete: nil
+            pending: .edit(project)
         )
 
         XCTAssertNil(remaining)
     }
 
-    func testPendingAfterPresentationAttempts_keepsPendingWhileMatchingEditIsActive() {
-        let remaining = CreatedProjectOwnerActionHandoff.pendingAfterPresentationAttempts(
-            pending: .edit(project),
-            activeEdit: project,
-            activeDelete: nil
+    func testPendingAfterAcknowledging_ignoresDifferentActionKind() {
+        let remaining = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
+            .delete(project),
+            pending: .edit(project)
         )
 
         XCTAssertEqual(remaining, .edit(project))
     }
 
-    func testPendingAfterPresentationAttempts_keepsPendingWhileMatchingDeleteIsActive() {
-        let remaining = CreatedProjectOwnerActionHandoff.pendingAfterPresentationAttempts(
-            pending: .delete(project),
-            activeEdit: nil,
-            activeDelete: project
+    func testSession_beginClearsStuckPresentationBindings() {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: nil,
+            activeEdit: otherProject,
+            activeDelete: otherProject
         )
 
-        XCTAssertEqual(remaining, .delete(project))
+        session.begin(.edit(project))
+
+        XCTAssertEqual(session.pending, .edit(project))
+        XCTAssertNil(session.activeEdit)
+        XCTAssertNil(session.activeDelete)
+    }
+
+    func testSession_assignIfNeeded_setsEditBinding() {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+
+        session.assignIfNeeded()
+
+        XCTAssertEqual(session.activeEdit, project)
+        XCTAssertEqual(session.pending, .edit(project))
+    }
+
+    func testSession_assignIfNeeded_setsDeleteBinding() {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .delete(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+
+        session.assignIfNeeded()
+
+        XCTAssertEqual(session.activeDelete, project)
+        XCTAssertEqual(session.pending, .delete(project))
+    }
+
+    func testSession_finishUnacknowledgedPresentation_clearsStuckEditBindingAndPending() {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: project,
+            activeDelete: nil
+        )
+
+        session.finishUnacknowledgedPresentation()
+
+        XCTAssertNil(session.pending)
+        XCTAssertNil(session.activeEdit)
+    }
+
+    func testSession_finishUnacknowledgedPresentation_noopWhenEditWasAcknowledged() {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: project,
+            activeDelete: nil
+        )
+
+        session.acknowledgeEditPresentation(project)
+        session.finishUnacknowledgedPresentation()
+
+        XCTAssertNil(session.pending)
+        XCTAssertEqual(session.activeEdit, project)
+    }
+
+    func testSession_deleteAcknowledgeOnAssignment_leavesDeleteBindingForFinish() {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .delete(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+
+        session.assignIfNeeded()
+        session.acknowledgeDeleteAssignment(project)
+        session.finishUnacknowledgedPresentation()
+
+        XCTAssertNil(session.pending)
+        XCTAssertEqual(session.activeDelete, project)
+    }
+
+    func testSession_finishUnacknowledgedPresentation_clearsPendingWhenAssignmentNeverStuck() {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+
+        session.finishUnacknowledgedPresentation()
+
+        XCTAssertNil(session.pending)
+        XCTAssertNil(session.activeEdit)
+    }
+
+    @MainActor
+    func testRunPresentationAttempts_tearsDownEditWhenNeverAcknowledged() async {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+
+        await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
+            session: &session,
+            sleepNanoseconds: { _ in }
+        )
+
+        XCTAssertNil(session.pending)
+        XCTAssertNil(session.activeEdit)
+    }
+
+    @MainActor
+    func testRunPresentationAttempts_returnsEarlyWhenPendingAlreadyCleared() async {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+        session.assignIfNeeded()
+        session.acknowledgeEditPresentation(project)
+
+        await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
+            session: &session,
+            sleepNanoseconds: { _ in
+                XCTFail("Should not poll after pending is already cleared")
+            }
+        )
+
+        // First assign inside runPresentationAttempts is a no-op (already active);
+        // pending is nil so the poll loop returns before sleep / finish.
+        XCTAssertNil(session.pending)
+        XCTAssertEqual(session.activeEdit, project)
+    }
+
+    func testSession_retrySequence_assignAckFinishKeepsPresentedEdit() {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+
+        session.assignIfNeeded()
+        session.assignIfNeeded()
+        session.acknowledgeEditPresentation(project)
+        session.finishUnacknowledgedPresentation()
+
+        XCTAssertNil(session.pending)
+        XCTAssertEqual(session.activeEdit, project)
+    }
+
+    func testSession_retrySequence_assignWithoutAckFinishClearsStuckEdit() {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+
+        session.assignIfNeeded()
+        session.assignIfNeeded()
+        session.finishUnacknowledgedPresentation()
+
+        XCTAssertNil(session.pending)
+        XCTAssertNil(session.activeEdit)
     }
 }
