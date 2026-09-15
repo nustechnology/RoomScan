@@ -145,6 +145,7 @@ struct InvitationViewModelTests {
             return
         }
         #expect(toast == String(localized: "invitation.toast.accepted"))
+        #expect(outcome.feedbackToastMessage == toast)
         guard case .project(let project) = destination else {
             Issue.record("Expected project destination")
             return
@@ -198,6 +199,7 @@ struct InvitationViewModelTests {
             return
         }
         #expect(toast == nil)
+        #expect(outcome.feedbackToastMessage == nil)
     }
 
     @Test func confirmDeclineReturnsHomeWithToast() async {
@@ -220,6 +222,7 @@ struct InvitationViewModelTests {
             return
         }
         #expect(toast == String(localized: "invitation.toast.declined"))
+        #expect(outcome.feedbackToastMessage == toast)
         #expect(viewModel.showsDeclineConfirmation == false)
     }
 
@@ -240,6 +243,7 @@ struct InvitationViewModelTests {
             return
         }
         #expect(toast == nil)
+        #expect(outcome.feedbackToastMessage == nil)
         #expect(viewModel.blockingAlert == nil)
     }
 
@@ -586,7 +590,6 @@ private actor ExistingAccessInvitationService: InvitationService {
         return InvitationDetails(
             token: token,
             scope: .project,
-            type: .invitation,
             title: project.name,
             ownerName: project.ownerName,
             invitedEmail: nil,

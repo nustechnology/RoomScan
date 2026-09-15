@@ -43,6 +43,17 @@ final class InvitationViewModel {
         case dismissedToHome(toastMessage: String?)
         case accepted(AcceptedInvitationDestination, toastMessage: String)
         case opened(AcceptedInvitationDestination)
+
+        var feedbackToastMessage: String? {
+            switch self {
+            case .dismissedToHome(let toastMessage):
+                return toastMessage
+            case .accepted(_, let toastMessage):
+                return toastMessage
+            case .opened:
+                return nil
+            }
+        }
     }
 
     enum Action: String, Equatable {

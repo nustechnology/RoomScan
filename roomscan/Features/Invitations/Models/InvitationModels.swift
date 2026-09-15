@@ -28,7 +28,9 @@ nonisolated struct PendingInvitation: Equatable, Hashable, Sendable, Identifiabl
     let token: String
 }
 
-struct InvitationDetails: Equatable, Sendable, Identifiable {
+/// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so actors and
+/// nonisolated mapping code can construct invitation details without hopping.
+nonisolated struct InvitationDetails: Equatable, Sendable, Identifiable {
     var id: String { token }
 
     let token: String
@@ -44,6 +46,32 @@ struct InvitationDetails: Equatable, Sendable, Identifiable {
     let showsThumbnail: Bool
     let project: ProjectSummary?
     let scan: RoomScanSummary?
+
+    nonisolated init(
+        token: String,
+        scope: InvitationScope,
+        type: InvitationLinkType = .invitation,
+        title: String,
+        ownerName: String,
+        invitedEmail: String?,
+        existingAccessDestination: AcceptedInvitationDestination?,
+        itemCount: Int,
+        showsThumbnail: Bool,
+        project: ProjectSummary?,
+        scan: RoomScanSummary?
+    ) {
+        self.token = token
+        self.scope = scope
+        self.type = type
+        self.title = title
+        self.ownerName = ownerName
+        self.invitedEmail = invitedEmail
+        self.existingAccessDestination = existingAccessDestination
+        self.itemCount = itemCount
+        self.showsThumbnail = showsThumbnail
+        self.project = project
+        self.scan = scan
+    }
 }
 
 /// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so value

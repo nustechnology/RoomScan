@@ -11,9 +11,12 @@ import UIKit
 final class InvitationOverlayWindowPresenter {
     typealias WindowFactory = @MainActor () -> UIWindow?
 
+    static let overlayWindowLevel = UIWindow.Level(rawValue: UIWindow.Level.alert.rawValue + 1)
+
     private let makeWindow: WindowFactory
     private(set) var presentedInvitation: PendingInvitation?
     private var overlayWindow: UIWindow?
+    private weak var windowToRestore: UIWindow?
     private var onDismiss: (() -> Void)?
 
     var isPresented: Bool {
@@ -42,11 +45,15 @@ final class InvitationOverlayWindowPresenter {
         }
 
         if let previous = presentedInvitation, previous.id != invitation.id {
-            tearDownWindow(notifyDismiss: false)
+            tearDownWindow(notifyDismiss: false, restoreKeyWindow: false)
             onReplaced?(previous)
         }
 
         guard let window = makeWindow() else { return }
+
+        if windowToRestore == nil {
+            windowToRestore = Self.currentKeyWindow(excluding: window)
+        }
 
         let hostingController = UIHostingController(rootView: content())
         hostingController.view.backgroundColor = .systemBackground
@@ -69,7 +76,7 @@ final class InvitationOverlayWindowPresenter {
         tearDownWindow(notifyDismiss: false)
     }
 
-    private func tearDownWindow(notifyDismiss: Bool) {
+    private func tearDownWindow(notifyDismiss: Bool, restoreKeyWindow: Bool = true) {
         let dismissHandler = onDismiss
         onDismiss = nil
         presentedInvitation = nil
@@ -79,7 +86,15 @@ final class InvitationOverlayWindowPresenter {
         window?.isHidden = true
         window?.rootViewController = nil
 
-        Self.restoreKeyWindow(excluding: window)
+        if restoreKeyWindow {
+            let previous = windowToRestore
+            windowToRestore = nil
+            Self.preferredKeyWindow(
+                from: Self.activeWindowScene()?.windows ?? [],
+                previous: previous,
+                excluding: window
+            )?.makeKey()
+        }
 
         if notifyDismiss {
             dismissHandler?()
@@ -89,7 +104,7 @@ final class InvitationOverlayWindowPresenter {
     private static func defaultWindowFactory() -> UIWindow? {
         guard let scene = activeWindowScene() else { return nil }
         let window = UIWindow(windowScene: scene)
-        window.windowLevel = UIWindow.Level(rawValue: UIWindow.Level.alert.rawValue + 1)
+        window.windowLevel = overlayWindowLevel
         window.backgroundColor = .clear
         return window
     }
@@ -99,14 +114,32 @@ final class InvitationOverlayWindowPresenter {
         return scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first
     }
 
-    private static func restoreKeyWindow(excluding overlay: UIWindow?) {
-        guard let scene = activeWindowScene() else { return }
-        let candidate = scene.windows
-            .filter { $0 !== overlay && !$0.isHidden }
-            .sorted { lhs, rhs in
-                lhs.windowLevel.rawValue > rhs.windowLevel.rawValue
-            }
-            .first
-        candidate?.makeKey()
+    private static func currentKeyWindow(excluding overlay: UIWindow?) -> UIWindow? {
+        guard let scene = activeWindowScene() else { return nil }
+        if let key = scene.keyWindow, key !== overlay {
+            return key
+        }
+        return scene.windows.first { $0 !== overlay && $0.isKeyWindow }
+    }
+
+    /// Prefers the window that was key before the overlay, then any of the app's own
+    /// interactive normal-level windows. System windows (keyboard, status bar) sit
+    /// above `.alert` and must not be promoted.
+    static func preferredKeyWindow(
+        from windows: [UIWindow],
+        previous: UIWindow?,
+        excluding overlay: UIWindow?
+    ) -> UIWindow? {
+        if let previous, isRestorableAppWindow(previous, excluding: overlay) {
+            return previous
+        }
+        return windows.first { isRestorableAppWindow($0, excluding: overlay) }
+    }
+
+    private static func isRestorableAppWindow(_ window: UIWindow, excluding overlay: UIWindow?) -> Bool {
+        window !== overlay
+            && !window.isHidden
+            && window.isUserInteractionEnabled
+            && window.windowLevel == .normal
     }
 }
