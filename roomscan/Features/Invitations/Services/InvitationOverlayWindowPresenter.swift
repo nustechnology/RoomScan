@@ -58,8 +58,10 @@ final class InvitationOverlayWindowPresenter {
         let hostingController = UIHostingController(rootView: content())
         hostingController.view.backgroundColor = .systemBackground
 
+        window.accessibilityViewIsModal = true
         window.rootViewController = hostingController
         window.makeKeyAndVisible()
+        UIAccessibility.post(notification: .screenChanged, argument: hostingController.view)
 
         overlayWindow = window
         presentedInvitation = invitation

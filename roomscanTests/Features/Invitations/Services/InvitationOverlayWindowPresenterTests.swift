@@ -193,6 +193,7 @@ struct InvitationOverlayWindowPresenterTests {
 
         let overlay = try #require(InvitationOverlayTestSupport.visibleOverlayWindow(in: scene))
         #expect(overlay.windowLevel == InvitationOverlayWindowPresenter.overlayWindowLevel)
+        #expect(overlay.accessibilityViewIsModal)
         #expect(overlay.isKeyWindow)
         #expect(presenter.isPresented)
 
