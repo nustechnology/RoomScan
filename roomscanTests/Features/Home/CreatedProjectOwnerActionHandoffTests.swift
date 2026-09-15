@@ -7,29 +7,8 @@
 import XCTest
 
 final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
-    private let project = ProjectSummary(
-        id: "project-1",
-        revision: 1,
-        name: "Office",
-        ownerName: "Owner",
-        createdAt: Date(timeIntervalSince1970: 0),
-        updatedAt: Date(timeIntervalSince1970: 0),
-        description: "Desc",
-        roomScans: [],
-        scanCount: 0
-    )
-
-    private let otherProject = ProjectSummary(
-        id: "project-2",
-        revision: 1,
-        name: "Studio",
-        ownerName: "Owner",
-        createdAt: Date(timeIntervalSince1970: 0),
-        updatedAt: Date(timeIntervalSince1970: 0),
-        description: "Desc",
-        roomScans: [],
-        scanCount: 0
-    )
+    private let project = ProjectSummary.testFixture()
+    private let otherProject = ProjectSummary.testFixture(id: "project-2", name: "Studio")
 
     func testActionToAssign_presentsPendingEditWhenEditCoverIsNotActive() {
         let action = CreatedProjectOwnerActionHandoff.actionToAssign(
@@ -92,7 +71,7 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         XCTAssertEqual(session.pending, .edit(project))
     }
 
-    func testSession_finishUnacknowledgedPresentation_clearsStuckEditBindingAndPending() {
+    func testSession_finishUnacknowledgedPresentation_clearsPendingButKeepsAssignedEdit() {
         var session = CreatedProjectOwnerActionHandoffSession(
             pending: .edit(project),
             activeEdit: project,
@@ -102,7 +81,7 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         session.finishUnacknowledgedPresentation()
 
         XCTAssertNil(session.pending)
-        XCTAssertNil(session.activeEdit)
+        XCTAssertEqual(session.activeEdit, project)
     }
 
     func testSession_finishUnacknowledgedPresentation_noopWhenEditWasAcknowledged() {
@@ -158,7 +137,7 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
     }
 
     @MainActor
-    func testRunPresentationAttempts_tearsDownEditWhenNeverAcknowledged() async {
+    func testRunPresentationAttempts_clearsPendingButKeepsEditWhenNeverAcknowledged() async {
         var session = CreatedProjectOwnerActionHandoffSession(
             pending: .edit(project),
             activeEdit: nil,
@@ -172,7 +151,8 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         )
 
         XCTAssertNil(session.pending)
-        XCTAssertNil(session.activeEdit)
+        // Binding stays so a late fullScreenCover is not torn down after the window.
+        XCTAssertEqual(session.activeEdit, project)
     }
 
     @MainActor

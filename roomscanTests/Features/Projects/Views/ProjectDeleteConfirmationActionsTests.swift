@@ -7,17 +7,7 @@
 import XCTest
 
 final class ProjectDeleteConfirmationActionsTests: XCTestCase {
-    private let project = ProjectSummary(
-        id: "project-1",
-        revision: 1,
-        name: "Office",
-        ownerName: "Owner",
-        createdAt: Date(timeIntervalSince1970: 0),
-        updatedAt: Date(timeIntervalSince1970: 0),
-        description: "Desc",
-        roomScans: [],
-        scanCount: 0
-    )
+    private let project = ProjectSummary.testFixture()
 
     func testHandleConfirm_clearsPendingThenInvokesCallbackWithPresentedID() {
         var pending: ProjectSummary? = project

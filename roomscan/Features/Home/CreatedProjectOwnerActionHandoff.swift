@@ -78,30 +78,22 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
         )
     }
 
-    /// After the retry window, drop unconfirmed work.
+    /// After the retry window, drop pending so the action cannot replay on the next dismiss.
     ///
-    /// Edit is acknowledged only when the cover appears. If pending is still set, clear the
-    /// stuck edit binding and pending so the action cannot replay on the next detail dismiss.
-    /// Delete is usually acknowledged on assignment; leftover pending means assignment never stuck.
+    /// Keeps an assigned `activeEdit` binding: tearing it down here would discard a cover
+    /// that is still appearing after a slow detail-dismiss transition. Stuck bindings are
+    /// cleared on the next `begin(_:)`.
     mutating func finishUnacknowledgedPresentation() {
-        guard let pending else { return }
-        switch pending {
-        case .edit(let project):
-            if activeEdit?.id == project.id {
-                activeEdit = nil
-            }
-        case .delete:
-            break
-        }
-        self.pending = nil
+        pending = nil
     }
 }
 
 /// Moves a pending Edit/Delete request into presentation after the created-project detail dismisses.
 enum CreatedProjectOwnerActionHandoff {
     /// Retries (nil-then-set) while waiting for edit-cover `onAppear` acknowledgment.
-    static let acknowledgmentPollCount = 6
-    static let acknowledgmentPollNanoseconds: UInt64 = 50_000_000
+    /// ~2s window so slower detail-dismiss transitions still have time to present.
+    static let acknowledgmentPollCount = 20
+    static let acknowledgmentPollNanoseconds: UInt64 = 100_000_000
 
     /// Returns the action still waiting to be presented, without clearing it.
     static func actionAwaitingPresentation(
@@ -147,7 +139,8 @@ enum CreatedProjectOwnerActionHandoff {
     /// Each poll clears the matching active binding and reassigns on a separate store so
     /// SwiftUI can present after the created-detail cover finishes dismissing. `load` /
     /// `store` must share storage with UI acknowledgments so an `onAppear` clear of
-    /// `pending` stops the loop.
+    /// `pending` stops the loop. After the ~2s window, pending is cleared to prevent
+    /// replay while an assigned edit binding is kept for a late-appearing cover.
     @MainActor
     static func runPresentationAttempts(
         load: @MainActor () -> CreatedProjectOwnerActionHandoffSession,
