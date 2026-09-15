@@ -164,7 +164,8 @@ struct ReviewScanView: View {
             ToolbarItem(placement: .topBarLeading) {
                 ToolbarBackButton(
                     action: { viewModel.showDiscardConfirmation = true },
-                    accessibilityIdentifier: "review.backButton"
+                    accessibilityIdentifier: "review.backButton",
+                    foregroundColor: .black
                 )
             }
         }

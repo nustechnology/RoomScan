@@ -374,15 +374,19 @@ enum ProjectValidation {
 }
 
 #Preview("Create") {
-    NewProjectView(onSave: { _ in true }, onCancel: {})
+    NavigationStack {
+        NewProjectView(onSave: { _ in true }, onCancel: {})
+    }
 }
 
 #Preview("Edit") {
-    NewProjectView(
-        mode: .edit,
-        initialName: "Lakeside Remodel",
-        initialDescription: "Kitchen and living room refresh",
-        onSave: { _ in true },
-        onCancel: {}
-    )
+    NavigationStack {
+        NewProjectView(
+            mode: .edit,
+            initialName: "Lakeside Remodel",
+            initialDescription: "Kitchen and living room refresh",
+            onSave: { _ in true },
+            onCancel: {}
+        )
+    }
 }
