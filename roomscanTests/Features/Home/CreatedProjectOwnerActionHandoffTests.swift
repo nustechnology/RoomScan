@@ -107,7 +107,7 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
     }
 
     @MainActor
-    func testRunPresentationAttempts_doesNotClearBeforeFirstAcknowledgmentWait() async {
+    func testRunPresentationAttempts_doesNotClearDuringDismissGracePeriod() async {
         var session = CreatedProjectOwnerActionHandoffSession(
             pending: .edit(project),
             activeEdit: nil,
@@ -116,6 +116,7 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         var clearCount = 0
         var assignCount = 0
         var pollCount = 0
+        let grace = CreatedProjectOwnerActionHandoff.retriggerGracePollCount
 
         await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
             load: { session },
@@ -130,14 +131,13 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
             },
             sleepNanoseconds: { _ in
                 pollCount += 1
-                if pollCount == 1 {
-                    // Acknowledge during the first wait — cover never needs a retrigger clear.
+                if pollCount == grace {
                     session.acknowledgeEditPresentation(self.project)
                 }
             }
         )
 
-        XCTAssertEqual(pollCount, 1)
+        XCTAssertEqual(pollCount, grace)
         XCTAssertEqual(assignCount, 1)
         XCTAssertEqual(clearCount, 0)
         XCTAssertNil(session.pending)
@@ -145,7 +145,7 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
     }
 
     @MainActor
-    func testRunPresentationAttempts_retriggersOnlyAfterUnacknowledgedWait() async {
+    func testRunPresentationAttempts_retriggersOnlyAfterDismissGraceExpires() async {
         var session = CreatedProjectOwnerActionHandoffSession(
             pending: .edit(project),
             activeEdit: nil,
@@ -154,6 +154,7 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         var clearCount = 0
         var assignCount = 0
         var pollCount = 0
+        let grace = CreatedProjectOwnerActionHandoff.retriggerGracePollCount
 
         await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
             load: { session },
@@ -168,18 +169,37 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
             },
             sleepNanoseconds: { _ in
                 pollCount += 1
-                if pollCount == 2 {
+                // Ack on the sleep that follows the first clear+reassign (grace + 1).
+                if pollCount == grace + 1 {
                     session.acknowledgeEditPresentation(self.project)
                 }
             }
         )
 
-        XCTAssertEqual(pollCount, 2)
-        // First poll: assign only. Second poll: clear + assign after failed wait.
+        XCTAssertEqual(pollCount, grace + 1)
         XCTAssertEqual(assignCount, 2)
         XCTAssertEqual(clearCount, 1)
         XCTAssertNil(session.pending)
         XCTAssertEqual(session.activeEdit, project)
+    }
+
+    func testSession_mutateHelperRoundTripsBindings() {
+        var pending: CreatedProjectOwnerAction? = .edit(project)
+        var activeEdit: ProjectSummary?
+        var activeDelete: ProjectSummary?
+
+        CreatedProjectOwnerActionHandoffSession.mutate(
+            pending: &pending,
+            activeEdit: &activeEdit,
+            activeDelete: &activeDelete
+        ) { session in
+            session.assignIfNeeded()
+            session.acknowledgeEditPresentation(self.project)
+        }
+
+        XCTAssertNil(pending)
+        XCTAssertEqual(activeEdit, project)
+        XCTAssertNil(activeDelete)
     }
 
     @MainActor

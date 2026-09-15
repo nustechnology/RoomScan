@@ -406,9 +406,9 @@ private extension HomeView {
 
     /// Presents a pending Edit/Delete after the created-project detail dismisses.
     ///
-    /// Uses the shared handoff runner against live HomeView state. Assigns once, waits for
-    /// `onAppear`/`onChange` acknowledgment, and only clear+reassigns if still pending.
-    /// Only one presentation loop runs at a time (cancelled + generation-gated).
+    /// Uses the shared handoff runner against live HomeView state. Assigns once, waits a
+    /// dismiss-sized grace period for acknowledgment, then clear+reassigns only if still
+    /// pending. Only one presentation loop runs at a time (cancelled + generation-gated).
     func presentPendingOwnerActionAfterCreatedDetailDismiss() {
         guard CreatedProjectOwnerActionHandoff.actionAwaitingPresentation(
             pendingOwnerActionAfterCreatedDetail
@@ -417,7 +417,7 @@ private extension HomeView {
         ownerActionPresentationTask = Task { @MainActor in
             await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
                 load: {
-                    CreatedProjectOwnerActionHandoffSession(
+                    CreatedProjectOwnerActionHandoffSession.snapshot(
                         pending: pendingOwnerActionAfterCreatedDetail,
                         activeEdit: projectToEditAfterCreation,
                         activeDelete: projectPendingDeleteAfterCreation
@@ -425,9 +425,11 @@ private extension HomeView {
                 },
                 store: { session in
                     guard ownerActionPresentationFlight.isCurrent(generation) else { return }
-                    pendingOwnerActionAfterCreatedDetail = session.pending
-                    projectToEditAfterCreation = session.activeEdit
-                    projectPendingDeleteAfterCreation = session.activeDelete
+                    session.apply(
+                        pending: &pendingOwnerActionAfterCreatedDetail,
+                        activeEdit: &projectToEditAfterCreation,
+                        activeDelete: &projectPendingDeleteAfterCreation
+                    )
                 },
                 isCurrent: {
                     !Task.isCancelled && ownerActionPresentationFlight.isCurrent(generation)
@@ -447,15 +449,13 @@ private extension HomeView {
     func beginOwnerActionAfterCreatedDetail(_ action: CreatedProjectOwnerAction) {
         // Invalidate any in-flight clear/assign loop before replacing pending state.
         beginOwnerActionPresentationFlight()
-        var session = CreatedProjectOwnerActionHandoffSession(
-            pending: pendingOwnerActionAfterCreatedDetail,
-            activeEdit: projectToEditAfterCreation,
-            activeDelete: projectPendingDeleteAfterCreation
-        )
-        session.begin(action)
-        pendingOwnerActionAfterCreatedDetail = session.pending
-        projectToEditAfterCreation = session.activeEdit
-        projectPendingDeleteAfterCreation = session.activeDelete
+        CreatedProjectOwnerActionHandoffSession.mutate(
+            pending: &pendingOwnerActionAfterCreatedDetail,
+            activeEdit: &projectToEditAfterCreation,
+            activeDelete: &projectPendingDeleteAfterCreation
+        ) { session in
+            session.begin(action)
+        }
         if selectedCreatedProject != nil {
             selectedCreatedProject = nil
         } else {

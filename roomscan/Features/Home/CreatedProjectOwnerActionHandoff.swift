@@ -40,6 +40,50 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
     var activeEdit: ProjectSummary?
     var activeDelete: ProjectSummary?
 
+    /// Builds a session snapshot from the three live presentation bindings.
+    static func snapshot(
+        pending: CreatedProjectOwnerAction?,
+        activeEdit: ProjectSummary?,
+        activeDelete: ProjectSummary?
+    ) -> CreatedProjectOwnerActionHandoffSession {
+        CreatedProjectOwnerActionHandoffSession(
+            pending: pending,
+            activeEdit: activeEdit,
+            activeDelete: activeDelete
+        )
+    }
+
+    /// Writes this session back into the three live presentation bindings.
+    func apply(
+        pending: inout CreatedProjectOwnerAction?,
+        activeEdit: inout ProjectSummary?,
+        activeDelete: inout ProjectSummary?
+    ) {
+        pending = self.pending
+        activeEdit = self.activeEdit
+        activeDelete = self.activeDelete
+    }
+
+    /// Mutates the three bindings through a single session mapping.
+    static func mutate(
+        pending: inout CreatedProjectOwnerAction?,
+        activeEdit: inout ProjectSummary?,
+        activeDelete: inout ProjectSummary?,
+        _ body: (inout CreatedProjectOwnerActionHandoffSession) -> Void
+    ) {
+        var session = snapshot(
+            pending: pending,
+            activeEdit: activeEdit,
+            activeDelete: activeDelete
+        )
+        body(&session)
+        session.apply(
+            pending: &pending,
+            activeEdit: &activeEdit,
+            activeDelete: &activeDelete
+        )
+    }
+
     /// Starts a new owner action, clearing any stuck presentation bindings first.
     mutating func begin(_ action: CreatedProjectOwnerAction) {
         activeEdit = nil
@@ -106,10 +150,13 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
 
 /// Moves a pending Edit/Delete request into presentation after the created-project detail dismisses.
 enum CreatedProjectOwnerActionHandoff {
-    /// Retries while waiting for edit-cover `onAppear` acknowledgment.
-    /// ~2s window so slower detail-dismiss transitions still have time to present.
+    /// Total poll budget (~2s) while waiting for edit-cover `onAppear` acknowledgment.
     static let acknowledgmentPollCount = 20
     static let acknowledgmentPollNanoseconds: UInt64 = 100_000_000
+
+    /// Wait this many poll intervals after an assignment before clear+reassign.
+    /// Covers typical created-detail dismiss transitions (~300–400 ms).
+    static let retriggerGracePollCount = 4
 
     /// Returns the action still waiting to be presented, without clearing it.
     static func actionAwaitingPresentation(
@@ -150,10 +197,9 @@ enum CreatedProjectOwnerActionHandoff {
         }
     }
 
-    /// Defers one turn, assigns once, then waits for acknowledgment before any retrigger.
+    /// Defers one turn, assigns once, then waits through a dismiss-sized grace period
+    /// before any clear+reassign retrigger.
     ///
-    /// Clear+reassign only happens when a prior assignment stayed unacknowledged after the
-    /// wait — so a slow `onAppear` / `onChange` is not torn down mid-presentation.
     /// `load` / `store` must share storage with UI acknowledgments. After the ~2s window,
     /// pending is cleared while an assigned edit binding is kept for a late cover.
     ///
@@ -171,29 +217,35 @@ enum CreatedProjectOwnerActionHandoff {
         await Task.yield()
         guard isCurrent() else { return }
 
-        var shouldRetrigger = false
+        var hasAssigned = false
+        var waitCyclesSinceAssign = 0
 
         for _ in 0..<acknowledgmentPollCount {
             guard isCurrent() else { return }
             if load().pending == nil { return }
 
+            let shouldRetrigger =
+                hasAssigned && waitCyclesSinceAssign >= retriggerGracePollCount
+
             if shouldRetrigger {
-                // Previous assignment was not acknowledged in time — force a new presentation.
                 mutate(load: load, store: store, isCurrent: isCurrent) {
                     $0.clearActivePresentationMatchingPending()
                 }
                 await Task.yield()
                 guard isCurrent() else { return }
+                waitCyclesSinceAssign = 0
             }
 
-            mutate(load: load, store: store, isCurrent: isCurrent) { $0.assignIfNeeded() }
+            if !hasAssigned || shouldRetrigger {
+                mutate(load: load, store: store, isCurrent: isCurrent) { $0.assignIfNeeded() }
+                hasAssigned = true
+            }
 
             guard isCurrent() else { return }
             if load().pending == nil { return }
 
-            // Wait for SwiftUI onAppear/onChange before considering a retrigger.
             await sleepNanoseconds(acknowledgmentPollNanoseconds)
-            shouldRetrigger = true
+            waitCyclesSinceAssign += 1
         }
 
         guard isCurrent() else { return }

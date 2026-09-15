@@ -21,13 +21,13 @@ struct CreatedProjectOwnerActionPresentation: ViewModifier {
                     onDismiss: { projectToEdit = nil }
                 )
                 .onAppear {
-                    var session = CreatedProjectOwnerActionHandoffSession(
-                        pending: pendingOwnerAction,
-                        activeEdit: projectToEdit,
-                        activeDelete: projectPendingDelete
-                    )
-                    session.acknowledgeEditPresentation(project)
-                    pendingOwnerAction = session.pending
+                    CreatedProjectOwnerActionHandoffSession.mutate(
+                        pending: &pendingOwnerAction,
+                        activeEdit: &projectToEdit,
+                        activeDelete: &projectPendingDelete
+                    ) { session in
+                        session.acknowledgeEditPresentation(project)
+                    }
                 }
             }
             .projectDeleteConfirmationAlert(projectPendingDelete: $projectPendingDelete) { projectID in
@@ -37,13 +37,13 @@ struct CreatedProjectOwnerActionPresentation: ViewModifier {
             }
             .onChange(of: projectPendingDelete) { _, project in
                 guard let project else { return }
-                var session = CreatedProjectOwnerActionHandoffSession(
-                    pending: pendingOwnerAction,
-                    activeEdit: projectToEdit,
-                    activeDelete: projectPendingDelete
-                )
-                session.acknowledgeDeleteAssignment(project)
-                pendingOwnerAction = session.pending
+                CreatedProjectOwnerActionHandoffSession.mutate(
+                    pending: &pendingOwnerAction,
+                    activeEdit: &projectToEdit,
+                    activeDelete: &projectPendingDelete
+                ) { session in
+                    session.acknowledgeDeleteAssignment(project)
+                }
             }
     }
 }
