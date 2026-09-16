@@ -80,4 +80,41 @@ enum InvitationOverlayTestSupport {
         host.loadViewIfNeeded()
         return window
     }
+
+    /// Installs `view` as a hosting window's root, runs `body` with that window, then tears
+    /// the window down and restores whatever was the key window before it was installed.
+    /// Centralizes the resolve-scene / save-key / install / teardown boilerplate that
+    /// window-based overlay tests would otherwise each repeat.
+    @MainActor
+    static func withHostingWindow<Content: View>(
+        _ view: Content,
+        _ body: @MainActor (UIWindow) async throws -> Void
+    ) async throws {
+        let scene = try requireWindowScene()
+        let originalKey = scene.keyWindow
+        let window = try installHostingWindow(view)
+        defer {
+            window.rootViewController = nil
+            window.isHidden = true
+            originalKey?.makeKey()
+        }
+        try await body(window)
+    }
+
+    /// Polls `condition` until it's true or `timeoutNanoseconds` elapses, recording a test
+    /// failure on timeout. Shared by the overlay tests so their retry timings stay consistent.
+    @MainActor
+    static func waitUntil(
+        timeoutNanoseconds: UInt64 = 500_000_000,
+        _ condition: @MainActor () -> Bool
+    ) async {
+        let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNanoseconds
+        while !condition() {
+            if DispatchTime.now().uptimeNanoseconds >= deadline {
+                Issue.record("timed out waiting for condition")
+                return
+            }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
 }

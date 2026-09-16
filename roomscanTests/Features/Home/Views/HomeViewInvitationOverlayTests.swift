@@ -40,39 +40,31 @@ extension InvitationOverlaySceneTests {
     @MainActor
     struct HomeViewOverlay {
         @Test func presentsOverlayOnAppearAndTearsDownOnDisappearWithoutClearingPending() async throws {
-            let scene = try InvitationOverlayTestSupport.requireWindowScene()
-            let originalKey = scene.keyWindow
             let invitation = PendingInvitation(scope: .project, token: "home-on-appear")
             let model = HomeViewInvitationOverlayHarnessModel()
             model.pendingInvitation = invitation
             let presenter = InvitationOverlayWindowPresenter(
                 windowFactory: InvitationOverlayTestSupport.makeTestWindow
             )
-            let window = try InvitationOverlayTestSupport.installHostingWindow(
+
+            try await InvitationOverlayTestSupport.withHostingWindow(
                 HomeViewInvitationOverlayHarness(model: model, presenter: presenter)
-            )
-            defer {
+            ) { window in
+                await InvitationOverlayTestSupport.waitUntil { presenter.isPresented }
+
+                #expect(presenter.isPresented)
+                #expect(presenter.presentedInvitation == invitation)
+
                 window.rootViewController = nil
                 window.isHidden = true
-                originalKey?.makeKey()
+                await InvitationOverlayTestSupport.waitUntil { !presenter.isPresented }
+
+                #expect(!presenter.isPresented)
+                #expect(model.pendingInvitation == invitation)
             }
-
-            await waitUntil { presenter.isPresented }
-
-            #expect(presenter.isPresented)
-            #expect(presenter.presentedInvitation == invitation)
-
-            window.rootViewController = nil
-            window.isHidden = true
-            await waitUntil { !presenter.isPresented }
-
-            #expect(!presenter.isPresented)
-            #expect(model.pendingInvitation == invitation)
         }
 
         @Test func replacingPendingInvitationPresentsNewOverlayWithoutDismissingPrevious() async throws {
-            let scene = try InvitationOverlayTestSupport.requireWindowScene()
-            let originalKey = scene.keyWindow
             let first = PendingInvitation(scope: .project, token: "home-first")
             let second = PendingInvitation(scope: .scan, token: "home-second")
             let model = HomeViewInvitationOverlayHarnessModel()
@@ -80,46 +72,42 @@ extension InvitationOverlaySceneTests {
             let presenter = InvitationOverlayWindowPresenter(
                 windowFactory: InvitationOverlayTestSupport.makeTestWindow
             )
-            let window = try InvitationOverlayTestSupport.installHostingWindow(
+
+            try await InvitationOverlayTestSupport.withHostingWindow(
                 HomeViewInvitationOverlayHarness(model: model, presenter: presenter)
-            )
-            defer {
-                window.rootViewController = nil
-                window.isHidden = true
-                originalKey?.makeKey()
+            ) { _ in
+                await InvitationOverlayTestSupport.waitUntil { presenter.presentedInvitation == first }
+                #expect(presenter.presentedInvitation == first)
+
+                model.pendingInvitation = second
+                await InvitationOverlayTestSupport.waitUntil { presenter.presentedInvitation == second }
+
+                #expect(presenter.isPresented)
+                #expect(presenter.presentedInvitation == second)
+                #expect(model.pendingInvitation == second)
             }
-
-            await waitUntil { presenter.presentedInvitation == first }
-            #expect(presenter.presentedInvitation == first)
-
-            model.pendingInvitation = second
-            await waitUntil { presenter.presentedInvitation == second }
-
-            #expect(presenter.isPresented)
-            #expect(presenter.presentedInvitation == second)
-            #expect(model.pendingInvitation == second)
         }
 
-        @Test func failedOverlayPresentationClearsPendingInvitation() async throws {
-            let scene = try InvitationOverlayTestSupport.requireWindowScene()
-            let originalKey = scene.keyWindow
+        @Test func failedOverlayPresentationLeavesPendingInvitationForRetry() async throws {
             let invitation = PendingInvitation(scope: .project, token: "home-failed-present")
             let model = HomeViewInvitationOverlayHarnessModel()
             model.pendingInvitation = invitation
-            let presenter = InvitationOverlayWindowPresenter { nil }
-            let window = try InvitationOverlayTestSupport.installHostingWindow(
-                HomeViewInvitationOverlayHarness(model: model, presenter: presenter)
-            )
-            defer {
-                window.rootViewController = nil
-                window.isHidden = true
-                originalKey?.makeKey()
+            var presentAttempts = 0
+            let presenter = InvitationOverlayWindowPresenter {
+                presentAttempts += 1
+                return nil
             }
 
-            await waitUntil { model.pendingInvitation == nil }
+            try await InvitationOverlayTestSupport.withHostingWindow(
+                HomeViewInvitationOverlayHarness(model: model, presenter: presenter)
+            ) { _ in
+                await InvitationOverlayTestSupport.waitUntil { presentAttempts > 0 }
 
-            #expect(!presenter.isPresented)
-            #expect(model.pendingInvitation == nil)
+                // A window-factory failure must not drop the invitation: it stays pending so a
+                // later `onAppear` (e.g. returning from background) can retry presenting it.
+                #expect(!presenter.isPresented)
+                #expect(model.pendingInvitation == invitation)
+            }
         }
 
         @Test func dismissedOutcomePropagatesOptionalToastMessage() {
@@ -168,20 +156,6 @@ extension InvitationOverlaySceneTests {
                 feedbackToastMessage = toast
             }
             #expect(feedbackToastMessage == String(localized: "invitation.toast.accepted"))
-        }
-
-        private func waitUntil(
-            timeoutNanoseconds: UInt64 = 500_000_000,
-            _ condition: @MainActor () -> Bool
-        ) async {
-            let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNanoseconds
-            while !condition() {
-                if DispatchTime.now().uptimeNanoseconds >= deadline {
-                    Issue.record("timed out waiting for condition")
-                    return
-                }
-                try? await Task.sleep(nanoseconds: 10_000_000)
-            }
         }
     }
 }

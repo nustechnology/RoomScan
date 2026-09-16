@@ -286,9 +286,11 @@ private extension HomeView {
             #if DEBUG
             print("[Invitations] failed to present overlay for \(invitation.id)")
             #endif
-            if !invitationOverlayPresenter.isPresented {
-                clearPendingInvitation(matching: invitation)
-            }
+            // Leave `pendingInvitation` untouched so the invite isn't silently lost.
+            // Presentation is only triggered by `onChange(of: pendingInvitation)` / `onAppear`,
+            // so clearing it here (as we used to) meant a transient window-factory failure
+            // (e.g. no resolvable `UIWindowScene`) would drop the invitation forever with no
+            // retry and no feedback. Keeping the value around lets the next `onAppear` retry.
         }
     }
 
