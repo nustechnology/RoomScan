@@ -96,7 +96,7 @@ final class ScanDetailViewModel {
 
     static func formattedDate(
         for date: Date,
-        locale: Locale = .current,
+        locale: Locale = Locale(identifier: "en_US"),
         timeZone: TimeZone = .current
     ) -> String {
         var style = Date.FormatStyle()

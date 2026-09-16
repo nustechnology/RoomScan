@@ -346,17 +346,6 @@
         }
       }
     },
-    "auth.error.appleAuthorizationTimedOut" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Sign-In timed out. Please try again."
-          }
-        }
-      }
-    },
     "auth.error.cancelled" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1998,6 +1987,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Failed to load projects. Please try again."
+          }
+        }
+      }
+    },
+    "review.error.preselected_project_unavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't load the selected project. Please choose one."
           }
         }
       }

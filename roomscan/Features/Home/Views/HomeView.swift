@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct HomeView: View {
-    enum Tab {
+    enum Tab: CaseIterable {
         case projects
         case share
         case account
@@ -33,6 +33,7 @@ struct HomeView: View {
     @State private var showsNewProject = false
     @State private var pendingCreatedProject: ProjectSummary?
     @State private var selectedCreatedProject: ProjectSummary?
+    @State private var ownerActionHandoff: CreatedProjectOwnerActionController
     // Separate from ProjectsView's pending scan state: this request originates
     // from the project-creation cover and is published when HomeView's cover dismisses.
     @State private var scanRequestAfterProjectCreation: String?
@@ -96,6 +97,7 @@ struct HomeView: View {
                 currentUserID: session.user.id
             )
         )
+        _ownerActionHandoff = State(initialValue: CreatedProjectOwnerActionController())
     }
 
     var body: some View {
@@ -175,10 +177,20 @@ struct HomeView: View {
         )
         .fullScreenCover(
             item: $selectedCreatedProject,
-            onDismiss: publishPendingProjectScanRequest,
+            onDismiss: {
+                ownerActionHandoff.presentAfterDetailDismiss()
+                publishPendingProjectScanRequest()
+            },
             content: { project in
                 createdProjectDetailCover(for: project)
             }
+        )
+        .projectOwnerActionPresentation(
+            projectToEdit: $ownerActionHandoff.activeEdit,
+            projectPendingDelete: $ownerActionHandoff.activeDelete,
+            projectsViewModel: projectsViewModel,
+            onEditAppeared: { ownerActionHandoff.acknowledgeEditAppeared($0) },
+            onDeleteDismissed: { ownerActionHandoff.acknowledgeDeleteDismissed() }
         )
         .fullScreenCover(item: $acceptedProject) { project in
             ProjectDetailView(
@@ -235,11 +247,18 @@ struct HomeView: View {
             invitationOverlayRetryTask = nil
             invitationOverlayPresenter.dismissWithoutNotifying()
         }
+        .onChange(of: selectedTab) { _, _ in
+            // Avoid presenting a delayed edit/delete cover over a different tab.
+            ownerActionHandoff.cancelUnacknowledgedPresentation()
+        }
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
+}
+
+private extension HomeView {
     @ViewBuilder
-    private var currentTabContent: some View {
+    var currentTabContent: some View {
         switch selectedTab {
         case .projects:
             ProjectsView(
@@ -305,6 +324,7 @@ private extension HomeView {
         requestedScanSourceProjectID = scanRequestAfterProjectCreation
         self.scanRequestAfterProjectCreation = nil
     }
+
     func createdProjectDetailCover(for project: ProjectSummary) -> some View {
         ProjectDetailView(
             project: project,
@@ -323,6 +343,22 @@ private extension HomeView {
             onAddScan: { projectID in
                 scanRequestAfterProjectCreation = projectID
                 selectedCreatedProject = nil
+            },
+            onEdit: { project in
+                ownerActionHandoff.begin(
+                    .edit(project),
+                    detailIsPresented: selectedCreatedProject != nil
+                ) {
+                    selectedCreatedProject = nil
+                }
+            },
+            onDelete: { project in
+                ownerActionHandoff.begin(
+                    .delete(project),
+                    detailIsPresented: selectedCreatedProject != nil
+                ) {
+                    selectedCreatedProject = nil
+                }
             }
         )
     }
@@ -343,143 +379,6 @@ private extension HomeView {
         .accessibilityAddTraits(projectsViewModel.isDeletingProject ? .isModal : [])
         .accessibilityHidden(!projectsViewModel.isDeletingProject)
         .accessibilityIdentifier("projects.delete.loading")
-    }
-}
-
-private struct HomeBottomNav: View {
-    @Binding var selectedTab: HomeView.Tab
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(HomeView.Tab.allCases, id: \.self) { tab in
-                Button(
-                    action: {
-                        selectedTab = tab
-                    },
-                    label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: tab.systemImageName(isSelected: selectedTab == tab))
-                                .font(.system(size: 21, weight: .semibold))
-
-                            Text(tab.localizedTitle)
-                                .font(.caption2.weight(.semibold))
-                                .lineLimit(1)
-                        }
-                        .foregroundStyle(selectedTab == tab ? .blue : .secondary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .contentShape(Rectangle())
-                    }
-                )
-                .buttonStyle(.plain)
-                .accessibilityLabel(tab.localizedTitle)
-                .accessibilityIdentifier(tab.accessibilityIdentifier)
-                .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
-            }
-        }
-        .padding(.horizontal, 4)
-        .padding(.top, 10)
-        .padding(.bottom, 4)
-        .background(.background)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(.quaternary)
-                .frame(height: 1)
-        }
-    }
-}
-
-extension HomeView.Tab: CaseIterable {
-    var headerTitle: String {
-        switch self {
-        case .projects:
-            return String(localized: "projects.title")
-        case .share:
-            return String(localized: "home.share.headerTitle")
-        case .account:
-            return String(localized: "account.title")
-        }
-    }
-
-    var localizedTitle: String {
-        switch self {
-        case .projects:
-            return String(localized: "projects.nav.project")
-        case .share:
-            return String(localized: "home.share.nav")
-        case .account:
-            return String(localized: "account.title")
-        }
-    }
-
-    func systemImageName(isSelected: Bool) -> String {
-        switch self {
-        case .projects:
-            return isSelected ? "square.grid.2x2.fill" : "square.grid.2x2"
-        case .share:
-            return "point.3.filled.connected.trianglepath.dotted"
-        case .account:
-            return isSelected ? "person.fill" : "person"
-        }
-    }
-
-    var accessibilityIdentifier: String {
-        switch self {
-        case .projects:
-            return "tab.projects"
-        case .share:
-            return "tab.share"
-        case .account:
-            return "tab.account"
-        }
-    }
-}
-
-private struct HomeHeader: View {
-    let title: String
-    let showsCreateProjectButton: Bool
-    let showsRefreshButton: Bool
-    let onCreateProject: () -> Void
-    var onRefresh: (() -> Void)?
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(title)
-                .font(.largeTitle.bold())
-                .lineLimit(1)
-                .accessibilityIdentifier("home.header.title")
-
-            if showsCreateProjectButton {
-                Button(action: onCreateProject) {
-                    Image(systemName: "plus")
-                        .font(.title2.weight(.semibold))
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "projects.create.accessibility"))
-                .accessibilityIdentifier("projects.create")
-            }
-
-            Spacer()
-
-            if showsRefreshButton {
-                Button(
-                    action: { onRefresh?() },
-                    label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.body.weight(.semibold))
-                            .frame(width: 44, height: 44)
-                    }
-                )
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "shared.refresh.accessibility"))
-                .accessibilityIdentifier("shared.refresh")
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 2)
-        .padding(.bottom, 4)
-        .background(.background)
     }
 }
 

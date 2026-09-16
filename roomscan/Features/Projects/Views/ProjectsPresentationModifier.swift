@@ -15,6 +15,44 @@ struct ScanDetailDestination: Hashable, Identifiable {
     }
 }
 
+/// Identifies a presented scan flow and optionally preselects a project on review.
+struct ActiveScanFlow: Identifiable, Equatable {
+    let id: UUID
+    let sourceProjectID: String?
+
+    /// Creates a scan-flow presentation value.
+    /// - Parameters:
+    ///   - id: Stable identity for `fullScreenCover(item:)`.
+    ///   - sourceProjectID: Project to preselect on the review screen, if any.
+    init(id: UUID = UUID(), sourceProjectID: String?) {
+        self.id = id
+        self.sourceProjectID = sourceProjectID
+    }
+}
+
+/// Moves a pending Add Scan request into the active scan presentation after project detail dismisses.
+enum ActiveScanFlowHandoff {
+    /// Returns the flow still waiting to be presented, without clearing it.
+    ///
+    /// Pending stays set until `acknowledgePresented` so a dropped cover can be retried.
+    static func flowAwaitingPresentation(_ pending: ActiveScanFlow?) -> ActiveScanFlow? {
+        pending
+    }
+
+    /// The pending flow to assign now, or `nil` when nothing is waiting or that cover is already active.
+    static func flowToAssign(pending: ActiveScanFlow?, active: ActiveScanFlow?) -> ActiveScanFlow? {
+        guard let pending else { return nil }
+        guard active?.id != pending.id else { return nil }
+        return pending
+    }
+
+    /// Clears `pending` only after the matching scan cover has actually appeared.
+    static func acknowledgePresented(_ presented: ActiveScanFlow, pending: inout ActiveScanFlow?) {
+        guard pending?.id == presented.id else { return }
+        pending = nil
+    }
+}
+
 struct ProjectsPresentationModifier: ViewModifier {
     @Binding var selectedProject: ProjectSummary?
     @Binding var selectedScanDetail: ScanDetailDestination?
@@ -30,9 +68,8 @@ struct ProjectsPresentationModifier: ViewModifier {
     let syncEngine: SyncEngine?
     var currentUserID: String
 
-    @Binding var showsScanFlow: Bool
-    @Binding var scanningSourceProjectID: String?
-    @Binding var pendingScanSourceProjectID: String?
+    @Binding var activeScanFlow: ActiveScanFlow?
+    @Binding var pendingActiveScanFlow: ActiveScanFlow?
     @Binding var recoveredDraft: RoomScanDraft?
     @Binding var recoveredDraftToPrompt: RoomScanDraft?
     @Binding var savedScanForDetails: RoomScanSummary?
@@ -45,11 +82,7 @@ struct ProjectsPresentationModifier: ViewModifier {
             .fullScreenCover(
                 item: $selectedProject,
                 onDismiss: {
-                    if let projectID = pendingScanSourceProjectID {
-                        pendingScanSourceProjectID = nil
-                        scanningSourceProjectID = projectID
-                        showsScanFlow = true
-                    }
+                    presentPendingScanFlowAfterDetailDismiss()
                 },
                 content: { project in
                     projectDetailCover(for: project)
@@ -68,21 +101,21 @@ struct ProjectsPresentationModifier: ViewModifier {
                 checkDraftRecovery()
             }
             .fullScreenCover(
-                isPresented: $showsScanFlow,
+                item: $activeScanFlow,
                 onDismiss: {
                     if let savedScan = pendingSavedScanForDetails {
                         pendingSavedScanForDetails = nil
                         savedScanForDetails = savedScan
                     }
                 },
-                content: {
+                content: { flow in
                     ScanFlowCoordinatorView(
-                        sourceProjectID: scanningSourceProjectID,
+                        sourceProjectID: flow.sourceProjectID,
                         recoveredDraft: recoveredDraft,
                         projectsService: projectsService,
                         onComplete: { savedScan in
                             recoveredDraft = nil
-                            showsScanFlow = false
+                            activeScanFlow = nil
                             if let savedScan {
                                 pendingSavedScanForDetails = savedScan
                             }
@@ -92,9 +125,15 @@ struct ProjectsPresentationModifier: ViewModifier {
                         },
                         onCancel: {
                             recoveredDraft = nil
-                            showsScanFlow = false
+                            activeScanFlow = nil
                         }
                     )
+                    .onAppear {
+                        ActiveScanFlowHandoff.acknowledgePresented(
+                            flow,
+                            pending: &pendingActiveScanFlow
+                        )
+                    }
                 }
             )
             .fullScreenCover(item: $savedScanForDetails) { savedScan in
@@ -115,8 +154,7 @@ struct ProjectsPresentationModifier: ViewModifier {
             ) { draft in
                 Button(String(localized: "scan.recovery.resume")) {
                     recoveredDraft = draft
-                    scanningSourceProjectID = draft.projectID
-                    showsScanFlow = true
+                    activeScanFlow = ActiveScanFlow(sourceProjectID: draft.projectID)
                     recoveredDraftToPrompt = nil
                 }
                 Button(String(localized: "scan.recovery.discard"), role: .destructive) {
@@ -127,36 +165,11 @@ struct ProjectsPresentationModifier: ViewModifier {
             } message: { _ in
                 Text(String(localized: "scan.recovery.message"))
             }
-            .fullScreenCover(item: $projectToEdit) { project in
-                editProjectCover(for: project)
-            }
-            .alert(
-                String(localized: "projects.delete.title"),
-                isPresented: Binding(
-                    get: { projectPendingDelete != nil },
-                    set: { if !$0 { projectPendingDelete = nil } }
-                ),
-                presenting: projectPendingDelete
-            ) { project in
-                Button(String(localized: "projects.delete.cancel"), role: .cancel) {
-                    projectPendingDelete = nil
-                }
-                Button(String(localized: "projects.delete.confirm"), role: .destructive) {
-                    let projectID = project.id
-                    projectPendingDelete = nil
-                    Task {
-                        await viewModel.deleteProject(id: projectID)
-                    }
-                }
-            } message: { project in
-                Text(
-                    String.localizedStringWithFormat(
-                        String(localized: "projects.delete.message.format"),
-                        max(project.scanCount, project.roomScans.count),
-                        project.name
-                    )
-                )
-            }
+            .projectOwnerActionPresentation(
+                projectToEdit: $projectToEdit,
+                projectPendingDelete: $projectPendingDelete,
+                projectsViewModel: viewModel
+            )
             .onChange(of: viewModel.showsDeleteSuccessToast) { _, showsToast in
                 guard showsToast else { return }
                 Task {
@@ -172,6 +185,27 @@ struct ProjectsPresentationModifier: ViewModifier {
                 }
             }
             .ignoresSafeArea(.keyboard, edges: .bottom)
+    }
+
+    /// Presents a pending Add Scan after detail dismiss, retrying once if the first assignment is rejected.
+    ///
+    /// The pending value is cleared only when the scan cover appears, so a swallowed presentation can be retried.
+    private func presentPendingScanFlowAfterDetailDismiss() {
+        guard ActiveScanFlowHandoff.flowAwaitingPresentation(pendingActiveScanFlow) != nil else { return }
+        Task { @MainActor in
+            await PresentationHandoff.presentAfterDismiss {
+                assignPendingScanFlowIfNeeded()
+            }
+        }
+    }
+
+    /// Assigns the still-pending flow when no matching cover is currently presented.
+    private func assignPendingScanFlowIfNeeded() {
+        guard let flow = ActiveScanFlowHandoff.flowToAssign(
+            pending: pendingActiveScanFlow,
+            active: activeScanFlow
+        ) else { return }
+        activeScanFlow = flow
     }
 
     private func checkDraftRecovery() {
@@ -209,6 +243,7 @@ struct ProjectsPresentationModifier: ViewModifier {
         )
     }
 
+    /// Project detail cover; Add Scan stashes a pending `ActiveScanFlow` then dismisses.
     private func projectDetailCover(for project: ProjectSummary) -> some View {
         ProjectDetailView(
             project: project,
@@ -231,7 +266,7 @@ struct ProjectsPresentationModifier: ViewModifier {
                 )
             },
             onAddScan: { projectID in
-                pendingScanSourceProjectID = projectID
+                pendingActiveScanFlow = ActiveScanFlow(sourceProjectID: projectID)
                 selectedProject = nil
             },
             onEdit: { project in
@@ -243,38 +278,4 @@ struct ProjectsPresentationModifier: ViewModifier {
         )
     }
 
-    private func editProjectCover(for project: ProjectSummary) -> some View {
-        return NewProjectView(
-            mode: .edit,
-            initialName: project.name,
-            initialDescription: project.description,
-            onSave: { form in
-                let didUpdate = await viewModel.updateProject(
-                    id: project.id,
-                    name: form.name,
-                    description: form.projectDescription,
-                    revision: project.revision
-                )
-                if didUpdate {
-                    projectToEdit = nil
-                }
-                return didUpdate
-            },
-            onCancel: {
-                projectToEdit = nil
-                viewModel.dismissActionErrorToast()
-            }
-        )
-        .alert(
-            String(localized: "projects.action.error"),
-            isPresented: Binding(
-                get: { viewModel.showsActionErrorToast },
-                set: { if !$0 { viewModel.dismissActionErrorToast() } }
-            )
-        ) {
-            Button(String(localized: "projects.action.error.dismiss"), role: .cancel) {
-                viewModel.dismissActionErrorToast()
-            }
-        }
-    }
 }

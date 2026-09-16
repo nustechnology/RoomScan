@@ -129,7 +129,7 @@ struct ScanDetailViewModelTests {
         #expect(viewModel.createdByText == String(localized: "shared.owner.unknown"))
     }
 
-    @Test func formattedDateUsesMonthDayYear() {
+    @Test func formattedDateDefaultsToUSOrder() {
         let viewModel = makeViewModel(
             createdAt: Date(timeIntervalSince1970: 1_781_251_200) // Jun 12, 2026 UTC
         )
@@ -137,7 +137,6 @@ struct ScanDetailViewModelTests {
         #expect(
             ScanDetailViewModel.formattedDate(
                 for: viewModel.scan.createdAt,
-                locale: Locale(identifier: "en_US_POSIX"),
                 timeZone: TimeZone(secondsFromGMT: 0)!
             ) == "Jun 12, 2026"
         )
