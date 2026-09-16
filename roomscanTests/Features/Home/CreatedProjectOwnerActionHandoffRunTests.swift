@@ -6,73 +6,43 @@
 @testable import roomscan
 import XCTest
 
+private struct EditHandoffRunResult {
+    let session: CreatedProjectOwnerActionHandoffSession
+    let assignCount: Int
+    let yieldCount: Int
+}
+
 final class CreatedProjectOwnerActionHandoffRunTests: XCTestCase {
     private let project = ProjectSummary.testFixture()
 
     @MainActor
     func testPresentAfterDetailDismiss_assignsEditOnceWhenAcknowledgedAfterFirstAssign() async {
-        var session = CreatedProjectOwnerActionHandoffSession(
-            pending: .edit(project),
-            activeEdit: nil,
-            activeDelete: nil
-        )
-        var assignCount = 0
-        var yieldCount = 0
-
-        await CreatedProjectOwnerActionHandoff.presentAfterDetailDismiss(
-            load: { session },
-            store: { updated in
-                if updated.activeEdit != nil, session.activeEdit == nil {
-                    assignCount += 1
-                }
-                session = updated
-            },
-            yield: {
-                yieldCount += 1
-                if yieldCount == 2 {
-                    // Cover appeared between the two assigns (clears pending).
-                    session.acknowledgeEditPresentation(self.project)
-                }
+        let result = await runEditHandoff { session, yieldCount in
+            if yieldCount == 2 {
+                // Cover appeared between the two assigns (clears pending).
+                session.acknowledgeEditPresentation(self.project)
             }
-        )
+        }
 
-        XCTAssertEqual(yieldCount, 2)
-        XCTAssertEqual(assignCount, 1)
-        XCTAssertNil(session.pending)
-        XCTAssertEqual(session.activeEdit, project)
+        XCTAssertEqual(result.yieldCount, 2)
+        XCTAssertEqual(result.assignCount, 1)
+        XCTAssertNil(result.session.pending)
+        XCTAssertEqual(result.session.activeEdit, project)
     }
 
     @MainActor
     func testPresentAfterDetailDismiss_retriesEditWhenFirstAssignmentIsSwallowed() async {
-        var session = CreatedProjectOwnerActionHandoffSession(
-            pending: .edit(project),
-            activeEdit: nil,
-            activeDelete: nil
-        )
-        var assignCount = 0
-        var yieldCount = 0
-
-        await CreatedProjectOwnerActionHandoff.presentAfterDetailDismiss(
-            load: { session },
-            store: { updated in
-                if updated.activeEdit != nil, session.activeEdit == nil {
-                    assignCount += 1
-                }
-                session = updated
-            },
-            yield: {
-                yieldCount += 1
-                if yieldCount == 2, session.activeEdit != nil {
-                    // Simulate SwiftUI clearing a rejected fullScreenCover item.
-                    session.activeEdit = nil
-                }
+        let result = await runEditHandoff { session, yieldCount in
+            if yieldCount == 2, session.activeEdit != nil {
+                // Simulate SwiftUI clearing a rejected fullScreenCover item.
+                session.activeEdit = nil
             }
-        )
+        }
 
-        XCTAssertEqual(yieldCount, 2)
-        XCTAssertEqual(assignCount, 2)
-        XCTAssertEqual(session.activeEdit, project)
-        XCTAssertEqual(session.pending, .edit(project))
+        XCTAssertEqual(result.yieldCount, 2)
+        XCTAssertEqual(result.assignCount, 2)
+        XCTAssertEqual(result.session.activeEdit, project)
+        XCTAssertEqual(result.session.pending, .edit(project))
     }
 
     @MainActor
@@ -160,5 +130,39 @@ final class CreatedProjectOwnerActionHandoffRunTests: XCTestCase {
         XCTAssertEqual(staleStoreCount, 0)
         XCTAssertNil(session.activeEdit)
         XCTAssertEqual(session.pending, .edit(project))
+    }
+
+    /// Shared harness for edit handoff sequencing tests.
+    @MainActor
+    private func runEditHandoff(
+        onYield: @MainActor (inout CreatedProjectOwnerActionHandoffSession, Int) -> Void
+    ) async -> EditHandoffRunResult {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+        var assignCount = 0
+        var yieldCount = 0
+
+        await CreatedProjectOwnerActionHandoff.presentAfterDetailDismiss(
+            load: { session },
+            store: { updated in
+                if updated.activeEdit != nil, session.activeEdit == nil {
+                    assignCount += 1
+                }
+                session = updated
+            },
+            yield: {
+                yieldCount += 1
+                onYield(&session, yieldCount)
+            }
+        )
+
+        return EditHandoffRunResult(
+            session: session,
+            assignCount: assignCount,
+            yieldCount: yieldCount
+        )
     }
 }
