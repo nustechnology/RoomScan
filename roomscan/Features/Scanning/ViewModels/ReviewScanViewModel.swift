@@ -61,6 +61,11 @@ final class ReviewScanViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
+    /// Loads projects for the review picker and recovers a missing preselected project.
+    ///
+    /// The paginated list is published before recovering a missing selection, so a slow
+    /// `fetchProject` does not keep the picker empty. The recovered project is inserted
+    /// when that request returns.
     func loadProjects() async {
         isLoadingProjects = true
         saveErrorMessage = nil
@@ -87,14 +92,34 @@ final class ReviewScanViewModel: ObservableObject {
             }
 
             self.projects = fetchedProjects
+            isLoadingProjects = false
+
             if let selectedProjectID,
                !fetchedProjects.contains(where: { $0.id == selectedProjectID }) {
-                self.selectedProjectID = nil
+                try await recoverMissingPreselectedProject(id: selectedProjectID)
             }
         } catch is CancellationError {
             return
         } catch {
             self.saveErrorMessage = String(localized: "review.error.load_projects_failed")
+        }
+    }
+
+    /// Fetches a preselected project that was missing from the published list and prepends it.
+    private func recoverMissingPreselectedProject(id: String) async throws {
+        do {
+            let project = try await projectsService.fetchProject(id: id)
+            guard selectedProjectID == id else { return }
+            guard !projects.contains(where: { $0.id == project.id }) else { return }
+            projects.insert(project, at: 0)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            guard selectedProjectID == id else { return }
+            // Cannot keep a selection that is not in the list (the picker would
+            // still show the placeholder). Tell the user why the preselection disappeared.
+            selectedProjectID = nil
+            saveErrorMessage = String(localized: "review.error.preselected_project_unavailable")
         }
     }
 

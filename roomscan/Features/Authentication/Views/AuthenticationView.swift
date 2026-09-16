@@ -5,12 +5,12 @@
 
 import AuthenticationServices
 import SwiftUI
+import UIKit
 
 struct AuthenticationView: View {
     @Bindable var appState: AppState
     @State private var viewModel: AuthenticationViewModel
     @State private var path = NavigationPath()
-    @State private var currentRawNonce: String?
 
     init(appState: AppState) {
         self.appState = appState
@@ -47,7 +47,6 @@ struct AuthenticationView: View {
 
                         VStack(spacing: 0) {
                             signInButton
-                            statusContent
                             legalLinks
                         }
                     }
@@ -135,25 +134,28 @@ struct AuthenticationView: View {
 
     @ViewBuilder
     private var signInButton: some View {
-        let control = SignInWithAppleButton(.signIn) { request in
-            let rawNonce = viewModel.generateRawNonce()
-            currentRawNonce = rawNonce
-            request.requestedScopes = [.fullName, .email]
-            request.nonce = viewModel.sha256(rawNonce)
-        } onCompletion: { result in
-            switch result {
-            case .success(let authorization):
-                guard let rawNonce = currentRawNonce else { return }
+        let control = AppleAuthorizationButton(
+            isEnabled: !viewModel.isSigningIn,
+            beginAuthorization: {
+                viewModel.beginAppleAuthorization()
+            },
+            hashNonce: { rawNonce in
+                viewModel.sha256(rawNonce)
+            },
+            onSuccess: { authorization, attemptID in
                 Task {
-                    if let session = await viewModel.signInWithApple(authorization: authorization, rawNonce: rawNonce) {
+                    if let session = await viewModel.signInWithApple(
+                        authorization: authorization,
+                        attemptID: attemptID
+                    ) {
                         appState.applySignedInSession(session)
                     }
                 }
-            case .failure(let error):
-                viewModel.handleAppleSignInError(error)
+            },
+            onFailure: { error, attemptID in
+                viewModel.handleAppleSignInError(error, attemptID: attemptID)
             }
-        }
-        .signInWithAppleButtonStyle(.black)
+        )
         .frame(maxWidth: AuthenticationMetrics.maximumButtonWidth)
         .frame(height: AuthenticationMetrics.actionHeight)
         .clipShape(
@@ -165,25 +167,51 @@ struct AuthenticationView: View {
         .disabled(viewModel.isSigningIn)
         .opacity(viewModel.isSigningIn ? AuthenticationMetrics.disabledOpacity : 1)
 
-        if isUITesting {
-            control
-                .allowsHitTesting(false)
-                .overlay {
-                    Button {
-                        Task {
-                            await applySignInWithApple()
+        Group {
+            if isUITesting {
+                control
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .overlay {
+                        Button {
+                            Task {
+                                await applySignInWithApple()
+                            }
+                        } label: {
+                            Color.clear
+                                .contentShape(Rectangle())
                         }
-                    } label: {
-                        Color.clear
-                            .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .disabled(viewModel.isSigningIn)
+                        .accessibilityIdentifier("auth.signInWithApple")
                     }
-                    .buttonStyle(.plain)
-                    .disabled(viewModel.isSigningIn)
+            } else {
+                control
                     .accessibilityIdentifier("auth.signInWithApple")
+            }
+        }
+        .overlay {
+            if viewModel.isSigningIn {
+                HStack(spacing: AppSpacing.small) {
+                    ProgressView()
+                        .controlSize(.large)
+                        .scaleEffect(0.65)
+                        .tint(.white)
+                    Text("auth.signingIn")
+                        .appTypography(AppTypography.labelButton)
+                        .foregroundStyle(.white)
                 }
-        } else {
-            control
-                .accessibilityIdentifier("auth.signInWithApple")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(.black)
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: AppCornerRadius.medium,
+                        style: .continuous
+                    )
+                )
+                .allowsHitTesting(false)
+                .accessibilityIdentifier("auth.signingIn")
+            }
         }
     }
 
@@ -197,14 +225,149 @@ struct AuthenticationView: View {
         }
     }
 
-    @ViewBuilder
-    private var statusContent: some View {
-        if viewModel.isSigningIn {
-            ProgressView(String(localized: "auth.signingIn"))
-                .appTypography(AppTypography.captionMedium)
-                .padding(.top, AppSpacing.large)
-                .accessibilityIdentifier("auth.signingIn")
+}
+
+private struct AppleAuthorizationButton: UIViewRepresentable {
+    private struct AuthorizationContext {
+        let controller: ASAuthorizationController
+        let attemptID: UUID
+        let createdAt: Date
+    }
+
+    let isEnabled: Bool
+    let beginAuthorization: () -> AuthenticationViewModel.AppleAuthorizationAttempt
+    let hashNonce: (String) -> String
+    let onSuccess: (ASAuthorization, UUID) -> Void
+    let onFailure: (Error, UUID) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(
+            beginAuthorization: beginAuthorization,
+            hashNonce: hashNonce,
+            onSuccess: onSuccess,
+            onFailure: onFailure
+        )
+    }
+
+    func makeUIView(context: Context) -> ASAuthorizationAppleIDButton {
+        let button = ASAuthorizationAppleIDButton(type: .signIn, style: .black)
+        button.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.startAuthorization),
+            for: .touchUpInside
+        )
+        context.coordinator.button = button
+        return button
+    }
+
+    func updateUIView(_ uiView: ASAuthorizationAppleIDButton, context: Context) {
+        uiView.isEnabled = isEnabled
+        context.coordinator.beginAuthorization = beginAuthorization
+        context.coordinator.hashNonce = hashNonce
+        context.coordinator.onSuccess = onSuccess
+        context.coordinator.onFailure = onFailure
+    }
+
+    @MainActor
+    final class Coordinator: NSObject,
+        ASAuthorizationControllerDelegate,
+        ASAuthorizationControllerPresentationContextProviding {
+        weak var button: ASAuthorizationAppleIDButton?
+        var beginAuthorization: () -> AuthenticationViewModel.AppleAuthorizationAttempt
+        var hashNonce: (String) -> String
+        var onSuccess: (ASAuthorization, UUID) -> Void
+        var onFailure: (Error, UUID) -> Void
+
+        /// Removed by the delegate via `finishAuthorization`, or pruned when newer
+        /// attempts start. Cancelled controllers are kept briefly so a late sheet
+        /// submit can still be routed into the view model.
+        private var authorizationContexts: [ObjectIdentifier: AuthorizationContext] = [:]
+        /// Enough retained sheets to cover the multi-retry hang scenario without
+        /// unbounded growth if Apple never calls the delegate after `cancel()`.
+        private let maxRetainedAuthorizationContexts = 3
+
+        init(
+            beginAuthorization: @escaping () -> AuthenticationViewModel.AppleAuthorizationAttempt,
+            hashNonce: @escaping (String) -> String,
+            onSuccess: @escaping (ASAuthorization, UUID) -> Void,
+            onFailure: @escaping (Error, UUID) -> Void
+        ) {
+            self.beginAuthorization = beginAuthorization
+            self.hashNonce = hashNonce
+            self.onSuccess = onSuccess
+            self.onFailure = onFailure
         }
+
+        @objc func startAuthorization() {
+            let attempt = beginAuthorization()
+            cancelAuthorizationContexts(except: attempt.id)
+            guard !authorizationContexts.values.contains(where: { $0.attemptID == attempt.id }) else {
+                return
+            }
+
+            let request = ASAuthorizationAppleIDProvider().createRequest()
+            request.requestedScopes = [.fullName, .email]
+            request.nonce = hashNonce(attempt.rawNonce)
+
+            let controller = ASAuthorizationController(authorizationRequests: [request])
+            authorizationContexts[ObjectIdentifier(controller)] = AuthorizationContext(
+                controller: controller,
+                attemptID: attempt.id,
+                createdAt: Date()
+            )
+            controller.delegate = self
+            controller.presentationContextProvider = self
+            controller.performRequests()
+        }
+
+        func authorizationController(
+            controller: ASAuthorizationController,
+            didCompleteWithAuthorization authorization: ASAuthorization
+        ) {
+            guard let attemptID = finishAuthorization(for: controller) else { return }
+            onSuccess(authorization, attemptID)
+        }
+
+        func authorizationController(
+            controller: ASAuthorizationController,
+            didCompleteWithError error: Error
+        ) {
+            guard let attemptID = finishAuthorization(for: controller) else { return }
+            onFailure(error, attemptID)
+        }
+
+        func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+            button?.window ?? ASPresentationAnchor()
+        }
+
+        private func finishAuthorization(for controller: ASAuthorizationController) -> UUID? {
+            authorizationContexts
+                .removeValue(forKey: ObjectIdentifier(controller))?
+                .attemptID
+        }
+
+        private func cancelAuthorizationContexts(except attemptID: UUID) {
+            // Cancel stale controllers but keep their contexts until the delegate fires
+            // or they are pruned below. Apple's sheet often stays up after cancel();
+            // dropping the context would make a late Face ID/password submit disappear
+            // with no callback into the view model.
+            for context in authorizationContexts.values where context.attemptID != attemptID {
+                context.controller.cancel()
+            }
+            pruneAuthorizationContexts(keeping: attemptID)
+        }
+
+        private func pruneAuthorizationContexts(keeping attemptID: UUID) {
+            let staleContexts = authorizationContexts
+                .filter { $0.value.attemptID != attemptID }
+                .sorted { $0.value.createdAt < $1.value.createdAt }
+            let staleLimit = max(0, maxRetainedAuthorizationContexts - 1)
+            guard staleContexts.count > staleLimit else { return }
+            for (identifier, _) in staleContexts.dropLast(staleLimit) {
+                authorizationContexts.removeValue(forKey: identifier)
+            }
+        }
+
     }
 }
 

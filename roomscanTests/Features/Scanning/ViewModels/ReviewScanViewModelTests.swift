@@ -197,9 +197,170 @@ final class ReviewScanViewModelTests: XCTestCase {
         XCTAssertEqual(callCount, ReviewScanViewModel.maxProjectPages)
         XCTAssertNil(viewModel.saveErrorMessage)
     }
+
+    /// Preselected project missing from the list is fetched by ID and kept selected.
+    func testLoadProjects_recoversPreselectedProjectMissingFromList() async {
+        let missingProject = ProjectSummary(
+            id: "missing-from-list",
+            name: "Recovered Project",
+            ownerName: "You",
+            createdAt: Date(),
+            updatedAt: Date(),
+            description: "",
+            sharedUserCount: 0,
+            roomScans: []
+        )
+        let service = SelectiveProjectsService(
+            listedProjects: [],
+            fetchableProjects: [missingProject]
+        )
+        let viewModel = ReviewScanViewModel(
+            draft: dummyDraft,
+            preselectedProjectID: missingProject.id,
+            projectsService: service
+        )
+
+        await viewModel.loadProjects()
+
+        XCTAssertEqual(viewModel.selectedProjectID, missingProject.id)
+        XCTAssertEqual(viewModel.projects.first?.id, missingProject.id)
+        XCTAssertEqual(viewModel.projects.first?.name, "Recovered Project")
+    }
+
+    /// Stale preselection is cleared when list load and fetch-by-ID both fail to find it.
+    func testLoadProjects_clearsPreselectedProjectWhenFetchAlsoFails() async {
+        let service = SelectiveProjectsService(
+            listedProjects: [],
+            fetchableProjects: []
+        )
+        let viewModel = ReviewScanViewModel(
+            draft: dummyDraft,
+            preselectedProjectID: "stale-project",
+            projectsService: service
+        )
+
+        await viewModel.loadProjects()
+
+        XCTAssertNil(viewModel.selectedProjectID)
+        XCTAssertTrue(viewModel.projects.isEmpty)
+        XCTAssertEqual(
+            viewModel.saveErrorMessage,
+            String(localized: "review.error.preselected_project_unavailable")
+        )
+    }
+
+    /// Cancellation during recovery keeps the selection and leaves the already published list in place.
+    func testLoadProjects_whenRecoveryCancelled_keepsSelectionAndPublishedList() async {
+        let listedProject = ProjectSummary(
+            id: "listed-only",
+            name: "Listed Only",
+            ownerName: "You",
+            createdAt: Date(),
+            updatedAt: Date(),
+            description: "",
+            sharedUserCount: 0,
+            roomScans: []
+        )
+        let service = SelectiveProjectsService(
+            listedProjects: [listedProject],
+            fetchableProjects: [],
+            fetchProjectBehavior: .cancellation
+        )
+        let viewModel = ReviewScanViewModel(
+            draft: dummyDraft,
+            preselectedProjectID: "preselected-project",
+            projectsService: service
+        )
+
+        await viewModel.loadProjects()
+
+        XCTAssertEqual(viewModel.selectedProjectID, "preselected-project")
+        XCTAssertEqual(viewModel.projects.map(\.id), [listedProject.id])
+        XCTAssertNil(viewModel.saveErrorMessage)
+        XCTAssertFalse(viewModel.isLoadingProjects)
+    }
+
+    /// The paginated list is visible before the missing-project recovery request finishes.
+    func testLoadProjects_publishesListBeforePreselectedProjectRecovery() async {
+        let listedProject = ProjectSummary(
+            id: "listed-only",
+            name: "Listed Only",
+            ownerName: "You",
+            createdAt: Date(),
+            updatedAt: Date(),
+            description: "",
+            sharedUserCount: 0,
+            roomScans: []
+        )
+        let recoveredProject = ProjectSummary(
+            id: "preselected-project",
+            name: "Recovered Project",
+            ownerName: "You",
+            createdAt: Date(),
+            updatedAt: Date(),
+            description: "",
+            sharedUserCount: 0,
+            roomScans: []
+        )
+        let service = SuspendedFetchProjectService(listedProjects: [listedProject])
+        let viewModel = ReviewScanViewModel(
+            draft: dummyDraft,
+            preselectedProjectID: recoveredProject.id,
+            projectsService: service
+        )
+
+        let loadTask = Task { await viewModel.loadProjects() }
+        await service.waitUntilFetchProjectStarted()
+
+        XCTAssertEqual(viewModel.projects.map(\.id), [listedProject.id])
+        XCTAssertEqual(viewModel.selectedProjectID, recoveredProject.id)
+        XCTAssertFalse(viewModel.isLoadingProjects)
+
+        await service.resumeFetchProject(with: recoveredProject)
+        await loadTask.value
+
+        XCTAssertEqual(viewModel.projects.map(\.id), [recoveredProject.id, listedProject.id])
+        XCTAssertFalse(viewModel.isLoadingProjects)
+    }
 }
 
-private actor FailingProjectsService: ProjectsService {
+/// Shared unused `ProjectsService` stubs for ReviewScan unit-test doubles.
+private protocol ReviewScanUnusedProjectsServiceStubs: ProjectsService {}
+
+extension ReviewScanUnusedProjectsServiceStubs {
+    func createProject(name: String, projectDescription: String) async throws -> ProjectSummary {
+        throw ProjectsServiceError.network
+    }
+
+    func updateProject(id: String, name: String, description: String, revision: Int) async throws -> ProjectSummary {
+        throw ProjectsServiceError.network
+    }
+
+    func deleteProject(id: String) async throws {
+        throw ProjectsServiceError.network
+    }
+
+    func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool { false }
+
+    func saveScan(draft: RoomScanDraft, name: String, projectID: String, meshURL: URL) async throws
+        -> RoomScanSummary {
+        throw ProjectsServiceError.network
+    }
+
+    func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary {
+        throw ProjectsServiceError.network
+    }
+
+    func deleteScan(projectID: String, scanID: String) async throws {
+        throw ProjectsServiceError.network
+    }
+
+    func retryScanUpload(projectID: String, scanID: String) async throws -> RoomScanSummary {
+        throw ProjectsServiceError.network
+    }
+}
+
+private actor FailingProjectsService: ReviewScanUnusedProjectsServiceStubs {
     enum FetchProjectsBehavior: Sendable {
         case failure
         case cancellation
@@ -229,16 +390,108 @@ private actor FailingProjectsService: ProjectsService {
     func fetchProjectsCallCount() -> Int { fetchCount }
 
     func fetchProject(id: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }
-    func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] { throw ProjectsServiceError.network }
-    func createProject(name: String, projectDescription: String) async throws -> ProjectSummary { throw ProjectsServiceError.network }
-    func updateProject(id: String, name: String, description: String, revision: Int) async throws -> ProjectSummary { throw ProjectsServiceError.network }
-    func deleteProject(id: String) async throws { throw ProjectsServiceError.network }
-    func isScanNameDuplicate(name: String, projectID: String) async throws -> Bool { false }
-    func saveScan(draft: RoomScanDraft, name: String, projectID: String, meshURL: URL) async throws
-        -> RoomScanSummary { throw ProjectsServiceError.network }
-    func renameScan(projectID: String, scanID: String, name: String) async throws -> RoomScanSummary { throw ProjectsServiceError.network }
-    func deleteScan(projectID: String, scanID: String) async throws { throw ProjectsServiceError.network }
-    func retryScanUpload(projectID: String, scanID: String) async throws -> RoomScanSummary { throw ProjectsServiceError.network }
+
+    func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] {
+        throw ProjectsServiceError.network
+    }
+}
+
+/// Test double that can return a different set for list vs fetch-by-ID, including cancellation.
+private actor SelectiveProjectsService: ReviewScanUnusedProjectsServiceStubs {
+    enum FetchProjectBehavior: Sendable {
+        case useFetchableProjects
+        case cancellation
+    }
+
+    private let listedProjects: [ProjectSummary]
+    private let fetchableProjects: [ProjectSummary]
+    private let fetchProjectBehavior: FetchProjectBehavior
+
+    /// Creates a selective stub for list vs single-project recovery tests.
+    /// - Parameters:
+    ///   - listedProjects: Projects returned by paginated `fetchProjects`.
+    ///   - fetchableProjects: Projects returned by `fetchProject(id:)` when not cancelling.
+    ///   - fetchProjectBehavior: Controls whether `fetchProject` succeeds or cancels.
+    init(
+        listedProjects: [ProjectSummary],
+        fetchableProjects: [ProjectSummary],
+        fetchProjectBehavior: FetchProjectBehavior = .useFetchableProjects
+    ) {
+        self.listedProjects = listedProjects
+        self.fetchableProjects = fetchableProjects
+        self.fetchProjectBehavior = fetchProjectBehavior
+    }
+
+    /// Returns the configured listed page for page 1, otherwise an empty page.
+    func fetchProjects(page: Int, pageSize: Int) async throws -> ProjectPage {
+        guard page == 1 else {
+            return ProjectPage(projects: [], hasMore: false)
+        }
+        return ProjectPage(projects: listedProjects, hasMore: false)
+    }
+
+    /// Returns a configured project, or throws cancellation / not-found.
+    func fetchProject(id: String) async throws -> ProjectSummary {
+        if case .cancellation = fetchProjectBehavior {
+            throw CancellationError()
+        }
+        guard let project = fetchableProjects.first(where: { $0.id == id }) else {
+            throw ProjectsServiceError.projectNotFound
+        }
+        return project
+    }
+
+    /// Returns the listed projects sorted by the stub's fixed order.
+    func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] { listedProjects }
+}
+
+/// Holds `fetchProject` until the test resumes it, so list publication can be observed first.
+private actor SuspendedFetchProjectService: ReviewScanUnusedProjectsServiceStubs {
+    private let listedProjects: [ProjectSummary]
+    private var didStartFetch = false
+    private var fetchStartedWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseFetch: CheckedContinuation<ProjectSummary, Error>?
+
+    /// Creates a stub whose list returns immediately and whose single-project fetch waits.
+    init(listedProjects: [ProjectSummary]) {
+        self.listedProjects = listedProjects
+    }
+
+    /// Returns the configured listed page for page 1, otherwise an empty page.
+    func fetchProjects(page: Int, pageSize: Int) async throws -> ProjectPage {
+        guard page == 1 else {
+            return ProjectPage(projects: [], hasMore: false)
+        }
+        return ProjectPage(projects: listedProjects, hasMore: false)
+    }
+
+    /// Suspends until `resumeFetchProject(with:)` supplies the recovered project.
+    func fetchProject(id: String) async throws -> ProjectSummary {
+        didStartFetch = true
+        let waiters = fetchStartedWaiters
+        fetchStartedWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+        return try await withCheckedThrowingContinuation { continuation in
+            releaseFetch = continuation
+        }
+    }
+
+    /// Returns the listed projects in the stub's fixed order.
+    func fetchAllProjectsSortedByUpdated() async throws -> [ProjectSummary] { listedProjects }
+
+    /// Waits until `fetchProject` has started, which is after the list has been published.
+    func waitUntilFetchProjectStarted() async {
+        if didStartFetch { return }
+        await withCheckedContinuation { continuation in
+            fetchStartedWaiters.append(continuation)
+        }
+    }
+
+    /// Completes the suspended `fetchProject` call.
+    func resumeFetchProject(with project: ProjectSummary) {
+        releaseFetch?.resume(returning: project)
+        releaseFetch = nil
+    }
 }
 
 private final class FailingScanStorageService: ScanStorageService, @unchecked Sendable {
