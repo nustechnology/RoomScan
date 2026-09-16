@@ -136,8 +136,8 @@ struct AuthenticationView: View {
     private var signInButton: some View {
         let control = AppleAuthorizationButton(
             isEnabled: !viewModel.isSigningIn,
-            beginAuthorization: { onTimeout in
-                viewModel.beginAppleAuthorization(onTimeout: onTimeout)
+            beginAuthorization: {
+                viewModel.beginAppleAuthorization()
             },
             hashNonce: { rawNonce in
                 viewModel.sha256(rawNonce)
@@ -231,10 +231,11 @@ private struct AppleAuthorizationButton: UIViewRepresentable {
     private struct AuthorizationContext {
         let controller: ASAuthorizationController
         let attemptID: UUID
+        let createdAt: Date
     }
 
     let isEnabled: Bool
-    let beginAuthorization: (@escaping @MainActor (UUID) -> Void) -> AuthenticationViewModel.AppleAuthorizationAttempt
+    let beginAuthorization: () -> AuthenticationViewModel.AppleAuthorizationAttempt
     let hashNonce: (String) -> String
     let onSuccess: (ASAuthorization, UUID) -> Void
     let onFailure: (Error, UUID) -> Void
@@ -272,17 +273,21 @@ private struct AppleAuthorizationButton: UIViewRepresentable {
         ASAuthorizationControllerDelegate,
         ASAuthorizationControllerPresentationContextProviding {
         weak var button: ASAuthorizationAppleIDButton?
-        var beginAuthorization: (@escaping @MainActor (UUID) -> Void) -> AuthenticationViewModel.AppleAuthorizationAttempt
+        var beginAuthorization: () -> AuthenticationViewModel.AppleAuthorizationAttempt
         var hashNonce: (String) -> String
         var onSuccess: (ASAuthorization, UUID) -> Void
         var onFailure: (Error, UUID) -> Void
 
+        /// Removed by the delegate via `finishAuthorization`, or pruned when newer
+        /// attempts start. Cancelled controllers are kept briefly so a late sheet
+        /// submit can still be routed into the view model.
         private var authorizationContexts: [ObjectIdentifier: AuthorizationContext] = [:]
+        /// Enough retained sheets to cover the multi-retry hang scenario without
+        /// unbounded growth if Apple never calls the delegate after `cancel()`.
+        private let maxRetainedAuthorizationContexts = 3
 
         init(
-            beginAuthorization: @escaping (
-                @escaping @MainActor (UUID) -> Void
-            ) -> AuthenticationViewModel.AppleAuthorizationAttempt,
+            beginAuthorization: @escaping () -> AuthenticationViewModel.AppleAuthorizationAttempt,
             hashNonce: @escaping (String) -> String,
             onSuccess: @escaping (ASAuthorization, UUID) -> Void,
             onFailure: @escaping (Error, UUID) -> Void
@@ -294,9 +299,7 @@ private struct AppleAuthorizationButton: UIViewRepresentable {
         }
 
         @objc func startAuthorization() {
-            let attempt = beginAuthorization { [weak self] attemptID in
-                self?.cancelAuthorizationContext(for: attemptID)
-            }
+            let attempt = beginAuthorization()
             cancelAuthorizationContexts(except: attempt.id)
             guard !authorizationContexts.values.contains(where: { $0.attemptID == attempt.id }) else {
                 return
@@ -309,7 +312,8 @@ private struct AppleAuthorizationButton: UIViewRepresentable {
             let controller = ASAuthorizationController(authorizationRequests: [request])
             authorizationContexts[ObjectIdentifier(controller)] = AuthorizationContext(
                 controller: controller,
-                attemptID: attempt.id
+                attemptID: attempt.id,
+                createdAt: Date()
             )
             controller.delegate = self
             controller.presentationContextProvider = self
@@ -343,20 +347,27 @@ private struct AppleAuthorizationButton: UIViewRepresentable {
         }
 
         private func cancelAuthorizationContexts(except attemptID: UUID) {
-            let staleContexts = authorizationContexts.filter { $0.value.attemptID != attemptID }
-            for (identifier, context) in staleContexts {
-                authorizationContexts.removeValue(forKey: identifier)
+            // Cancel stale controllers but keep their contexts until the delegate fires
+            // or they are pruned below. Apple's sheet often stays up after cancel();
+            // dropping the context would make a late Face ID/password submit disappear
+            // with no callback into the view model.
+            for context in authorizationContexts.values where context.attemptID != attemptID {
                 context.controller.cancel()
+            }
+            pruneAuthorizationContexts(keeping: attemptID)
+        }
+
+        private func pruneAuthorizationContexts(keeping attemptID: UUID) {
+            let staleContexts = authorizationContexts
+                .filter { $0.value.attemptID != attemptID }
+                .sorted { $0.value.createdAt < $1.value.createdAt }
+            let staleLimit = max(0, maxRetainedAuthorizationContexts - 1)
+            guard staleContexts.count > staleLimit else { return }
+            for (identifier, _) in staleContexts.dropLast(staleLimit) {
+                authorizationContexts.removeValue(forKey: identifier)
             }
         }
 
-        private func cancelAuthorizationContext(for attemptID: UUID) {
-            let expiredContexts = authorizationContexts.filter { $0.value.attemptID == attemptID }
-            for (identifier, context) in expiredContexts {
-                authorizationContexts.removeValue(forKey: identifier)
-                context.controller.cancel()
-            }
-        }
     }
 }
 

@@ -28,15 +28,29 @@ final class AuthenticationViewModel {
 
     private let authenticationService: any AuthenticationService
     private let appleAuthorizationTimeoutNanoseconds: UInt64
+    private let appleAuthorizationExpiryNanoseconds: UInt64
     private var activeAppleAuthorizationAttempt: AppleAuthorizationAttempt?
+    /// The attempt that timed out but can still complete if Apple calls back before it expires.
+    /// At most one exists: `beginAppleAuthorization` clears it before creating a new attempt.
+    /// The live `ASAuthorizationController` is intentionally not cancelled here —
+    /// `cancel()` does not reliably dismiss Apple's sheet, and dropping the controller
+    /// context would discard a late successful credential from that same sheet.
+    private var timedOutAppleAuthorizationAttempt: AppleAuthorizationAttempt?
+    /// Attempt IDs that can no longer complete a sign-in but should still surface an error
+    /// if Apple's sheet calls back late. Covers expired grace-period attempts and attempts
+    /// superseded by a newer tap. Consumed on use; bounded by taps on this screen.
+    private var abandonedAppleAuthorizationAttemptIDs: Set<UUID> = []
     @ObservationIgnored private var appleAuthorizationTimeoutTask: Task<Void, Never>?
+    @ObservationIgnored private var timedOutAppleAuthorizationExpiryTask: Task<Void, Never>?
 
     init(
         authenticationService: any AuthenticationService,
-        appleAuthorizationTimeoutNanoseconds: UInt64 = 120_000_000_000
+        appleAuthorizationTimeoutNanoseconds: UInt64 = 120_000_000_000,
+        appleAuthorizationExpiryNanoseconds: UInt64 = 600_000_000_000
     ) {
         self.authenticationService = authenticationService
         self.appleAuthorizationTimeoutNanoseconds = appleAuthorizationTimeoutNanoseconds
+        self.appleAuthorizationExpiryNanoseconds = appleAuthorizationExpiryNanoseconds
     }
 
     var isSigningIn: Bool {
@@ -73,23 +87,28 @@ final class AuthenticationViewModel {
         return hashedData.compactMap { String(format: "%02x", $0) }.joined()
     }
 
-    func beginAppleAuthorization(
-        onTimeout: @escaping @MainActor (UUID) -> Void = { _ in }
-    ) -> AppleAuthorizationAttempt {
+    func beginAppleAuthorization() -> AppleAuthorizationAttempt {
         if let activeAppleAuthorizationAttempt {
             return activeAppleAuthorizationAttempt
         }
 
+        supersedeAbandonedAppleAuthorizationAttempts()
         let attempt = AppleAuthorizationAttempt(id: UUID(), rawNonce: generateRawNonce())
         activeAppleAuthorizationAttempt = attempt
-        startAppleAuthorizationTimeout(for: attempt.id, onTimeout: onTimeout)
+        startAppleAuthorizationTimeout(for: attempt.id)
         return attempt
     }
 
     func endAppleAuthorization(attemptID: UUID) {
+        // Duplicate-callback guard: keep the id so a second delegate fire cannot fail
+        // silently. `finishAuthorization` removes the context first, so this is defensive.
+        if clearTimedOutAppleAuthorizationAttempt(attemptID: attemptID) != nil {
+            rememberAbandonedAppleAuthorizationAttempt(attemptID)
+        }
         guard activeAppleAuthorizationAttempt?.id == attemptID else { return }
         cancelAppleAuthorizationTimeout()
         activeAppleAuthorizationAttempt = nil
+        rememberAbandonedAppleAuthorizationAttempt(attemptID)
     }
 
     @discardableResult
@@ -110,14 +129,30 @@ final class AuthenticationViewModel {
         attemptID: UUID,
         authenticate: (String) async throws -> AuthenticationSession
     ) async -> AuthenticationSession? {
-        guard !isCredentialExchangeInProgress,
-              let attempt = activeAppleAuthorizationAttempt,
-              attempt.id == attemptID
-        else { return nil }
+        guard !isCredentialExchangeInProgress else {
+            let wasTimedOut = clearTimedOutAppleAuthorizationAttempt(attemptID: attemptID) != nil
+            let wasAbandoned = consumeAbandonedAppleAuthorizationAttempt(attemptID: attemptID)
+            if wasTimedOut || wasAbandoned {
+                // The Apple credential cannot be replayed after this callback returns.
+                toastMessage = AuthenticationError.appleSystemError.errorDescription
+                toastStyle = .error
+            }
+            return nil
+        }
+        guard let attempt = appleAuthorizationAttempt(for: attemptID) else {
+            if consumeAbandonedAppleAuthorizationAttempt(attemptID: attemptID) {
+                handleError(.appleSystemError)
+            }
+            return nil
+        }
 
         cancelAppleAuthorizationTimeout()
+        // Claim the attempt before awaiting so the grace-period expiry cannot mark it
+        // expired mid-exchange and leave a stale marker after success.
+        clearTimedOutAppleAuthorizationAttempt(attemptID: attemptID)
         viewState = .signingIn
         defer {
+            consumeAbandonedAppleAuthorizationAttempt(attemptID: attemptID)
             if activeAppleAuthorizationAttempt?.id == attemptID {
                 activeAppleAuthorizationAttempt = nil
             }
@@ -137,11 +172,24 @@ final class AuthenticationViewModel {
     }
 
     func handleAppleSignInError(_ error: Error, attemptID: UUID) {
-        guard !isCredentialExchangeInProgress,
-              activeAppleAuthorizationAttempt?.id == attemptID
-        else { return }
+        // Drop markers even when another exchange is in flight: interrupting that
+        // exchange with a toast would be worse, and this attempt must not remain
+        // completable after Apple has already failed it.
+        let removedCompletableAttempt = clearTimedOutAppleAuthorizationAttempt(attemptID: attemptID)
+        let isAbandonedAttempt = consumeAbandonedAppleAuthorizationAttempt(attemptID: attemptID)
+        guard !isCredentialExchangeInProgress else { return }
+        guard activeAppleAuthorizationAttempt?.id == attemptID else {
+            guard removedCompletableAttempt != nil || isAbandonedAttempt else {
+                return
+            }
+            reportAppleSignInFailure(error)
+            return
+        }
         endAppleAuthorization(attemptID: attemptID)
+        reportAppleSignInFailure(error)
+    }
 
+    private func reportAppleSignInFailure(_ error: Error) {
         if let authError = error as? ASAuthorizationError {
             if authError.code == .canceled {
                 viewState = .idle
@@ -190,10 +238,14 @@ final class AuthenticationViewModel {
         return false
     }
 
-    private func startAppleAuthorizationTimeout(
-        for attemptID: UUID,
-        onTimeout: @escaping @MainActor (UUID) -> Void
-    ) {
+    private func appleAuthorizationAttempt(for attemptID: UUID) -> AppleAuthorizationAttempt? {
+        if let activeAppleAuthorizationAttempt {
+            return activeAppleAuthorizationAttempt.id == attemptID ? activeAppleAuthorizationAttempt : nil
+        }
+        return timedOutAppleAuthorizationAttempt?.id == attemptID ? timedOutAppleAuthorizationAttempt : nil
+    }
+
+    private func startAppleAuthorizationTimeout(for attemptID: UUID) {
         appleAuthorizationTimeoutTask?.cancel()
         let timeoutNanoseconds = appleAuthorizationTimeoutNanoseconds
         appleAuthorizationTimeoutTask = Task { [weak self] in
@@ -205,14 +257,71 @@ final class AuthenticationViewModel {
 
             guard let self,
                   !self.isCredentialExchangeInProgress,
-                  self.activeAppleAuthorizationAttempt?.id == attemptID
+                  let attempt = self.activeAppleAuthorizationAttempt,
+                  attempt.id == attemptID
             else { return }
 
-            onTimeout(attemptID)
+            // Unlock the button only. Do not cancel the ASAuthorizationController: Apple's
+            // password sheet often stays up after cancel(), and a late submit from that
+            // sheet must still be able to exchange the retained nonce during the grace period.
             self.activeAppleAuthorizationAttempt = nil
+            self.timedOutAppleAuthorizationAttempt = attempt
             self.appleAuthorizationTimeoutTask = nil
-            self.handleError(.appleAuthorizationTimedOut)
+            self.startTimedOutAppleAuthorizationExpiry(for: attempt.id)
         }
+    }
+
+    private func startTimedOutAppleAuthorizationExpiry(for attemptID: UUID) {
+        timedOutAppleAuthorizationExpiryTask?.cancel()
+        let expiryNanoseconds = appleAuthorizationExpiryNanoseconds
+        timedOutAppleAuthorizationExpiryTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: expiryNanoseconds)
+            } catch {
+                return
+            }
+
+            guard !Task.isCancelled else { return }
+
+            guard let self,
+                  self.timedOutAppleAuthorizationAttempt?.id == attemptID
+            else { return }
+
+            self.timedOutAppleAuthorizationAttempt = nil
+            self.rememberAbandonedAppleAuthorizationAttempt(attemptID)
+            self.timedOutAppleAuthorizationExpiryTask = nil
+        }
+    }
+
+    private func supersedeAbandonedAppleAuthorizationAttempts() {
+        if let timedOutAppleAuthorizationAttempt {
+            rememberAbandonedAppleAuthorizationAttempt(timedOutAppleAuthorizationAttempt.id)
+        }
+        cancelTimedOutAppleAuthorizationExpiry()
+        timedOutAppleAuthorizationAttempt = nil
+    }
+
+    private func rememberAbandonedAppleAuthorizationAttempt(_ attemptID: UUID) {
+        abandonedAppleAuthorizationAttemptIDs.insert(attemptID)
+    }
+
+    @discardableResult
+    private func clearTimedOutAppleAuthorizationAttempt(attemptID: UUID) -> AppleAuthorizationAttempt? {
+        guard timedOutAppleAuthorizationAttempt?.id == attemptID else { return nil }
+        cancelTimedOutAppleAuthorizationExpiry()
+        let attempt = timedOutAppleAuthorizationAttempt
+        timedOutAppleAuthorizationAttempt = nil
+        return attempt
+    }
+
+    @discardableResult
+    private func consumeAbandonedAppleAuthorizationAttempt(attemptID: UUID) -> Bool {
+        abandonedAppleAuthorizationAttemptIDs.remove(attemptID) != nil
+    }
+
+    private func cancelTimedOutAppleAuthorizationExpiry() {
+        timedOutAppleAuthorizationExpiryTask?.cancel()
+        timedOutAppleAuthorizationExpiryTask = nil
     }
 
     private func cancelAppleAuthorizationTimeout() {

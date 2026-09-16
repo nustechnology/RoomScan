@@ -27,7 +27,6 @@ nonisolated struct AuthenticationSession: Equatable, Codable, Sendable {
 nonisolated enum AuthenticationError: Error, Equatable, Sendable, LocalizedError {
     case cancelled
     case appleSystemError
-    case appleAuthorizationTimedOut
     case invalidCredential
     case networkError
     /// The server answered, but rejected the request with a status that carries no
@@ -42,8 +41,6 @@ nonisolated enum AuthenticationError: Error, Equatable, Sendable, LocalizedError
             String(localized: "auth.error.cancelled")
         case .appleSystemError:
             String(localized: "auth.error.appleSystem")
-        case .appleAuthorizationTimedOut:
-            String(localized: "auth.error.appleAuthorizationTimedOut")
         case .invalidCredential:
             String(localized: "auth.error.invalidCredential")
         case .networkError:
