@@ -96,14 +96,16 @@ final class ScanDetailViewModel {
 
     static func formattedDate(
         for date: Date,
-        locale: Locale = .current,
+        locale: Locale = Locale(identifier: "en_US"),
         timeZone: TimeZone = .current
     ) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.timeZone = timeZone
-        formatter.dateFormat = "MMM d, yyyy"
-        return formatter.string(from: date)
+        var style = Date.FormatStyle()
+            .month(.abbreviated)
+            .day()
+            .year()
+            .locale(locale)
+        style.timeZone = timeZone
+        return date.formatted(style)
     }
 
     var notesCountText: String {
