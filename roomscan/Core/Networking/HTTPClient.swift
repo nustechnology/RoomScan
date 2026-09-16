@@ -317,13 +317,6 @@ nonisolated struct LiveHTTPClient: HTTPClient {
     }
 
     #if DEBUG
-    private static let sensitiveHeaderKeys: Set<String> = [
-        "authorization",
-        "cookie",
-        "set-cookie",
-        "x-api-key",
-    ]
-
     private static func logRequest(_ request: URLRequest) {
         let method = request.httpMethod ?? "?"
         let url = request.url?.absoluteString ?? "<nil>"
@@ -347,26 +340,6 @@ nonisolated struct LiveHTTPClient: HTTPClient {
             bodyBytes=\(data.count)
             """
         )
-    }
-
-    private static func redactedHeaders(from headers: [String: String]) -> [String: String] {
-        Dictionary(uniqueKeysWithValues: headers.map { key, value in
-            let redacted = sensitiveHeaderKeys.contains(key.lowercased()) ? "<redacted>" : value
-            return (key, redacted)
-        })
-    }
-
-    private static func redactedHeaders(from headers: [AnyHashable: Any]) -> [String: String] {
-        var result: [String: String] = [:]
-        for (key, value) in headers {
-            let keyString = String(describing: key)
-            if sensitiveHeaderKeys.contains(keyString.lowercased()) {
-                result[keyString] = "<redacted>"
-            } else {
-                result[keyString] = String(describing: value)
-            }
-        }
-        return result
     }
     #endif
 

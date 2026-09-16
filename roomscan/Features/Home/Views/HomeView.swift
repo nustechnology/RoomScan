@@ -38,7 +38,6 @@ struct HomeView: View {
     @State private var requestedScanSourceProjectID: String?
     @State private var isShowingProjectsDetail = false
     @State private var invitationOverlayPresenter: InvitationOverlayWindowPresenter
-    @State private var pendingAcceptedDestination: AcceptedInvitationDestination?
     @State private var acceptedProject: ProjectSummary?
     @State private var acceptedViewerInput: ViewerInput?
     @State private var acceptedInvitations = AcceptedInvitationCollection()
@@ -265,9 +264,9 @@ struct HomeView: View {
 
 private extension HomeView {
     func presentInvitationOverlay(_ invitation: PendingInvitation) {
-        invitationOverlayPresenter.present(
+        let didPresent = invitationOverlayPresenter.present(
             invitation: invitation,
-            onDismiss: handleInvitationCoverDismissed,
+            onDismiss: {},
             onReplaced: handleInvitationDismissed,
             content: {
                 InvitationView(
@@ -282,6 +281,15 @@ private extension HomeView {
                 )
             }
         )
+
+        if !didPresent {
+            #if DEBUG
+            print("[Invitations] failed to present overlay for \(invitation.id)")
+            #endif
+            if !invitationOverlayPresenter.isPresented {
+                clearPendingInvitation(matching: invitation)
+            }
+        }
     }
 
     func handleInvitationFinished(
@@ -304,37 +312,24 @@ private extension HomeView {
             Task {
                 await sharedViewModel.ingestAcceptedDestination(destination)
                 Task { await sharedViewModel.refreshAllContent() }
-                await presentAcceptedDestinationWhenReady(destination)
+                await openAcceptedDestination(destination)
             }
         case .opened(let destination):
-            Task { await presentAcceptedDestinationWhenReady(destination) }
+            Task { await openAcceptedDestination(destination) }
+        }
+
+        if let pendingInvitation {
+            presentInvitationOverlay(pendingInvitation)
         }
     }
 
     func handleInvitationDismissed(_ invitation: PendingInvitation) {
-        // Replacement assigns the new invite after tearing down the previous overlay,
-        // so this is no longer the presented item and its pending token can be cleared.
-        guard invitationOverlayPresenter.presentedInvitation?.id != invitation.id else { return }
         clearPendingInvitation(matching: invitation)
-    }
-
-    func handleInvitationCoverDismissed() {
-        guard let destination = pendingAcceptedDestination else { return }
-        pendingAcceptedDestination = nil
-        Task { await openAcceptedDestination(destination) }
     }
 
     func clearPendingInvitation(matching invitation: PendingInvitation) {
         guard pendingInvitation?.id == invitation.id else { return }
         pendingInvitation = nil
-    }
-
-    func presentAcceptedDestinationWhenReady(_ destination: AcceptedInvitationDestination) async {
-        guard !invitationOverlayPresenter.isPresented else {
-            pendingAcceptedDestination = destination
-            return
-        }
-        await openAcceptedDestination(destination)
     }
 
     func openAcceptedDestination(_ destination: AcceptedInvitationDestination) async {

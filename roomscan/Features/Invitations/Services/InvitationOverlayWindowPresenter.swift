@@ -34,17 +34,19 @@ final class InvitationOverlayWindowPresenter {
     /// Shows `content` for `invitation` above the app's existing modal stack.
     /// Replacing an already-presented invite tears down the previous window without
     /// invoking `onDismiss` (caller receives the previous invite via `onReplaced`).
+    /// Returns `false` when the window factory fails; the current overlay is left intact.
+    @discardableResult
     func present<Content: View>(
         invitation: PendingInvitation,
         onDismiss: @escaping () -> Void,
         onReplaced: ((PendingInvitation) -> Void)? = nil,
         @ViewBuilder content: () -> Content
-    ) {
+    ) -> Bool {
         if presentedInvitation?.id == invitation.id, isPresented {
-            return
+            return true
         }
 
-        guard let window = makeWindow() else { return }
+        guard let window = makeWindow() else { return false }
 
         if let previous = presentedInvitation, previous.id != invitation.id {
             tearDownWindow(notifyDismiss: false, restoreKeyWindow: false)
@@ -66,6 +68,7 @@ final class InvitationOverlayWindowPresenter {
         overlayWindow = window
         presentedInvitation = invitation
         self.onDismiss = onDismiss
+        return true
     }
 
     /// Hides the overlay and invokes the dismiss handler registered at present time.
