@@ -116,19 +116,10 @@ struct ViewerViewModelTests {
     }
 
     @Test func showsNotesSectionRemainsTrueWhileNotesAreLoading() async {
-        let notesService = DelayedNotesService(
-            delayNanoseconds: 80_000_000,
-            shouldBlockFetchUntilReleased: true
-        )
-        let viewModel = ViewerViewModel(
-            input: ViewerInput(scanID: "scan-loading-notes-section", scanName: "Living Room"),
-            notesService: notesService,
-            modelLoadingService: TestModelLoadingService(),
+        let (viewModel, notesService, loadTask) = await makeViewModelWithBlockedNoteFetch(
+            scanID: "scan-loading-notes-section",
             accessPolicy: .readOnly
         )
-
-        let loadTask = Task { await viewModel.load() }
-        await notesService.waitUntilFetchNotesStarted()
 
         #expect(viewModel.isLoadingNotes)
         #expect(viewModel.showsNotesSection)
@@ -138,18 +129,9 @@ struct ViewerViewModelTests {
     }
 
     @Test func loadShowsNotesLoadingWhileFetchingNotes() async {
-        let notesService = DelayedNotesService(
-            delayNanoseconds: 80_000_000,
-            shouldBlockFetchUntilReleased: true
+        let (viewModel, notesService, loadTask) = await makeViewModelWithBlockedNoteFetch(
+            scanID: "scan-loading"
         )
-        let viewModel = ViewerViewModel(
-            input: ViewerInput(scanID: "scan-loading", scanName: "Living Room"),
-            notesService: notesService,
-            modelLoadingService: TestModelLoadingService()
-        )
-
-        let loadTask = Task { await viewModel.load() }
-        await notesService.waitUntilFetchNotesStarted()
 
         #expect(viewModel.isLoadingNotes)
         notesService.releaseFetchNotes()
@@ -486,5 +468,29 @@ struct ViewerViewModelTests {
 
         appliedCameraCommandIDs.formIntersection(Set(viewModel.cameraCommands.map(\.id)))
         #expect(appliedCameraCommandIDs.isEmpty)
+    }
+
+    /// Builds a `ViewerViewModel` whose note fetch is in-flight and blocked until
+    /// `notesService.releaseFetchNotes()` is called, so callers can assert on the
+    /// loading state before letting `load()` complete.
+    private func makeViewModelWithBlockedNoteFetch(
+        scanID: String,
+        accessPolicy: DetailAccessPolicy = .editable
+    ) async -> (viewModel: ViewerViewModel, notesService: DelayedNotesService, loadTask: Task<Void, Never>) {
+        let notesService = DelayedNotesService(
+            delayNanoseconds: 80_000_000,
+            shouldBlockFetchUntilReleased: true
+        )
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: scanID, scanName: "Living Room"),
+            notesService: notesService,
+            modelLoadingService: TestModelLoadingService(),
+            accessPolicy: accessPolicy
+        )
+
+        let loadTask = Task { await viewModel.load() }
+        await notesService.waitUntilFetchNotesStarted()
+
+        return (viewModel, notesService, loadTask)
     }
 }
