@@ -12,6 +12,13 @@ private struct EditHandoffRunResult {
     let yieldCount: Int
 }
 
+private struct DeleteHandoffRunResult {
+    let session: CreatedProjectOwnerActionHandoffSession
+    let assignCount: Int
+    let clearCount: Int
+    let yieldCount: Int
+}
+
 final class CreatedProjectOwnerActionHandoffRunTests: XCTestCase {
     private let project = ProjectSummary.testFixture()
 
@@ -46,33 +53,30 @@ final class CreatedProjectOwnerActionHandoffRunTests: XCTestCase {
     }
 
     @MainActor
-    func testPresentAfterDetailDismiss_deleteAcknowledgesWithoutTeardown() async {
-        var session = CreatedProjectOwnerActionHandoffSession(
-            pending: .delete(project),
-            activeEdit: nil,
-            activeDelete: nil
-        )
-        var clearCount = 0
-        var assignCount = 0
+    func testPresentAfterDetailDismiss_deleteAssignsWithoutTeardownAndKeepsPending() async {
+        let result = await runDeleteHandoff { _, _ in }
 
-        await CreatedProjectOwnerActionHandoff.presentAfterDetailDismiss(
-            load: { session },
-            store: { updated in
-                if updated.activeDelete == nil, session.activeDelete != nil {
-                    clearCount += 1
-                }
-                if updated.activeDelete != nil, session.activeDelete == nil {
-                    assignCount += 1
-                }
-                session = updated
-            },
-            yield: {}
-        )
+        XCTAssertEqual(result.yieldCount, 2)
+        XCTAssertEqual(result.assignCount, 1)
+        XCTAssertEqual(result.clearCount, 0)
+        XCTAssertEqual(result.session.pending, .delete(project))
+        XCTAssertEqual(result.session.activeDelete, project)
+    }
 
-        XCTAssertEqual(assignCount, 1)
-        XCTAssertEqual(clearCount, 0)
-        XCTAssertNil(session.pending)
-        XCTAssertEqual(session.activeDelete, project)
+    @MainActor
+    func testPresentAfterDetailDismiss_retriesDeleteWhenFirstAssignmentIsSwallowed() async {
+        let result = await runDeleteHandoff { session, yieldCount in
+            if yieldCount == 2, session.activeDelete != nil {
+                // Simulate SwiftUI clearing a rejected alert presentation.
+                session.activeDelete = nil
+            }
+        }
+
+        XCTAssertEqual(result.yieldCount, 2)
+        XCTAssertEqual(result.assignCount, 2)
+        XCTAssertEqual(result.clearCount, 0)
+        XCTAssertEqual(result.session.activeDelete, project)
+        XCTAssertEqual(result.session.pending, .delete(project))
     }
 
     @MainActor
@@ -162,6 +166,45 @@ final class CreatedProjectOwnerActionHandoffRunTests: XCTestCase {
         return EditHandoffRunResult(
             session: session,
             assignCount: assignCount,
+            yieldCount: yieldCount
+        )
+    }
+
+    /// Shared harness for delete handoff sequencing tests.
+    @MainActor
+    private func runDeleteHandoff(
+        onYield: @MainActor (inout CreatedProjectOwnerActionHandoffSession, Int) -> Void
+    ) async -> DeleteHandoffRunResult {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .delete(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+        var assignCount = 0
+        var clearCount = 0
+        var yieldCount = 0
+
+        await CreatedProjectOwnerActionHandoff.presentAfterDetailDismiss(
+            load: { session },
+            store: { updated in
+                if updated.activeDelete == nil, session.activeDelete != nil {
+                    clearCount += 1
+                }
+                if updated.activeDelete != nil, session.activeDelete == nil {
+                    assignCount += 1
+                }
+                session = updated
+            },
+            yield: {
+                yieldCount += 1
+                onYield(&session, yieldCount)
+            }
+        )
+
+        return DeleteHandoffRunResult(
+            session: session,
+            assignCount: assignCount,
+            clearCount: clearCount,
             yieldCount: yieldCount
         )
     }

@@ -43,8 +43,8 @@ struct CreatedProjectOwnerActionPresentation: ViewModifier {
                         activeEdit: &projectToEdit,
                         activeDelete: &projectPendingDelete
                     ) { session in
-                        guard case .delete = session.pending else { return }
-                        session.pending = nil
+                        guard case .delete(let project) = session.pending else { return }
+                        session.acknowledgeDeletePresentation(project)
                     }
                 }
             )

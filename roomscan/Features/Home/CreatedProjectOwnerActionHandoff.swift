@@ -93,9 +93,9 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
 
     /// Assigns the pending action onto edit/delete presentation state when not already active.
     ///
-    /// Edit keeps `pending` until cover `onAppear` acknowledges. Delete clears `pending` here
-    /// because `activeDelete` is itself the alert presentation binding — there is nothing
-    /// further to confirm, and tearing it down to "retrigger" would dismiss the alert.
+    /// Both paths keep `pending` set so `presentAfterDetailDismiss`'s second assign can retry
+    /// if SwiftUI rejected the first presentation (cleared `activeEdit` / `activeDelete`).
+    /// Edit acknowledges via cover `onAppear`; delete via alert cancel/confirm (`onUserDismissed`).
     mutating func assignIfNeeded() {
         guard let action = CreatedProjectOwnerActionHandoff.actionToAssign(
             pending: pending,
@@ -107,10 +107,6 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
             activeEdit = project
         case .delete(let project):
             activeDelete = project
-            pending = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
-                .delete(project),
-                pending: pending
-            )
         }
     }
 
@@ -122,9 +118,22 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
         )
     }
 
+    /// Clears pending after the user dismisses the delete confirmation (cancel or confirm).
+    ///
+    /// Alerts have no reliable `onAppear` acknowledgment; pending stays until this call so a
+    /// swallowed first assign can still be retried, and so tab-switch abandon can cancel it.
+    mutating func acknowledgeDeletePresentation(_ project: ProjectSummary) {
+        pending = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
+            .delete(project),
+            pending: pending
+        )
+    }
+
     /// Drops an in-flight handoff that has not been acknowledged yet (e.g. user left Projects).
     ///
-    /// No-op when `pending` is already nil so an on-screen edit cover is left alone.
+    /// No-op when `pending` is already nil so an on-screen edit cover (acked via onAppear) is
+    /// left alone. Delete keeps `pending` until the user answers the alert, so this also
+    /// dismisses an assigned-but-unanswered confirmation when leaving the tab.
     mutating func abandonUnacknowledgedPresentation() {
         guard pending != nil else { return }
         pending = nil
@@ -135,8 +144,8 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
 
 /// Moves a pending Edit/Delete request into presentation after the created-project detail dismisses.
 ///
-/// Mirrors `ActiveScanFlowHandoff`: yield, assign, yield, assign again. Pending stays set for
-/// edit until cover `onAppear` so a swallowed assignment can be retried on the second pass.
+/// Mirrors `ActiveScanFlowHandoff`: yield, assign, yield, assign again. Pending stays set until
+/// acknowledgment (edit `onAppear`, delete user dismiss) so a swallowed assignment can be retried.
 enum CreatedProjectOwnerActionHandoff {
     /// Returns the action still waiting to be presented, without clearing it.
     static func actionAwaitingPresentation(
@@ -181,8 +190,8 @@ enum CreatedProjectOwnerActionHandoff {
     ///
     /// Same sequencing as `presentPendingScanFlowAfterDetailDismiss`: presenting from within
     /// another cover's `onDismiss` is dropped in the same main-actor turn. The second assign
-    /// retries only when SwiftUI rejected the first assignment (edit still pending; delete
-    /// already cleared pending at assign).
+    /// retries only when SwiftUI rejected the first assignment and cleared the item while
+    /// `pending` is still set.
     ///
     /// `isCurrent` must become false when a newer handoff supersedes this run.
     @MainActor
