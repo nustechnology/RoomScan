@@ -179,16 +179,20 @@ extension InvitationOverlaySceneTests {
             #expect(accepted.feedbackToastMessage == String(localized: "invitation.toast.accepted"))
             #expect(opened.feedbackToastMessage == nil)
 
-            var feedbackToastMessage: String? = "existing-toast"
-            if let toast = opened.feedbackToastMessage {
-                feedbackToastMessage = toast
-            }
-            #expect(feedbackToastMessage == "existing-toast")
-
-            if let toast = accepted.feedbackToastMessage {
-                feedbackToastMessage = toast
-            }
-            #expect(feedbackToastMessage == String(localized: "invitation.toast.accepted"))
+            // Exercise the actual production merge (`HomeView.handleInvitationFinished` calls
+            // this same method) rather than re-implementing the branch here: an outcome with
+            // no toast of its own must preserve whatever was already showing, while one that
+            // carries a toast replaces it.
+            #expect(opened.mergedFeedbackToastMessage(current: "existing-toast") == "existing-toast")
+            #expect(dismissedWithoutToast.mergedFeedbackToastMessage(current: "existing-toast") == "existing-toast")
+            #expect(
+                accepted.mergedFeedbackToastMessage(current: "existing-toast")
+                    == String(localized: "invitation.toast.accepted")
+            )
+            #expect(
+                dismissedWithToast.mergedFeedbackToastMessage(current: "existing-toast")
+                    == String(localized: "invitation.toast.declined")
+            )
         }
     }
 }

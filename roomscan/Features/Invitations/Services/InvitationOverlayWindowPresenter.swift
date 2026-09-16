@@ -118,7 +118,9 @@ final class InvitationOverlayWindowPresenter {
         return window
     }
 
-    private static func activeWindowScene() -> UIWindowScene? {
+    /// Internal (not `private`), like `preferredKeyWindow`, so tests resolve the scene the
+    /// same way production code does instead of re-implementing the selection rule.
+    static func activeWindowScene() -> UIWindowScene? {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         return scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first
     }

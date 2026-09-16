@@ -27,8 +27,9 @@ struct HomeView: View {
     let onSignOut: () -> Void
 
     @State private var selectedTab: Tab = .projects
-    @State private var projectsViewModel: ProjectsViewModel
-    @State private var sharedViewModel: SharedWithMeViewModel
+    // Not `private`: also mutated from HomeView+InvitationOverlay.swift.
+    @State var projectsViewModel: ProjectsViewModel
+    @State var sharedViewModel: SharedWithMeViewModel
     @State private var showsNewProject = false
     @State private var pendingCreatedProject: ProjectSummary?
     @State private var selectedCreatedProject: ProjectSummary?
@@ -37,13 +38,16 @@ struct HomeView: View {
     @State private var scanRequestAfterProjectCreation: String?
     @State private var requestedScanSourceProjectID: String?
     @State private var isShowingProjectsDetail = false
-    @State private var invitationOverlayPresenter: InvitationOverlayWindowPresenter
-    @State private var acceptedProject: ProjectSummary?
-    @State private var acceptedViewerInput: ViewerInput?
-    @State private var acceptedInvitations = AcceptedInvitationCollection()
-    @State private var feedbackToastMessage: String?
+    // The following are also mutated from HomeView+InvitationOverlay.swift, so cannot
+    // be `private` (which is scoped to this file's declarations only).
+    @State var invitationOverlayPresenter: InvitationOverlayWindowPresenter
+    @State var acceptedProject: ProjectSummary?
+    @State var acceptedViewerInput: ViewerInput?
+    @State var pendingAcceptedDestination: AcceptedInvitationDestination?
+    @State var acceptedInvitations = AcceptedInvitationCollection()
+    @State var feedbackToastMessage: String?
     @State private var feedbackToastDismissTask: Task<Void, Never>?
-    @State private var invitationOverlayRetryTask: Task<Void, Never>?
+    @State var invitationOverlayRetryTask: Task<Void, Never>?
     @Environment(\.scenePhase) private var scenePhase
 
     init(
@@ -215,6 +219,7 @@ struct HomeView: View {
             if let pendingInvitation {
                 presentInvitationOverlay(pendingInvitation)
             }
+            flushPendingAcceptedDestinationIfReady()
         }
         .onChange(of: scenePhase) { _, phase in
             // A failed presentation is most often caused by no foreground-active
@@ -276,168 +281,6 @@ struct HomeView: View {
 }
 
 private extension HomeView {
-    /// Backoff schedule (nanoseconds) for retrying a failed overlay presentation, e.g. when
-    /// no foreground-active `UIWindowScene` is resolvable yet. Bounded so a persistently
-    /// unpresentable invitation (backgrounded app, scene never becomes active) doesn't retry
-    /// forever; `onChange(of: scenePhase)` and `onAppear` remain as event-driven retries on
-    /// top of this timed backoff.
-    static let invitationOverlayRetryDelaysNanoseconds: [UInt64] = [
-        300_000_000, 1_000_000_000, 3_000_000_000, 5_000_000_000,
-    ]
-
-    func presentInvitationOverlay(_ invitation: PendingInvitation) {
-        invitationOverlayRetryTask?.cancel()
-        invitationOverlayRetryTask = nil
-
-        if !attemptInvitationOverlayPresentation(invitation) {
-            // Leave `pendingInvitation` untouched so the invite isn't silently lost, and
-            // actively retry with backoff instead of only waiting for `onChange(of:
-            // scenePhase)` / `onAppear` to fire again (they may not, e.g. if the app is
-            // already active but momentarily has no resolvable `UIWindowScene` during a
-            // scene transition).
-            scheduleInvitationOverlayRetry(for: invitation, attempt: 0)
-        }
-    }
-
-    /// Attempts to show `invitation`'s overlay once. Returns whether it was presented.
-    @discardableResult
-    func attemptInvitationOverlayPresentation(_ invitation: PendingInvitation) -> Bool {
-        let didPresent = invitationOverlayPresenter.present(
-            invitation: invitation,
-            onDismiss: {},
-            onReplaced: handleInvitationDismissed,
-            content: {
-                InvitationView(
-                    viewModel: InvitationViewModel(
-                        pendingInvitation: invitation,
-                        service: invitationService,
-                        currentUserEmail: session.user.email
-                    ),
-                    onFinished: { outcome in
-                        handleInvitationFinished(outcome, for: invitation)
-                    }
-                )
-            }
-        )
-
-        if !didPresent {
-            #if DEBUG
-            print("[Invitations] failed to present overlay for \(invitation.id)")
-            #endif
-        }
-
-        return didPresent
-    }
-
-    func scheduleInvitationOverlayRetry(for invitation: PendingInvitation, attempt: Int) {
-        guard attempt < Self.invitationOverlayRetryDelaysNanoseconds.count else {
-            #if DEBUG
-            print("[Invitations] giving up retrying overlay for \(invitation.id) after \(attempt) attempts")
-            #endif
-            return
-        }
-
-        let delay = Self.invitationOverlayRetryDelaysNanoseconds[attempt]
-        invitationOverlayRetryTask = Task {
-            try? await Task.sleep(nanoseconds: delay)
-            guard !Task.isCancelled else { return }
-            // The pending invitation may have changed or been cleared while we waited
-            // (e.g. resolved via a fresh `onChange`/`onAppear`/scene-phase trigger) —
-            // only retry if it's still the same one waiting to be shown.
-            guard pendingInvitation?.id == invitation.id, !invitationOverlayPresenter.isPresented else { return }
-
-            if !attemptInvitationOverlayPresentation(invitation) {
-                scheduleInvitationOverlayRetry(for: invitation, attempt: attempt + 1)
-            }
-        }
-    }
-
-    func handleInvitationFinished(
-        _ outcome: InvitationViewModel.NavigationOutcome,
-        for invitation: PendingInvitation
-    ) {
-        // `outcome` reflects a real action the user already took (an accept/decline request
-        // that completed), so it must still be applied even if the overlay for `invitation`
-        // is no longer the one presented — e.g. HomeView tore the overlay down via
-        // `onDisappear`/`dismissWithoutNotifying()` while the request was in flight, or a
-        // newer invitation replaced this one before it finished. Bailing out entirely here
-        // (as we used to) silently dropped the user's action: no toast, no navigation, and
-        // — because `pendingInvitation` was never cleared — the same invitation could be
-        // shown again as if the user had never responded.
-        if invitationOverlayPresenter.presentedInvitation?.id == invitation.id {
-            invitationOverlayPresenter.dismiss()
-        }
-        clearPendingInvitation(matching: invitation)
-
-        if let toast = outcome.feedbackToastMessage {
-            feedbackToastMessage = toast
-        }
-
-        switch outcome {
-        case .dismissedToHome:
-            break
-        case .accepted(let destination, _):
-            acceptedInvitations.store(destination)
-            Task {
-                await sharedViewModel.ingestAcceptedDestination(destination)
-                Task { await sharedViewModel.refreshAllContent() }
-                await openAcceptedDestination(destination)
-            }
-        case .opened(let destination):
-            Task { await openAcceptedDestination(destination) }
-        }
-
-        if let pendingInvitation {
-            presentInvitationOverlay(pendingInvitation)
-        }
-    }
-
-    func handleInvitationDismissed(_ invitation: PendingInvitation) {
-        clearPendingInvitation(matching: invitation)
-    }
-
-    func clearPendingInvitation(matching invitation: PendingInvitation) {
-        guard pendingInvitation?.id == invitation.id else { return }
-        pendingInvitation = nil
-    }
-
-    func openAcceptedDestination(_ destination: AcceptedInvitationDestination) async {
-        switch destination {
-        case .project(let project):
-            acceptedProject = project
-        case .scan(let item):
-            guard let scanDetailService else {
-                acceptedViewerInput = item.viewerInput
-                return
-            }
-
-            do {
-                let detail = try await scanDetailService.fetchScanDetail(id: item.id)
-                acceptedViewerInput = ViewerInput(
-                    projectID: item.projectID,
-                    projectName: item.projectName,
-                    scanID: item.id,
-                    scanName: detail.name,
-                    modelVersion: String(detail.modelVersion),
-                    modelURL: item.detailScan?.localModelURL,
-                    syncStatus: detail.syncStatus,
-                    assetStatus: detail.assetStatus
-                )
-            } catch {
-                acceptedViewerInput = item.viewerInput
-            }
-        }
-    }
-
-    func applyAcceptedProjectScanUpdate(projectID: ProjectSummary.ID, scan: RoomScanSummary) {
-        acceptedInvitations.applyUpdatedScan(projectID: projectID, scan: scan)
-        projectsViewModel.applyUpdatedScan(projectID: projectID, scan: scan)
-    }
-
-    func applyAcceptedProjectScanDeletion(projectID: ProjectSummary.ID, scanID: RoomScanSummary.ID) {
-        acceptedInvitations.applyDeletedScan(projectID: projectID, scanID: scanID)
-        projectsViewModel.applyDeletedScan(projectID: projectID, scanID: scanID)
-    }
     func saveNewProject(_ form: ProjectFormInput) async -> Bool {
         let name = form.name
         let projectDescription = form.projectDescription

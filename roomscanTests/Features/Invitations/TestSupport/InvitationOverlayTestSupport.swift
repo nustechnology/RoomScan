@@ -13,9 +13,10 @@ enum InvitationOverlayTestSupport {
 
     @MainActor
     static func requireWindowScene() throws -> UIWindowScene {
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        let scene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first
-        return try #require(scene)
+        // Delegates to the presenter's own scene-selection rule (also used by its default
+        // window factory) instead of re-implementing it, so a change to how the overlay
+        // picks its scene can't silently diverge from what these tests set up.
+        try #require(InvitationOverlayWindowPresenter.activeWindowScene())
     }
 
     @MainActor

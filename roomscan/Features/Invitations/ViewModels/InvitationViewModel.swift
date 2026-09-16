@@ -54,6 +54,13 @@ final class InvitationViewModel {
                 return nil
             }
         }
+
+        /// Merges this outcome's toast (if any) onto whatever toast is already showing.
+        /// Outcomes without a toast of their own (`.opened`, or `.dismissedToHome` with a
+        /// nil message) must not clear one that's already on screen from a prior outcome.
+        func mergedFeedbackToastMessage(current: String?) -> String? {
+            feedbackToastMessage ?? current
+        }
     }
 
     enum Action: String, Equatable {
