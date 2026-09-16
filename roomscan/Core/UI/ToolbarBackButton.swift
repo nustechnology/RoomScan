@@ -17,6 +17,7 @@ struct ToolbarBackButton: View {
             Image(systemName: "chevron.left")
                 .font(.headline.weight(.semibold))
                 .frame(width: 36, height: 36)
+                .padding(4)
                 .contentShape(Rectangle())
         }
         .foregroundStyle(foregroundColor)

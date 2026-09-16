@@ -5,6 +5,7 @@
 
 import SwiftUI
 
+/// Presents its title and back button via `.toolbar`; host this view in a `NavigationStack`.
 struct ReviewScanView: View {
     @StateObject var viewModel: ReviewScanViewModel
     @FocusState private var isScanNameFocused: Bool

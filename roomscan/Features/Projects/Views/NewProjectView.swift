@@ -11,6 +11,7 @@ struct ProjectFormInput: Equatable, Sendable {
     let projectDescription: String
 }
 
+/// Presents its title and back button via `.toolbar`; host this view in a `NavigationStack`.
 struct NewProjectView: View {
     enum Mode: Equatable {
         case create
