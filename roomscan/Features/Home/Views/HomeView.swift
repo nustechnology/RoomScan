@@ -410,8 +410,8 @@ private extension HomeView {
 
     /// Presents a pending Edit/Delete after the created-project detail dismisses.
     ///
-    /// Same sequencing as `presentPendingScanFlowAfterDetailDismiss`: yield, assign, yield,
-    /// assign again. Generation-gated so a newer `beginOwnerActionAfterCreatedDetail` wins.
+    /// Uses shared `PresentationHandoff` sequencing. Generation-gated so a newer
+    /// `beginOwnerActionAfterCreatedDetail` wins.
     func presentPendingOwnerActionAfterCreatedDetailDismiss() {
         guard CreatedProjectOwnerActionHandoff.actionAwaitingPresentation(
             pendingOwnerActionAfterCreatedDetail

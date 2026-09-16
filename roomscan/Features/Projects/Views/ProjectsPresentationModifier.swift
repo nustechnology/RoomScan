@@ -200,14 +200,9 @@ struct ProjectsPresentationModifier: ViewModifier {
     private func presentPendingScanFlowAfterDetailDismiss() {
         guard ActiveScanFlowHandoff.flowAwaitingPresentation(pendingActiveScanFlow) != nil else { return }
         Task { @MainActor in
-            // Defer a turn: presenting a fullScreenCover from within another cover's
-            // onDismiss is dropped if it happens in the same main-actor turn.
-            await Task.yield()
-            assignPendingScanFlowIfNeeded()
-            await Task.yield()
-            // Retry only if SwiftUI rejected the assignment and cleared the item.
-            // A cover that appeared already cleared pending in onAppear.
-            assignPendingScanFlowIfNeeded()
+            await PresentationHandoff.presentAfterDismiss {
+                assignPendingScanFlowIfNeeded()
+            }
         }
     }
 

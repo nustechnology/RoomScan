@@ -19,20 +19,7 @@ enum CreatedProjectOwnerAction: Equatable {
 }
 
 /// Single-flight token for post-create Edit/Delete presentation handoffs.
-struct CreatedProjectOwnerActionFlight: Equatable {
-    private(set) var generation = 0
-
-    /// Cancels conceptual ownership of any prior flight and returns the new generation.
-    mutating func begin() -> Int {
-        generation &+= 1
-        return generation
-    }
-
-    /// Whether `flightGeneration` is still the active handoff.
-    func isCurrent(_ flightGeneration: Int) -> Bool {
-        flightGeneration == generation
-    }
-}
+typealias CreatedProjectOwnerActionFlight = PresentationFlight
 
 /// Mutable presentation state for Edit/Delete after the created-project detail dismisses.
 struct CreatedProjectOwnerActionHandoffSession: Equatable {
@@ -145,8 +132,8 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
 
 /// Moves a pending Edit/Delete request into presentation after the created-project detail dismisses.
 ///
-/// Mirrors `ActiveScanFlowHandoff`: yield, assign, yield, assign again. Pending stays set until
-/// acknowledgment (edit `onAppear`, delete user dismiss) so a swallowed assignment can be retried.
+/// Uses shared `PresentationHandoff` sequencing (yield, assign, yield, assign). Pending stays set
+/// until acknowledgment (edit `onAppear`, delete user dismiss) so a swallowed assignment can retry.
 enum CreatedProjectOwnerActionHandoff {
     /// Returns the action still waiting to be presented, without clearing it.
     static func actionAwaitingPresentation(
@@ -187,14 +174,7 @@ enum CreatedProjectOwnerActionHandoff {
         }
     }
 
-    /// Defers one turn, assigns once, yields again, then assigns a second time if still pending.
-    ///
-    /// Same sequencing as `presentPendingScanFlowAfterDetailDismiss`: presenting from within
-    /// another cover's `onDismiss` is dropped in the same main-actor turn. The second assign
-    /// retries only when SwiftUI rejected the first assignment and cleared the item while
-    /// `pending` is still set.
-    ///
-    /// `isCurrent` must become false when a newer handoff supersedes this run.
+    /// Runs shared post-dismiss sequencing against the owner-action session bindings.
     @MainActor
     static func presentAfterDetailDismiss(
         load: @MainActor () -> CreatedProjectOwnerActionHandoffSession,
@@ -202,13 +182,12 @@ enum CreatedProjectOwnerActionHandoff {
         isCurrent: @MainActor () -> Bool = { true },
         yield: @MainActor () async -> Void = { await Task.yield() }
     ) async {
-        await yield()
-        guard isCurrent() else { return }
-        mutate(load: load, store: store, isCurrent: isCurrent) { $0.assignIfNeeded() }
-
-        await yield()
-        guard isCurrent() else { return }
-        mutate(load: load, store: store, isCurrent: isCurrent) { $0.assignIfNeeded() }
+        await PresentationHandoff.presentAfterDismiss(
+            isCurrent: isCurrent,
+            yield: yield
+        ) {
+            mutate(load: load, store: store, isCurrent: isCurrent) { $0.assignIfNeeded() }
+        }
     }
 
     @MainActor
