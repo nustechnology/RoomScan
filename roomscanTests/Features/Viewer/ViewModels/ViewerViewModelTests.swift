@@ -76,6 +76,67 @@ struct ViewerViewModelTests {
         #expect(synced.canShare)
     }
 
+    @Test func showsNotesSectionReflectsOwnerAccessAndNotes() {
+        let sampleNote = SpatialNote(
+            id: "note-1",
+            title: "Note",
+            detail: "Detail",
+            color: .yellow,
+            position: .zero,
+            orientation: .zero,
+            createdAt: Date(),
+            updatedAt: Date(),
+            modelVersion: "sample-1"
+        )
+
+        let viewerWithoutNotes = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-viewer-empty", scanName: "Living Room"),
+            notesService: MockNotesService(),
+            modelLoadingService: DefaultModelLoadingService(),
+            accessPolicy: .readOnly
+        )
+        #expect(!viewerWithoutNotes.showsNotesSection)
+
+        let viewerWithNotes = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-viewer-notes", scanName: "Living Room"),
+            notesService: MockNotesService(),
+            modelLoadingService: DefaultModelLoadingService(),
+            accessPolicy: .readOnly
+        )
+        viewerWithNotes.notes = [sampleNote]
+        #expect(viewerWithNotes.showsNotesSection)
+
+        let ownerWithoutNotes = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-owner-empty", scanName: "Living Room"),
+            notesService: MockNotesService(),
+            modelLoadingService: DefaultModelLoadingService(),
+            accessPolicy: .editable
+        )
+        #expect(ownerWithoutNotes.showsNotesSection)
+    }
+
+    @Test func showsNotesSectionRemainsTrueWhileNotesAreLoading() async {
+        let notesService = DelayedNotesService(
+            delayNanoseconds: 80_000_000,
+            shouldBlockFetchUntilReleased: true
+        )
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-loading-notes-section", scanName: "Living Room"),
+            notesService: notesService,
+            modelLoadingService: TestModelLoadingService(),
+            accessPolicy: .readOnly
+        )
+
+        let loadTask = Task { await viewModel.load() }
+        await notesService.waitUntilFetchNotesStarted()
+
+        #expect(viewModel.isLoadingNotes)
+        #expect(viewModel.showsNotesSection)
+
+        notesService.releaseFetchNotes()
+        await loadTask.value
+    }
+
     @Test func loadShowsNotesLoadingWhileFetchingNotes() async {
         let notesService = DelayedNotesService(
             delayNanoseconds: 80_000_000,

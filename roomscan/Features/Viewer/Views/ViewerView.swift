@@ -88,13 +88,9 @@ struct ViewerView: View {
                     .animation(.easeInOut(duration: 0.25), value: viewModel.isFullscreen)
 
                 if !viewModel.isFullscreen && viewModel.isModelReady {
-                    let showsNotesSection = viewModel.allowsOwnerActions
-                        || viewModel.isLoadingNotes
-                        || !viewModel.notes.isEmpty
-
-                    if showsNotesSection || viewModel.isPlacementActive {
+                    if viewModel.showsNotesSection || viewModel.isPlacementActive {
                         ZStack(alignment: .top) {
-                            if showsNotesSection {
+                            if viewModel.showsNotesSection {
                                 NotesListSection(
                                     notes: viewModel.notes,
                                     selectedNoteID: viewModel.selectedNoteID,
