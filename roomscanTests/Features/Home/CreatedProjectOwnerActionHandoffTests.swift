@@ -135,23 +135,46 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         XCTAssertFalse(didStore)
     }
 
-    func testSession_mutateHelperRoundTripsBindings() {
-        var pending: CreatedProjectOwnerAction? = .edit(project)
-        var activeEdit: ProjectSummary?
-        var activeDelete: ProjectSummary?
+    func testSession_snapshotCarriesAllBindings() {
+        let session = CreatedProjectOwnerActionHandoffSession.snapshot(
+            pending: .edit(project),
+            activeEdit: otherProject,
+            activeDelete: nil
+        )
 
-        CreatedProjectOwnerActionHandoffSession.mutate(
-            pending: &pending,
-            activeEdit: &activeEdit,
-            activeDelete: &activeDelete
-        ) { session in
-            session.assignIfNeeded()
-            session.acknowledgeEditPresentation(self.project)
-        }
+        XCTAssertEqual(session.pending, .edit(project))
+        XCTAssertEqual(session.activeEdit, otherProject)
+        XCTAssertNil(session.activeDelete)
+    }
 
-        XCTAssertNil(pending)
-        XCTAssertEqual(activeEdit, project)
-        XCTAssertNil(activeDelete)
+    func testSession_dropUnpresentedEditRequest_clearsSwallowedEdit() {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+
+        session.dropUnpresentedEditRequest()
+
+        XCTAssertNil(session.pending)
+    }
+
+    func testSession_dropUnpresentedEditRequest_keepsActiveCoverOrDelete() {
+        var activeSession = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: project,
+            activeDelete: nil
+        )
+        activeSession.dropUnpresentedEditRequest()
+        XCTAssertEqual(activeSession.pending, .edit(project))
+
+        var deleteSession = CreatedProjectOwnerActionHandoffSession(
+            pending: .delete(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+        deleteSession.dropUnpresentedEditRequest()
+        XCTAssertEqual(deleteSession.pending, .delete(project))
     }
 
     func testSession_abandonUnacknowledgedPresentation_clearsPendingAssignment() {
@@ -201,7 +224,7 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
             activeDelete: nil
         )
 
-        // Mirrors CreatedProjectOwnerActionPresentation.onAppear wiring.
+        // Mirrors ProjectOwnerActionPresentation.onAppear wiring.
         session.acknowledgeEditPresentation(project)
 
         XCTAssertNil(session.pending)
@@ -215,7 +238,7 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
             activeDelete: project
         )
 
-        // Mirrors CreatedProjectOwnerActionPresentation.onUserDismissed wiring.
+        // Mirrors ProjectOwnerActionPresentation.onUserDismissed wiring.
         session.acknowledgeDeletePresentation(project)
 
         XCTAssertNil(session.pending)
@@ -226,7 +249,7 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         var pending: CreatedProjectOwnerAction? = .delete(project)
         var activeDelete: ProjectSummary? = project
 
-        // Mirrors CreatedProjectOwnerActionPresentation: SwiftUI can tear the alert down
+        // Mirrors ProjectOwnerActionPresentation: SwiftUI can tear the alert down
         // (isPresented false) without a button action, and that path must still clear pending
         // so a later created-detail dismiss cannot re-present the stale confirmation.
         ProjectDeleteConfirmationActions.handleIsPresentedChange(

@@ -40,37 +40,6 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
         )
     }
 
-    /// Writes this session back into the three live presentation bindings.
-    func apply(
-        pending: inout CreatedProjectOwnerAction?,
-        activeEdit: inout ProjectSummary?,
-        activeDelete: inout ProjectSummary?
-    ) {
-        pending = self.pending
-        activeEdit = self.activeEdit
-        activeDelete = self.activeDelete
-    }
-
-    /// Mutates the three bindings through a single session mapping.
-    static func mutate(
-        pending: inout CreatedProjectOwnerAction?,
-        activeEdit: inout ProjectSummary?,
-        activeDelete: inout ProjectSummary?,
-        _ body: (inout CreatedProjectOwnerActionHandoffSession) -> Void
-    ) {
-        var session = snapshot(
-            pending: pending,
-            activeEdit: activeEdit,
-            activeDelete: activeDelete
-        )
-        body(&session)
-        session.apply(
-            pending: &pending,
-            activeEdit: &activeEdit,
-            activeDelete: &activeDelete
-        )
-    }
-
     /// Starts a new owner action, clearing any stuck presentation bindings first.
     mutating func begin(_ action: CreatedProjectOwnerAction) {
         activeEdit = nil
@@ -82,7 +51,9 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
     ///
     /// Both paths keep `pending` set so `presentAfterDetailDismiss`'s second assign can retry
     /// if SwiftUI rejected the first presentation (cleared `activeEdit` / `activeDelete`).
-    /// Edit acknowledges via cover `onAppear`; delete via alert cancel/confirm (`onUserDismissed`).
+    /// Edit acknowledges via cover `onAppear`; delete via alert dismissal (`onUserDismissed`,
+    /// including the `isPresented`→false teardown). A retried-and-still-missing edit is dropped
+    /// by `dropUnpresentedEditRequest` so it cannot re-present on a later detail dismiss.
     mutating func assignIfNeeded() {
         guard let action = CreatedProjectOwnerActionHandoff.actionToAssign(
             pending: pending,
@@ -117,6 +88,18 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
         )
     }
 
+    /// Drops a pending edit that never appeared once both presentation passes have run.
+    ///
+    /// The edit cover acknowledges via `onAppear`, so a surviving `.edit` means it never
+    /// appeared (either every assignment was swallowed or there was no cover to appear).
+    /// Clearing prevents a later created-detail dismiss from re-presenting an edit for a
+    /// project the user has moved on from. No-op while a cover is active or awaiting `onAppear`.
+    mutating func dropUnpresentedEditRequest() {
+        guard activeEdit == nil else { return }
+        guard case .edit = pending else { return }
+        pending = nil
+    }
+
     /// Drops an in-flight handoff that has not been acknowledged yet (e.g. user left Projects).
     ///
     /// No-op when `pending` is already nil so an on-screen edit cover (acked via onAppear) is
@@ -134,6 +117,7 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
 ///
 /// Uses shared `PresentationHandoff` sequencing (yield, assign, yield, assign). Pending stays set
 /// until acknowledgment (edit `onAppear`, delete user dismiss) so a swallowed assignment can retry.
+/// A final settle turn drops an edit that still never appeared, so it cannot re-present later.
 enum CreatedProjectOwnerActionHandoff {
     /// Returns the action still waiting to be presented, without clearing it.
     static func actionAwaitingPresentation(
@@ -175,6 +159,10 @@ enum CreatedProjectOwnerActionHandoff {
     }
 
     /// Runs shared post-dismiss sequencing against the owner-action session bindings.
+    ///
+    /// A final turn lets SwiftUI clear a rejected second assignment before deciding the edit
+    /// never appeared. An accepted cover keeps `activeEdit` set and is acknowledged via
+    /// `onAppear`, so only the swallowed case is dropped and must not be retried later.
     @MainActor
     static func presentAfterDetailDismiss(
         load: @MainActor () -> CreatedProjectOwnerActionHandoffSession,
@@ -187,6 +175,11 @@ enum CreatedProjectOwnerActionHandoff {
             yield: yield
         ) {
             mutate(load: load, store: store, isCurrent: isCurrent) { $0.assignIfNeeded() }
+        }
+        await yield()
+        guard isCurrent() else { return }
+        mutate(load: load, store: store, isCurrent: isCurrent) {
+            $0.dropUnpresentedEditRequest()
         }
     }
 

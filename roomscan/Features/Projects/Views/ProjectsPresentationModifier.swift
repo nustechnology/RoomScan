@@ -165,18 +165,11 @@ struct ProjectsPresentationModifier: ViewModifier {
             } message: { _ in
                 Text(String(localized: "scan.recovery.message"))
             }
-            .fullScreenCover(item: $projectToEdit) { project in
-                ProjectEditCoverView(
-                    project: project,
-                    viewModel: viewModel,
-                    onDismiss: { projectToEdit = nil }
-                )
-            }
-            .projectDeleteConfirmationAlert(projectPendingDelete: $projectPendingDelete) { projectID in
-                Task {
-                    await viewModel.deleteProject(id: projectID)
-                }
-            }
+            .projectOwnerActionPresentation(
+                projectToEdit: $projectToEdit,
+                projectPendingDelete: $projectPendingDelete,
+                projectsViewModel: viewModel
+            )
             .onChange(of: viewModel.showsDeleteSuccessToast) { _, showsToast in
                 guard showsToast else { return }
                 Task {

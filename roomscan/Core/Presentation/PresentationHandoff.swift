@@ -26,7 +26,10 @@ enum PresentationHandoff {
     /// Defers one turn, assigns once, yields again, then assigns a second time.
     ///
     /// Presenting from within another cover's `onDismiss` is dropped in the same main-actor
-    /// turn. The second assign retries only when the first assignment was rejected.
+    /// turn, so the first assign is deferred by a yield. The second assign always runs when
+    /// `isCurrent`; `assign` must therefore be idempotent — callers gate on their own state
+    /// (e.g. `assignIfNeeded`, `assignPendingScanFlowIfNeeded`) so an accepted first
+    /// presentation is not presented twice.
     ///
     /// `isCurrent` must become false when a newer handoff supersedes this run.
     @MainActor

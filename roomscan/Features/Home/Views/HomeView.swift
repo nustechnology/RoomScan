@@ -32,11 +32,7 @@ struct HomeView: View {
     @State private var showsNewProject = false
     @State private var pendingCreatedProject: ProjectSummary?
     @State private var selectedCreatedProject: ProjectSummary?
-    @State private var pendingOwnerActionAfterCreatedDetail: CreatedProjectOwnerAction?
-    @State private var projectToEditAfterCreation: ProjectSummary?
-    @State private var projectPendingDeleteAfterCreation: ProjectSummary?
-    @State private var ownerActionPresentationTask: Task<Void, Never>?
-    @State private var ownerActionPresentationFlight = CreatedProjectOwnerActionFlight()
+    @State private var ownerActionHandoff: CreatedProjectOwnerActionController
     // Separate from ProjectsView's pending scan state: this request originates
     // from the project-creation cover and is published when HomeView's cover dismisses.
     @State private var scanRequestAfterProjectCreation: String?
@@ -93,6 +89,7 @@ struct HomeView: View {
                 currentUserID: session.user.id
             )
         )
+        _ownerActionHandoff = State(initialValue: CreatedProjectOwnerActionController())
     }
 
     var body: some View {
@@ -173,18 +170,19 @@ struct HomeView: View {
         .fullScreenCover(
             item: $selectedCreatedProject,
             onDismiss: {
-                presentPendingOwnerActionAfterCreatedDetailDismiss()
+                ownerActionHandoff.presentAfterDetailDismiss()
                 publishPendingProjectScanRequest()
             },
             content: { project in
                 createdProjectDetailCover(for: project)
             }
         )
-        .createdProjectOwnerActionPresentation(
-            projectToEdit: $projectToEditAfterCreation,
-            projectPendingDelete: $projectPendingDeleteAfterCreation,
-            pendingOwnerAction: $pendingOwnerActionAfterCreatedDetail,
-            projectsViewModel: projectsViewModel
+        .projectOwnerActionPresentation(
+            projectToEdit: $ownerActionHandoff.activeEdit,
+            projectPendingDelete: $ownerActionHandoff.activeDelete,
+            projectsViewModel: projectsViewModel,
+            onEditAppeared: { ownerActionHandoff.acknowledgeEditAppeared($0) },
+            onDeleteDismissed: { ownerActionHandoff.acknowledgeDeleteDismissed() }
         )
         .fullScreenCover(
             item: $activeInvitation,
@@ -248,7 +246,7 @@ struct HomeView: View {
         }
         .onChange(of: selectedTab) { _, _ in
             // Avoid presenting a delayed edit/delete cover over a different tab.
-            cancelUnacknowledgedOwnerActionPresentation()
+            ownerActionHandoff.cancelUnacknowledgedPresentation()
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
@@ -408,78 +406,6 @@ private extension HomeView {
         self.scanRequestAfterProjectCreation = nil
     }
 
-    /// Presents a pending Edit/Delete after the created-project detail dismisses.
-    ///
-    /// Uses shared `PresentationHandoff` sequencing. Generation-gated so a newer
-    /// `beginOwnerActionAfterCreatedDetail` wins.
-    func presentPendingOwnerActionAfterCreatedDetailDismiss() {
-        guard CreatedProjectOwnerActionHandoff.actionAwaitingPresentation(
-            pendingOwnerActionAfterCreatedDetail
-        ) != nil else { return }
-        let generation = beginOwnerActionPresentationFlight()
-        ownerActionPresentationTask = Task { @MainActor in
-            await CreatedProjectOwnerActionHandoff.presentAfterDetailDismiss(
-                load: {
-                    CreatedProjectOwnerActionHandoffSession.snapshot(
-                        pending: pendingOwnerActionAfterCreatedDetail,
-                        activeEdit: projectToEditAfterCreation,
-                        activeDelete: projectPendingDeleteAfterCreation
-                    )
-                },
-                store: { session in
-                    guard ownerActionPresentationFlight.isCurrent(generation) else { return }
-                    session.apply(
-                        pending: &pendingOwnerActionAfterCreatedDetail,
-                        activeEdit: &projectToEditAfterCreation,
-                        activeDelete: &projectPendingDeleteAfterCreation
-                    )
-                },
-                isCurrent: {
-                    !Task.isCancelled && ownerActionPresentationFlight.isCurrent(generation)
-                }
-            )
-        }
-    }
-
-    /// Cancels any in-flight handoff and bumps the generation so stale stores no-op.
-    @discardableResult
-    func beginOwnerActionPresentationFlight() -> Int {
-        ownerActionPresentationTask?.cancel()
-        ownerActionPresentationTask = nil
-        return ownerActionPresentationFlight.begin()
-    }
-
-    /// Stops an unacknowledged Edit/Delete handoff (e.g. user left the Projects tab).
-    ///
-    /// Leaves an already-presented edit cover alone (`pending` is nil after onAppear).
-    func cancelUnacknowledgedOwnerActionPresentation() {
-        beginOwnerActionPresentationFlight()
-        CreatedProjectOwnerActionHandoffSession.mutate(
-            pending: &pendingOwnerActionAfterCreatedDetail,
-            activeEdit: &projectToEditAfterCreation,
-            activeDelete: &projectPendingDeleteAfterCreation
-        ) { session in
-            session.abandonUnacknowledgedPresentation()
-        }
-    }
-
-    func beginOwnerActionAfterCreatedDetail(_ action: CreatedProjectOwnerAction) {
-        // Invalidate any in-flight handoff before replacing pending state.
-        beginOwnerActionPresentationFlight()
-        CreatedProjectOwnerActionHandoffSession.mutate(
-            pending: &pendingOwnerActionAfterCreatedDetail,
-            activeEdit: &projectToEditAfterCreation,
-            activeDelete: &projectPendingDeleteAfterCreation
-        ) { session in
-            session.begin(action)
-        }
-        if selectedCreatedProject != nil {
-            selectedCreatedProject = nil
-        } else {
-            presentPendingOwnerActionAfterCreatedDetailDismiss()
-        }
-    }
-
     func createdProjectDetailCover(for project: ProjectSummary) -> some View {
         ProjectDetailView(
             project: project,
@@ -500,10 +426,20 @@ private extension HomeView {
                 selectedCreatedProject = nil
             },
             onEdit: { project in
-                beginOwnerActionAfterCreatedDetail(.edit(project))
+                ownerActionHandoff.begin(
+                    .edit(project),
+                    detailIsPresented: selectedCreatedProject != nil
+                ) {
+                    selectedCreatedProject = nil
+                }
             },
             onDelete: { project in
-                beginOwnerActionAfterCreatedDetail(.delete(project))
+                ownerActionHandoff.begin(
+                    .delete(project),
+                    detailIsPresented: selectedCreatedProject != nil
+                ) {
+                    selectedCreatedProject = nil
+                }
             }
         )
     }

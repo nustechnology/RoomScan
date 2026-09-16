@@ -31,7 +31,7 @@ final class CreatedProjectOwnerActionHandoffRunTests: XCTestCase {
             }
         }
 
-        XCTAssertEqual(result.yieldCount, 2)
+        XCTAssertEqual(result.yieldCount, 3)
         XCTAssertEqual(result.assignCount, 1)
         XCTAssertNil(result.session.pending)
         XCTAssertEqual(result.session.activeEdit, project)
@@ -46,17 +46,41 @@ final class CreatedProjectOwnerActionHandoffRunTests: XCTestCase {
             }
         }
 
-        XCTAssertEqual(result.yieldCount, 2)
+        XCTAssertEqual(result.yieldCount, 3)
         XCTAssertEqual(result.assignCount, 2)
         XCTAssertEqual(result.session.activeEdit, project)
         XCTAssertEqual(result.session.pending, .edit(project))
     }
 
     @MainActor
+    func testPresentAfterDetailDismiss_dropsEditWhenBothAssignmentsAreSwallowed() async {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+        var yieldCount = 0
+
+        await CreatedProjectOwnerActionHandoff.presentAfterDetailDismiss(
+            load: { session },
+            store: { session = $0 },
+            yield: {
+                yieldCount += 1
+                // SwiftUI rejects each assignment and clears the fullScreenCover item.
+                session.activeEdit = nil
+            }
+        )
+
+        XCTAssertEqual(yieldCount, 3)
+        XCTAssertNil(session.activeEdit)
+        XCTAssertNil(session.pending)
+    }
+
+    @MainActor
     func testPresentAfterDetailDismiss_deleteAssignsWithoutTeardownAndKeepsPending() async {
         let result = await runDeleteHandoff { _, _ in }
 
-        XCTAssertEqual(result.yieldCount, 2)
+        XCTAssertEqual(result.yieldCount, 3)
         XCTAssertEqual(result.assignCount, 1)
         XCTAssertEqual(result.clearCount, 0)
         XCTAssertEqual(result.session.pending, .delete(project))
@@ -72,111 +96,11 @@ final class CreatedProjectOwnerActionHandoffRunTests: XCTestCase {
             }
         }
 
-        XCTAssertEqual(result.yieldCount, 2)
+        XCTAssertEqual(result.yieldCount, 3)
         XCTAssertEqual(result.assignCount, 2)
         XCTAssertEqual(result.clearCount, 0)
         XCTAssertEqual(result.session.activeDelete, project)
         XCTAssertEqual(result.session.pending, .delete(project))
-    }
-
-    @MainActor
-    func testHomeViewGlue_deleteHandoffPresentsAfterDetailDismissThenAbandonsOnTabChange() async {
-        var flight = CreatedProjectOwnerActionFlight()
-        var session = CreatedProjectOwnerActionHandoffSession(
-            pending: nil,
-            activeEdit: nil,
-            activeDelete: nil
-        )
-
-        // beginOwnerActionAfterCreatedDetail while detail is up: invalidate, stage, dismiss.
-        _ = flight.begin()
-        session.begin(.delete(project))
-        XCTAssertEqual(session.pending, .delete(project))
-
-        // selectedCreatedProject onDismiss -> presentPendingOwnerActionAfterCreatedDetailDismiss.
-        let generation = flight.begin()
-        await CreatedProjectOwnerActionHandoff.presentAfterDetailDismiss(
-            load: { session },
-            store: { updated in
-                guard flight.isCurrent(generation) else { return }
-                session = updated
-            },
-            isCurrent: { flight.isCurrent(generation) },
-            yield: {}
-        )
-        XCTAssertEqual(session.activeDelete, project)
-        XCTAssertEqual(session.pending, .delete(project))
-
-        // selectedTab onChange -> cancelUnacknowledgedOwnerActionPresentation.
-        _ = flight.begin()
-        session.abandonUnacknowledgedPresentation()
-        XCTAssertNil(session.pending)
-        XCTAssertNil(session.activeDelete)
-    }
-
-    @MainActor
-    func testHomeViewGlue_beginWithoutDetailCoverPresentsImmediately() async {
-        var flight = CreatedProjectOwnerActionFlight()
-        var session = CreatedProjectOwnerActionHandoffSession(
-            pending: nil,
-            activeEdit: nil,
-            activeDelete: nil
-        )
-
-        // beginOwnerActionAfterCreatedDetail when selectedCreatedProject == nil.
-        _ = flight.begin()
-        session.begin(.edit(project))
-
-        // Falls through to presentPendingOwnerActionAfterCreatedDetailDismiss directly.
-        let generation = flight.begin()
-        await CreatedProjectOwnerActionHandoff.presentAfterDetailDismiss(
-            load: { session },
-            store: { updated in
-                guard flight.isCurrent(generation) else { return }
-                session = updated
-            },
-            isCurrent: { flight.isCurrent(generation) },
-            yield: {}
-        )
-
-        XCTAssertEqual(session.activeEdit, project)
-        XCTAssertEqual(session.pending, .edit(project))
-    }
-
-    @MainActor
-    func testHomeViewGlue_isPresentedTeardownDropsPendingSoLaterDismissDoesNotRepresent() async {
-        var pending: CreatedProjectOwnerAction? = .delete(project)
-        var activeDelete: ProjectSummary? = project
-
-        // SwiftUI tears the alert down without Cancel/Confirm.
-        ProjectDeleteConfirmationActions.handleIsPresentedChange(
-            false,
-            projectPendingDelete: &activeDelete,
-            onUserDismissed: {
-                guard case .delete(let project) = pending else { return }
-                pending = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
-                    .delete(project),
-                    pending: pending
-                )
-            }
-        )
-        XCTAssertNil(activeDelete)
-        XCTAssertNil(pending)
-
-        var session = CreatedProjectOwnerActionHandoffSession(
-            pending: pending,
-            activeEdit: nil,
-            activeDelete: activeDelete
-        )
-
-        // A later created-detail dismiss must not resurrect the abandoned delete.
-        await CreatedProjectOwnerActionHandoff.presentAfterDetailDismiss(
-            load: { session },
-            store: { session = $0 },
-            yield: {}
-        )
-        XCTAssertNil(session.activeDelete)
-        XCTAssertNil(session.pending)
     }
 
     @MainActor
