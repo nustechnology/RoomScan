@@ -53,7 +53,7 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         XCTAssertNil(session.activeDelete)
     }
 
-    func testSession_clearThenAssign_retriggersEditBinding() {
+    func testSession_assignIfNeeded_editKeepsPendingUntilAcknowledged() {
         var session = CreatedProjectOwnerActionHandoffSession(
             pending: .edit(project),
             activeEdit: nil,
@@ -61,28 +61,39 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         )
 
         session.assignIfNeeded()
-        XCTAssertEqual(session.activeEdit, project)
 
-        session.clearActivePresentationMatchingPending()
-        XCTAssertNil(session.activeEdit)
-
-        session.assignIfNeeded()
         XCTAssertEqual(session.activeEdit, project)
         XCTAssertEqual(session.pending, .edit(project))
     }
 
-    func testSession_finishUnacknowledgedPresentation_clearsPendingAndActiveBindings() {
+    func testSession_assignIfNeeded_deleteAcknowledgesAtAssignment() {
         var session = CreatedProjectOwnerActionHandoffSession(
-            pending: .edit(project),
-            activeEdit: project,
+            pending: .delete(project),
+            activeEdit: nil,
             activeDelete: nil
         )
 
-        session.finishUnacknowledgedPresentation()
+        session.assignIfNeeded()
 
+        XCTAssertEqual(session.activeDelete, project)
         XCTAssertNil(session.pending)
-        XCTAssertNil(session.activeEdit)
-        XCTAssertNil(session.activeDelete)
+    }
+
+    func testSession_assignIfNeeded_secondPassRetriesSwallowedEdit() {
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: .edit(project),
+            activeEdit: nil,
+            activeDelete: nil
+        )
+
+        session.assignIfNeeded()
+        // Simulate SwiftUI rejecting the first fullScreenCover assignment.
+        session.activeEdit = nil
+
+        session.assignIfNeeded()
+
+        XCTAssertEqual(session.activeEdit, project)
+        XCTAssertEqual(session.pending, .edit(project))
     }
 
     func testFlight_beginInvalidatesPriorGeneration() {
@@ -165,20 +176,5 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
 
         XCTAssertNil(session.pending)
         XCTAssertEqual(session.activeEdit, project)
-    }
-
-    func testPresentationAcknowledgment_deleteSettleClearsPending() {
-        var session = CreatedProjectOwnerActionHandoffSession(
-            pending: .delete(project),
-            activeEdit: nil,
-            activeDelete: nil
-        )
-        session.assignIfNeeded()
-
-        // Mirrors handoff-loop settle ack after one clear+reassign (not alert onAppear).
-        session.acknowledgeDeletePresentation(project)
-
-        XCTAssertNil(session.pending)
-        XCTAssertEqual(session.activeDelete, project)
     }
 }

@@ -410,16 +410,15 @@ private extension HomeView {
 
     /// Presents a pending Edit/Delete after the created-project detail dismisses.
     ///
-    /// Uses the shared handoff runner against live HomeView state. Assigns once, waits a
-    /// dismiss-sized grace period for acknowledgment, then clear+reassigns only if still
-    /// pending. Only one presentation loop runs at a time (cancelled + generation-gated).
+    /// Same sequencing as `presentPendingScanFlowAfterDetailDismiss`: yield, assign, yield,
+    /// assign again. Generation-gated so a newer `beginOwnerActionAfterCreatedDetail` wins.
     func presentPendingOwnerActionAfterCreatedDetailDismiss() {
         guard CreatedProjectOwnerActionHandoff.actionAwaitingPresentation(
             pendingOwnerActionAfterCreatedDetail
         ) != nil else { return }
         let generation = beginOwnerActionPresentationFlight()
         ownerActionPresentationTask = Task { @MainActor in
-            await CreatedProjectOwnerActionHandoff.runPresentationAttempts(
+            await CreatedProjectOwnerActionHandoff.presentAfterDetailDismiss(
                 load: {
                     CreatedProjectOwnerActionHandoffSession.snapshot(
                         pending: pendingOwnerActionAfterCreatedDetail,
@@ -442,7 +441,7 @@ private extension HomeView {
         }
     }
 
-    /// Cancels any in-flight handoff loop and bumps the generation so stale stores no-op.
+    /// Cancels any in-flight handoff and bumps the generation so stale stores no-op.
     @discardableResult
     func beginOwnerActionPresentationFlight() -> Int {
         ownerActionPresentationTask?.cancel()
@@ -465,7 +464,7 @@ private extension HomeView {
     }
 
     func beginOwnerActionAfterCreatedDetail(_ action: CreatedProjectOwnerAction) {
-        // Invalidate any in-flight clear/assign loop before replacing pending state.
+        // Invalidate any in-flight handoff before replacing pending state.
         beginOwnerActionPresentationFlight()
         CreatedProjectOwnerActionHandoffSession.mutate(
             pending: &pendingOwnerActionAfterCreatedDetail,

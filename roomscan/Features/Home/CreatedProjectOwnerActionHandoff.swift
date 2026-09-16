@@ -18,7 +18,7 @@ enum CreatedProjectOwnerAction: Equatable {
     }
 }
 
-/// Single-flight token for post-create Edit/Delete presentation loops.
+/// Single-flight token for post-create Edit/Delete presentation handoffs.
 struct CreatedProjectOwnerActionFlight: Equatable {
     private(set) var generation = 0
 
@@ -92,6 +92,10 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
     }
 
     /// Assigns the pending action onto edit/delete presentation state when not already active.
+    ///
+    /// Edit keeps `pending` until cover `onAppear` acknowledges. Delete clears `pending` here
+    /// because `activeDelete` is itself the alert presentation binding — there is nothing
+    /// further to confirm, and tearing it down to "retrigger" would dismiss the alert.
     mutating func assignIfNeeded() {
         guard let action = CreatedProjectOwnerActionHandoff.actionToAssign(
             pending: pending,
@@ -103,22 +107,10 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
             activeEdit = project
         case .delete(let project):
             activeDelete = project
-        }
-    }
-
-    /// Clears the active edit/delete binding for the pending action so a later
-    /// `assignIfNeeded` can retrigger `fullScreenCover(item:)` / alert presentation.
-    mutating func clearActivePresentationMatchingPending() {
-        guard let pending else { return }
-        switch pending {
-        case .edit(let project):
-            if activeEdit?.id == project.id {
-                activeEdit = nil
-            }
-        case .delete(let project):
-            if activeDelete?.id == project.id {
-                activeDelete = nil
-            }
+            pending = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
+                .delete(project),
+                pending: pending
+            )
         }
     }
 
@@ -128,27 +120,6 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
             .edit(project),
             pending: pending
         )
-    }
-
-    /// Clears pending for a delete handoff once presentation has been settled by the
-    /// handoff loop (one clear+reassign after dismiss grace). Alert message `onAppear`
-    /// is not used — system alerts flatten message views and may not run lifecycle hooks.
-    mutating func acknowledgeDeletePresentation(_ project: ProjectSummary) {
-        pending = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
-            .delete(project),
-            pending: pending
-        )
-    }
-
-    /// After the retry window, drop the unacknowledged handoff entirely.
-    ///
-    /// Clears pending and any assigned edit/delete bindings so a timed-out presentation
-    /// cannot later surface over another tab. Acknowledged covers already cleared `pending`
-    /// via onAppear and are unaffected by this path.
-    mutating func finishUnacknowledgedPresentation() {
-        pending = nil
-        activeEdit = nil
-        activeDelete = nil
     }
 
     /// Drops an in-flight handoff that has not been acknowledged yet (e.g. user left Projects).
@@ -163,15 +134,10 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
 }
 
 /// Moves a pending Edit/Delete request into presentation after the created-project detail dismisses.
+///
+/// Mirrors `ActiveScanFlowHandoff`: yield, assign, yield, assign again. Pending stays set for
+/// edit until cover `onAppear` so a swallowed assignment can be retried on the second pass.
 enum CreatedProjectOwnerActionHandoff {
-    /// Total poll budget (~2s) while waiting for edit-cover / delete-alert presentation acknowledgment.
-    static let acknowledgmentPollCount = 20
-    static let acknowledgmentPollNanoseconds: UInt64 = 100_000_000
-
-    /// Wait this many poll intervals after an assignment before clear+reassign.
-    /// Covers typical created-detail dismiss transitions (~300–400 ms).
-    static let retriggerGracePollCount = 4
-
     /// Returns the action still waiting to be presented, without clearing it.
     static func actionAwaitingPresentation(
         _ pending: CreatedProjectOwnerAction?
@@ -211,109 +177,28 @@ enum CreatedProjectOwnerActionHandoff {
         }
     }
 
-    /// Defers one turn, assigns once, then waits through a dismiss-sized grace period
-    /// before any clear+reassign retrigger.
+    /// Defers one turn, assigns once, yields again, then assigns a second time if still pending.
     ///
-    /// Edit waits for cover `onAppear` acknowledgment. Delete cannot rely on alert-message
-    /// lifecycle hooks, so after one clear+reassign the next grace expiry acknowledges
-    /// delete while leaving `activeDelete` set (alert stays up).
-    ///
-    /// `load` / `store` must share storage with UI acknowledgments. After the ~2s window,
-    /// unacknowledged pending and presentation bindings are cleared.
+    /// Same sequencing as `presentPendingScanFlowAfterDetailDismiss`: presenting from within
+    /// another cover's `onDismiss` is dropped in the same main-actor turn. The second assign
+    /// retries only when SwiftUI rejected the first assignment (edit still pending; delete
+    /// already cleared pending at assign).
     ///
     /// `isCurrent` must become false when a newer handoff supersedes this run.
     @MainActor
-    static func runPresentationAttempts(
+    static func presentAfterDetailDismiss(
         load: @MainActor () -> CreatedProjectOwnerActionHandoffSession,
         store: @MainActor (CreatedProjectOwnerActionHandoffSession) -> Void,
         isCurrent: @MainActor () -> Bool = { true },
-        sleepNanoseconds: @MainActor (UInt64) async -> Void = {
-            try? await Task.sleep(nanoseconds: $0)
-        }
+        yield: @MainActor () async -> Void = { await Task.yield() }
     ) async {
-        // Let the created-project detail cover begin dismissing first.
-        await Task.yield()
+        await yield()
         guard isCurrent() else { return }
+        mutate(load: load, store: store, isCurrent: isCurrent) { $0.assignIfNeeded() }
 
-        var hasAssigned = false
-        var hasRetriggered = false
-        var waitCyclesSinceAssign = 0
-
-        for _ in 0..<acknowledgmentPollCount {
-            guard isCurrent() else { return }
-            if load().pending == nil { return }
-
-            let shouldRetrigger =
-                hasAssigned && waitCyclesSinceAssign >= retriggerGracePollCount
-
-            if shouldRetrigger {
-                if acknowledgeSettledDeleteIfReady(
-                    hasRetriggered: hasRetriggered,
-                    load: load,
-                    store: store,
-                    isCurrent: isCurrent
-                ) {
-                    return
-                }
-                mutate(load: load, store: store, isCurrent: isCurrent) {
-                    $0.clearActivePresentationMatchingPending()
-                }
-                // Real delay so fullScreenCover(item:) / alert can observe nil before reassign.
-                await sleepNanoseconds(acknowledgmentPollNanoseconds)
-                guard isCurrent() else { return }
-                waitCyclesSinceAssign = 0
-                hasRetriggered = true
-            }
-
-            if !hasAssigned || shouldRetrigger {
-                mutate(load: load, store: store, isCurrent: isCurrent) { $0.assignIfNeeded() }
-                hasAssigned = true
-            }
-
-            guard isCurrent() else { return }
-            if load().pending == nil { return }
-
-            await sleepNanoseconds(acknowledgmentPollNanoseconds)
-            waitCyclesSinceAssign += 1
-        }
-
-        await finishIfStillUnacknowledged(
-            load: load,
-            store: store,
-            isCurrent: isCurrent
-        )
-    }
-
-    /// After one delete clear+reassign, treat a still-bound confirmation as presented.
-    @MainActor
-    private static func acknowledgeSettledDeleteIfReady(
-        hasRetriggered: Bool,
-        load: @MainActor () -> CreatedProjectOwnerActionHandoffSession,
-        store: @MainActor (CreatedProjectOwnerActionHandoffSession) -> Void,
-        isCurrent: @MainActor () -> Bool
-    ) -> Bool {
-        guard hasRetriggered else { return false }
-        let session = load()
-        guard case .delete(let project) = session.pending else { return false }
-        guard session.activeDelete?.id == project.id else { return false }
-        mutate(load: load, store: store, isCurrent: isCurrent) {
-            $0.acknowledgeDeletePresentation(project)
-        }
-        return true
-    }
-
-    /// Completes only when pending survived the full window (ack may land on the last sleep).
-    @MainActor
-    private static func finishIfStillUnacknowledged(
-        load: @MainActor () -> CreatedProjectOwnerActionHandoffSession,
-        store: @MainActor (CreatedProjectOwnerActionHandoffSession) -> Void,
-        isCurrent: @MainActor () -> Bool
-    ) async {
+        await yield()
         guard isCurrent() else { return }
-        guard load().pending != nil else { return }
-        mutate(load: load, store: store, isCurrent: isCurrent) {
-            $0.finishUnacknowledgedPresentation()
-        }
+        mutate(load: load, store: store, isCurrent: isCurrent) { $0.assignIfNeeded() }
     }
 
     @MainActor
