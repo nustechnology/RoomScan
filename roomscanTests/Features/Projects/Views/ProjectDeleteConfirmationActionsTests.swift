@@ -64,15 +64,46 @@ final class ProjectDeleteConfirmationActionsTests: XCTestCase {
         XCTAssertNil(pending)
     }
 
-    func testHandleIsPresentedChange_trueLeavesPending() {
+    func testHandleIsPresentedChange_falseNotifiesUserDismissed() {
         var pending: ProjectSummary? = project
+        var didDismiss = false
+
+        ProjectDeleteConfirmationActions.handleIsPresentedChange(
+            false,
+            projectPendingDelete: &pending,
+            onUserDismissed: { didDismiss = true }
+        )
+
+        XCTAssertNil(pending)
+        XCTAssertTrue(didDismiss)
+    }
+
+    func testHandleIsPresentedChange_falseWhenAlreadyNilSkipsDismissalCallback() {
+        var pending: ProjectSummary?
+        var didDismiss = false
+
+        ProjectDeleteConfirmationActions.handleIsPresentedChange(
+            false,
+            projectPendingDelete: &pending,
+            onUserDismissed: { didDismiss = true }
+        )
+
+        XCTAssertNil(pending)
+        XCTAssertFalse(didDismiss)
+    }
+
+    func testHandleIsPresentedChange_trueLeavesPendingAndSkipsDismissal() {
+        var pending: ProjectSummary? = project
+        var didDismiss = false
 
         ProjectDeleteConfirmationActions.handleIsPresentedChange(
             true,
-            projectPendingDelete: &pending
+            projectPendingDelete: &pending,
+            onUserDismissed: { didDismiss = true }
         )
 
         XCTAssertEqual(pending, project)
+        XCTAssertFalse(didDismiss)
     }
 
     func testHandleConfirm_usesPresentedProjectIDEvenIfBindingAlreadyCleared() {

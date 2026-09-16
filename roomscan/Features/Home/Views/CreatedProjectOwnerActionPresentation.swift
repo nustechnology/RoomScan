@@ -38,6 +38,8 @@ struct CreatedProjectOwnerActionPresentation: ViewModifier {
                     }
                 },
                 onUserDismissed: {
+                    // Invoked from Cancel/Confirm and from isPresented→false teardowns that
+                    // never hit a button (see ProjectDeleteConfirmationActions).
                     CreatedProjectOwnerActionHandoffSession.mutate(
                         pending: &pendingOwnerAction,
                         activeEdit: &projectToEdit,

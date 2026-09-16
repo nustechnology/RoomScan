@@ -80,6 +80,106 @@ final class CreatedProjectOwnerActionHandoffRunTests: XCTestCase {
     }
 
     @MainActor
+    func testHomeViewGlue_deleteHandoffPresentsAfterDetailDismissThenAbandonsOnTabChange() async {
+        var flight = CreatedProjectOwnerActionFlight()
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: nil,
+            activeEdit: nil,
+            activeDelete: nil
+        )
+
+        // beginOwnerActionAfterCreatedDetail while detail is up: invalidate, stage, dismiss.
+        _ = flight.begin()
+        session.begin(.delete(project))
+        XCTAssertEqual(session.pending, .delete(project))
+
+        // selectedCreatedProject onDismiss -> presentPendingOwnerActionAfterCreatedDetailDismiss.
+        let generation = flight.begin()
+        await CreatedProjectOwnerActionHandoff.presentAfterDetailDismiss(
+            load: { session },
+            store: { updated in
+                guard flight.isCurrent(generation) else { return }
+                session = updated
+            },
+            isCurrent: { flight.isCurrent(generation) },
+            yield: {}
+        )
+        XCTAssertEqual(session.activeDelete, project)
+        XCTAssertEqual(session.pending, .delete(project))
+
+        // selectedTab onChange -> cancelUnacknowledgedOwnerActionPresentation.
+        _ = flight.begin()
+        session.abandonUnacknowledgedPresentation()
+        XCTAssertNil(session.pending)
+        XCTAssertNil(session.activeDelete)
+    }
+
+    @MainActor
+    func testHomeViewGlue_beginWithoutDetailCoverPresentsImmediately() async {
+        var flight = CreatedProjectOwnerActionFlight()
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: nil,
+            activeEdit: nil,
+            activeDelete: nil
+        )
+
+        // beginOwnerActionAfterCreatedDetail when selectedCreatedProject == nil.
+        _ = flight.begin()
+        session.begin(.edit(project))
+
+        // Falls through to presentPendingOwnerActionAfterCreatedDetailDismiss directly.
+        let generation = flight.begin()
+        await CreatedProjectOwnerActionHandoff.presentAfterDetailDismiss(
+            load: { session },
+            store: { updated in
+                guard flight.isCurrent(generation) else { return }
+                session = updated
+            },
+            isCurrent: { flight.isCurrent(generation) },
+            yield: {}
+        )
+
+        XCTAssertEqual(session.activeEdit, project)
+        XCTAssertEqual(session.pending, .edit(project))
+    }
+
+    @MainActor
+    func testHomeViewGlue_isPresentedTeardownDropsPendingSoLaterDismissDoesNotRepresent() async {
+        var pending: CreatedProjectOwnerAction? = .delete(project)
+        var activeDelete: ProjectSummary? = project
+
+        // SwiftUI tears the alert down without Cancel/Confirm.
+        ProjectDeleteConfirmationActions.handleIsPresentedChange(
+            false,
+            projectPendingDelete: &activeDelete,
+            onUserDismissed: {
+                guard case .delete(let project) = pending else { return }
+                pending = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
+                    .delete(project),
+                    pending: pending
+                )
+            }
+        )
+        XCTAssertNil(activeDelete)
+        XCTAssertNil(pending)
+
+        var session = CreatedProjectOwnerActionHandoffSession(
+            pending: pending,
+            activeEdit: nil,
+            activeDelete: activeDelete
+        )
+
+        // A later created-detail dismiss must not resurrect the abandoned delete.
+        await CreatedProjectOwnerActionHandoff.presentAfterDetailDismiss(
+            load: { session },
+            store: { session = $0 },
+            yield: {}
+        )
+        XCTAssertNil(session.activeDelete)
+        XCTAssertNil(session.pending)
+    }
+
+    @MainActor
     func testPresentAfterDetailDismiss_stopsWhenIsCurrentBecomesFalseBeforeFirstAssign() async {
         var session = CreatedProjectOwnerActionHandoffSession(
             pending: .edit(project),

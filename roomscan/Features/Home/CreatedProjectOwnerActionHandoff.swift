@@ -118,10 +118,11 @@ struct CreatedProjectOwnerActionHandoffSession: Equatable {
         )
     }
 
-    /// Clears pending after the user dismisses the delete confirmation (cancel or confirm).
+    /// Clears pending after the delete confirmation is dismissed.
     ///
-    /// Alerts have no reliable `onAppear` acknowledgment; pending stays until this call so a
-    /// swallowed first assign can still be retried, and so tab-switch abandon can cancel it.
+    /// Called from alert Cancel/Confirm and from `isPresented`→false teardowns that skip
+    /// those buttons. Pending must not survive a dismissed alert: a later created-detail
+    /// dismiss would otherwise re-present delete for an abandoned project.
     mutating func acknowledgeDeletePresentation(_ project: ProjectSummary) {
         pending = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
             .delete(project),

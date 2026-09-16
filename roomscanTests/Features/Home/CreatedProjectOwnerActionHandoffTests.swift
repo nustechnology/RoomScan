@@ -221,4 +221,27 @@ final class CreatedProjectOwnerActionHandoffTests: XCTestCase {
         XCTAssertNil(session.pending)
         XCTAssertEqual(session.activeDelete, project)
     }
+
+    func testPresentationAcknowledgment_deleteTeardownClearsPendingWithoutButton() {
+        var pending: CreatedProjectOwnerAction? = .delete(project)
+        var activeDelete: ProjectSummary? = project
+
+        // Mirrors CreatedProjectOwnerActionPresentation: SwiftUI can tear the alert down
+        // (isPresented false) without a button action, and that path must still clear pending
+        // so a later created-detail dismiss cannot re-present the stale confirmation.
+        ProjectDeleteConfirmationActions.handleIsPresentedChange(
+            false,
+            projectPendingDelete: &activeDelete,
+            onUserDismissed: {
+                guard case .delete(let project) = pending else { return }
+                pending = CreatedProjectOwnerActionHandoff.pendingAfterAcknowledging(
+                    .delete(project),
+                    pending: pending
+                )
+            }
+        )
+
+        XCTAssertNil(activeDelete)
+        XCTAssertNil(pending)
+    }
 }

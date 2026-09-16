@@ -20,12 +20,25 @@ enum ProjectOwnerActionAlerts {
 /// Binding side-effects for the shared project delete confirmation alert.
 enum ProjectDeleteConfirmationActions {
     /// Clears the pending project when SwiftUI dismisses the alert.
+    ///
+    /// Also notifies `onUserDismissed` when this path is what clears the binding, so callers
+    /// that track a separate handoff `pending` can acknowledge. SwiftUI can tear the alert
+    /// down without a button (for example when the presenting modifier is re-created); that
+    /// is the only chance to drop handoff pending instead of leaving a stale `.delete` that
+    /// a later created-detail dismiss would re-present.
+    ///
+    /// Skips `onUserDismissed` when the binding is already nil so Cancel/Confirm (which clear
+    /// first, then notify) do not get a redundant second callback from `isPresented`.
     static func handleIsPresentedChange(
         _ isPresented: Bool,
-        projectPendingDelete: inout ProjectSummary?
+        projectPendingDelete: inout ProjectSummary?,
+        onUserDismissed: (() -> Void)? = nil
     ) {
-        if !isPresented {
-            projectPendingDelete = nil
+        guard !isPresented else { return }
+        let didClearPresentedProject = projectPendingDelete != nil
+        projectPendingDelete = nil
+        if didClearPresentedProject {
+            onUserDismissed?()
         }
     }
 
@@ -65,7 +78,8 @@ private struct ProjectDeleteConfirmationAlertModifier: ViewModifier {
                 set: { isPresented in
                     ProjectDeleteConfirmationActions.handleIsPresentedChange(
                         isPresented,
-                        projectPendingDelete: &projectPendingDelete
+                        projectPendingDelete: &projectPendingDelete,
+                        onUserDismissed: onUserDismissed
                     )
                 }
             ),
