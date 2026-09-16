@@ -165,36 +165,11 @@ struct ProjectsPresentationModifier: ViewModifier {
             } message: { _ in
                 Text(String(localized: "scan.recovery.message"))
             }
-            .fullScreenCover(item: $projectToEdit) { project in
-                editProjectCover(for: project)
-            }
-            .alert(
-                String(localized: "projects.delete.title"),
-                isPresented: Binding(
-                    get: { projectPendingDelete != nil },
-                    set: { if !$0 { projectPendingDelete = nil } }
-                ),
-                presenting: projectPendingDelete
-            ) { project in
-                Button(String(localized: "projects.delete.cancel"), role: .cancel) {
-                    projectPendingDelete = nil
-                }
-                Button(String(localized: "projects.delete.confirm"), role: .destructive) {
-                    let projectID = project.id
-                    projectPendingDelete = nil
-                    Task {
-                        await viewModel.deleteProject(id: projectID)
-                    }
-                }
-            } message: { project in
-                Text(
-                    String.localizedStringWithFormat(
-                        String(localized: "projects.delete.message.format"),
-                        max(project.scanCount, project.roomScans.count),
-                        project.name
-                    )
-                )
-            }
+            .projectOwnerActionPresentation(
+                projectToEdit: $projectToEdit,
+                projectPendingDelete: $projectPendingDelete,
+                projectsViewModel: viewModel
+            )
             .onChange(of: viewModel.showsDeleteSuccessToast) { _, showsToast in
                 guard showsToast else { return }
                 Task {
@@ -218,14 +193,9 @@ struct ProjectsPresentationModifier: ViewModifier {
     private func presentPendingScanFlowAfterDetailDismiss() {
         guard ActiveScanFlowHandoff.flowAwaitingPresentation(pendingActiveScanFlow) != nil else { return }
         Task { @MainActor in
-            // Defer a turn: presenting a fullScreenCover from within another cover's
-            // onDismiss is dropped if it happens in the same main-actor turn.
-            await Task.yield()
-            assignPendingScanFlowIfNeeded()
-            await Task.yield()
-            // Retry only if SwiftUI rejected the assignment and cleared the item.
-            // A cover that appeared already cleared pending in onAppear.
-            assignPendingScanFlowIfNeeded()
+            await PresentationHandoff.presentAfterDismiss {
+                assignPendingScanFlowIfNeeded()
+            }
         }
     }
 
@@ -308,38 +278,4 @@ struct ProjectsPresentationModifier: ViewModifier {
         )
     }
 
-    private func editProjectCover(for project: ProjectSummary) -> some View {
-        return NewProjectView(
-            mode: .edit,
-            initialName: project.name,
-            initialDescription: project.description,
-            onSave: { form in
-                let didUpdate = await viewModel.updateProject(
-                    id: project.id,
-                    name: form.name,
-                    description: form.projectDescription,
-                    revision: project.revision
-                )
-                if didUpdate {
-                    projectToEdit = nil
-                }
-                return didUpdate
-            },
-            onCancel: {
-                projectToEdit = nil
-                viewModel.dismissActionErrorToast()
-            }
-        )
-        .alert(
-            String(localized: "projects.action.error"),
-            isPresented: Binding(
-                get: { viewModel.showsActionErrorToast },
-                set: { if !$0 { viewModel.dismissActionErrorToast() } }
-            )
-        ) {
-            Button(String(localized: "projects.action.error.dismiss"), role: .cancel) {
-                viewModel.dismissActionErrorToast()
-            }
-        }
-    }
 }
