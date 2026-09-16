@@ -231,6 +231,7 @@ private struct AppleAuthorizationButton: UIViewRepresentable {
     private struct AuthorizationContext {
         let controller: ASAuthorizationController
         let attemptID: UUID
+        let createdAt: Date
     }
 
     let isEnabled: Bool
@@ -277,7 +278,13 @@ private struct AppleAuthorizationButton: UIViewRepresentable {
         var onSuccess: (ASAuthorization, UUID) -> Void
         var onFailure: (Error, UUID) -> Void
 
+        /// Removed by the delegate via `finishAuthorization`, or pruned when newer
+        /// attempts start. Cancelled controllers are kept briefly so a late sheet
+        /// submit can still be routed into the view model.
         private var authorizationContexts: [ObjectIdentifier: AuthorizationContext] = [:]
+        /// Enough retained sheets to cover the multi-retry hang scenario without
+        /// unbounded growth if Apple never calls the delegate after `cancel()`.
+        private let maxRetainedAuthorizationContexts = 3
 
         init(
             beginAuthorization: @escaping () -> AuthenticationViewModel.AppleAuthorizationAttempt,
@@ -305,7 +312,8 @@ private struct AppleAuthorizationButton: UIViewRepresentable {
             let controller = ASAuthorizationController(authorizationRequests: [request])
             authorizationContexts[ObjectIdentifier(controller)] = AuthorizationContext(
                 controller: controller,
-                attemptID: attempt.id
+                attemptID: attempt.id,
+                createdAt: Date()
             )
             controller.delegate = self
             controller.presentationContextProvider = self
@@ -339,11 +347,24 @@ private struct AppleAuthorizationButton: UIViewRepresentable {
         }
 
         private func cancelAuthorizationContexts(except attemptID: UUID) {
-            // Cancel stale controllers but keep their contexts until the delegate fires.
-            // Apple's sheet often stays up after cancel(); dropping the context would make a
-            // late Face ID/password submit disappear with no callback into the view model.
+            // Cancel stale controllers but keep their contexts until the delegate fires
+            // or they are pruned below. Apple's sheet often stays up after cancel();
+            // dropping the context would make a late Face ID/password submit disappear
+            // with no callback into the view model.
             for context in authorizationContexts.values where context.attemptID != attemptID {
                 context.controller.cancel()
+            }
+            pruneAuthorizationContexts(keeping: attemptID)
+        }
+
+        private func pruneAuthorizationContexts(keeping attemptID: UUID) {
+            let staleContexts = authorizationContexts
+                .filter { $0.value.attemptID != attemptID }
+                .sorted { $0.value.createdAt < $1.value.createdAt }
+            let staleLimit = max(0, maxRetainedAuthorizationContexts - 1)
+            guard staleContexts.count > staleLimit else { return }
+            for (identifier, _) in staleContexts.dropLast(staleLimit) {
+                authorizationContexts.removeValue(forKey: identifier)
             }
         }
 

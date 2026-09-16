@@ -295,6 +295,30 @@ struct AuthenticationViewModelTests {
         #expect(await viewModel.signInWithApple(attemptID: attempt.id) { _ in .mockAppleUser } == nil)
     }
 
+    @Test func firstAbandonedAppleAuthorizationFailureStillShowsErrorAfterTwoRetries() async {
+        let viewModel = AuthenticationViewModel(
+            authenticationService: MockAuthenticationService(),
+            appleAuthorizationTimeoutNanoseconds: 1_000_000
+        )
+        let firstAttempt = viewModel.beginAppleAuthorization()
+        await waitUntilAppleAuthorizationFinishes(viewModel)
+
+        let secondAttempt = viewModel.beginAppleAuthorization()
+        await waitUntilAppleAuthorizationFinishes(viewModel)
+
+        let thirdAttempt = viewModel.beginAppleAuthorization()
+        #expect(thirdAttempt.id != firstAttempt.id)
+        #expect(thirdAttempt.id != secondAttempt.id)
+
+        viewModel.handleAppleSignInError(ASAuthorizationError(.failed), attemptID: firstAttempt.id)
+
+        #expect(viewModel.viewState == .failed(.appleSystemError))
+        #expect(viewModel.toastMessage == AuthenticationError.appleSystemError.errorDescription)
+        #expect(viewModel.isAppleAuthorizationInProgress)
+        #expect(viewModel.beginAppleAuthorization() == thirdAttempt)
+        viewModel.endAppleAuthorization(attemptID: thirdAttempt.id)
+    }
+
     @Test func timedOutAppleAuthorizationCancellationStaysQuiet() async {
         let viewModel = AuthenticationViewModel(
             authenticationService: MockAuthenticationService(),
