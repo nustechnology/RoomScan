@@ -27,7 +27,9 @@ struct AccountMetrics: Equatable, Sendable {
     }()
 }
 
-enum AccountDisplayName {
+/// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so
+/// nonisolated mappers (e.g. `ShareAPIMapping`) can compute display names.
+nonisolated enum AccountDisplayName {
     static func resolved(from displayName: String?) -> String {
         let trimmed = displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if trimmed.isEmpty {

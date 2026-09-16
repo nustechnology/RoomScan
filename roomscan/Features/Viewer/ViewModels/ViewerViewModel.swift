@@ -165,6 +165,10 @@ extension ViewerViewModel {
 
     var allowsOwnerActions: Bool { accessPolicy.allowsOwnerActions }
 
+    var showsNotesSection: Bool {
+        allowsOwnerActions || isLoadingNotes || !notes.isEmpty
+    }
+
     var canShare: Bool {
         RoomScanSummary.isReadyToShare(syncStatus: input.syncStatus, assetStatus: input.assetStatus)
     }

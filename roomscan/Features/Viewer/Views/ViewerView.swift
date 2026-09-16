@@ -88,36 +88,40 @@ struct ViewerView: View {
                     .animation(.easeInOut(duration: 0.25), value: viewModel.isFullscreen)
 
                 if !viewModel.isFullscreen && viewModel.isModelReady {
-                    ZStack(alignment: .top) {
-                        NotesListSection(
-                            notes: viewModel.notes,
-                            selectedNoteID: viewModel.selectedNoteID,
-                            isLoading: viewModel.isLoadingNotes,
-                            isAddEnabled: viewModel.isModelReady && viewModel.allowsOwnerActions && !viewModel.isLoadingNotes,
-                            showsOwnerActions: viewModel.allowsOwnerActions,
-                            onAddNote: { viewModel.beginAddNote() },
-                            onSelectNote: { viewModel.selectNote(id: $0.id) },
-                            onEditNote: { viewModel.openEditor(for: $0) },
-                            onMoveNote: { viewModel.beginMoveNote($0) },
-                            onDeleteNote: { viewModel.requestDelete($0) }
-                        )
+                    if viewModel.showsNotesSection || viewModel.isPlacementActive {
+                        ZStack(alignment: .top) {
+                            if viewModel.showsNotesSection {
+                                NotesListSection(
+                                    notes: viewModel.notes,
+                                    selectedNoteID: viewModel.selectedNoteID,
+                                    isLoading: viewModel.isLoadingNotes,
+                                    isAddEnabled: viewModel.isModelReady && viewModel.allowsOwnerActions && !viewModel.isLoadingNotes,
+                                    showsOwnerActions: viewModel.allowsOwnerActions,
+                                    onAddNote: { viewModel.beginAddNote() },
+                                    onSelectNote: { viewModel.selectNote(id: $0.id) },
+                                    onEditNote: { viewModel.openEditor(for: $0) },
+                                    onMoveNote: { viewModel.beginMoveNote($0) },
+                                    onDeleteNote: { viewModel.requestDelete($0) }
+                                )
+                            }
 
-                        if viewModel.isPlacementActive {
-                            PinPlacementBanner(
-                                mode: viewModel.movingNote == nil ? .add : .move,
-                                hasDraftPosition: viewModel.placementDraftPosition != nil,
-                                onCancel: { viewModel.cancelPlacement() },
-                                onDone: { viewModel.confirmPlacement() }
-                            )
-                            .padding(AppSpacing.medium)
-                            .transition(.move(edge: .top).combined(with: .opacity))
+                            if viewModel.isPlacementActive {
+                                PinPlacementBanner(
+                                    mode: viewModel.movingNote == nil ? .add : .move,
+                                    hasDraftPosition: viewModel.placementDraftPosition != nil,
+                                    onCancel: { viewModel.cancelPlacement() },
+                                    onDone: { viewModel.confirmPlacement() }
+                                )
+                                .padding(AppSpacing.medium)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                            }
                         }
+                        .padding(.horizontal, AppSpacing.extraLarge)
+                        .padding(.top, AppSpacing.large)
+                        .padding(.bottom, AppSpacing.extraLarge)
+                        .frame(maxHeight: 300)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
-                    .padding(.horizontal, AppSpacing.extraLarge)
-                    .padding(.top, AppSpacing.large)
-                    .padding(.bottom, AppSpacing.extraLarge)
-                    .frame(maxHeight: 300)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

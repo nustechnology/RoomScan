@@ -76,19 +76,62 @@ struct ViewerViewModelTests {
         #expect(synced.canShare)
     }
 
-    @Test func loadShowsNotesLoadingWhileFetchingNotes() async {
-        let notesService = DelayedNotesService(
-            delayNanoseconds: 80_000_000,
-            shouldBlockFetchUntilReleased: true
-        )
-        let viewModel = ViewerViewModel(
-            input: ViewerInput(scanID: "scan-loading", scanName: "Living Room"),
-            notesService: notesService,
-            modelLoadingService: TestModelLoadingService()
+    @Test func showsNotesSectionReflectsOwnerAccessAndNotes() {
+        let sampleNote = SpatialNote(
+            id: "note-1",
+            title: "Note",
+            detail: "Detail",
+            color: .yellow,
+            position: .zero,
+            orientation: .zero,
+            createdAt: Date(),
+            updatedAt: Date(),
+            modelVersion: "sample-1"
         )
 
-        let loadTask = Task { await viewModel.load() }
-        await notesService.waitUntilFetchNotesStarted()
+        let viewerWithoutNotes = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-viewer-empty", scanName: "Living Room"),
+            notesService: MockNotesService(),
+            modelLoadingService: DefaultModelLoadingService(),
+            accessPolicy: .readOnly
+        )
+        #expect(!viewerWithoutNotes.showsNotesSection)
+
+        let viewerWithNotes = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-viewer-notes", scanName: "Living Room"),
+            notesService: MockNotesService(),
+            modelLoadingService: DefaultModelLoadingService(),
+            accessPolicy: .readOnly
+        )
+        viewerWithNotes.notes = [sampleNote]
+        #expect(viewerWithNotes.showsNotesSection)
+
+        let ownerWithoutNotes = ViewerViewModel(
+            input: ViewerInput(scanID: "scan-owner-empty", scanName: "Living Room"),
+            notesService: MockNotesService(),
+            modelLoadingService: DefaultModelLoadingService(),
+            accessPolicy: .editable
+        )
+        #expect(ownerWithoutNotes.showsNotesSection)
+    }
+
+    @Test func showsNotesSectionRemainsTrueWhileNotesAreLoading() async {
+        let (viewModel, notesService, loadTask) = await makeViewModelWithBlockedNoteFetch(
+            scanID: "scan-loading-notes-section",
+            accessPolicy: .readOnly
+        )
+
+        #expect(viewModel.isLoadingNotes)
+        #expect(viewModel.showsNotesSection)
+
+        notesService.releaseFetchNotes()
+        await loadTask.value
+    }
+
+    @Test func loadShowsNotesLoadingWhileFetchingNotes() async {
+        let (viewModel, notesService, loadTask) = await makeViewModelWithBlockedNoteFetch(
+            scanID: "scan-loading"
+        )
 
         #expect(viewModel.isLoadingNotes)
         notesService.releaseFetchNotes()
@@ -425,5 +468,29 @@ struct ViewerViewModelTests {
 
         appliedCameraCommandIDs.formIntersection(Set(viewModel.cameraCommands.map(\.id)))
         #expect(appliedCameraCommandIDs.isEmpty)
+    }
+
+    /// Builds a `ViewerViewModel` whose note fetch is in-flight and blocked until
+    /// `notesService.releaseFetchNotes()` is called, so callers can assert on the
+    /// loading state before letting `load()` complete.
+    private func makeViewModelWithBlockedNoteFetch(
+        scanID: String,
+        accessPolicy: DetailAccessPolicy = .editable
+    ) async -> (viewModel: ViewerViewModel, notesService: DelayedNotesService, loadTask: Task<Void, Never>) {
+        let notesService = DelayedNotesService(
+            delayNanoseconds: 80_000_000,
+            shouldBlockFetchUntilReleased: true
+        )
+        let viewModel = ViewerViewModel(
+            input: ViewerInput(scanID: scanID, scanName: "Living Room"),
+            notesService: notesService,
+            modelLoadingService: TestModelLoadingService(),
+            accessPolicy: accessPolicy
+        )
+
+        let loadTask = Task { await viewModel.load() }
+        await notesService.waitUntilFetchNotesStarted()
+
+        return (viewModel, notesService, loadTask)
     }
 }

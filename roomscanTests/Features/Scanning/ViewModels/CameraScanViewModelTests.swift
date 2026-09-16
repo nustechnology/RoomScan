@@ -92,6 +92,21 @@ final class CameraScanViewModelTests: XCTestCase {
         XCTAssertEqual(mockCaptureService.stopCallCount, 1)
     }
 
+    func testFinishScan_whilePaused_returnsDraft() async {
+        viewModel.startScanning()
+        await waitUntil { viewModel.hasMinimalStructure }
+
+        viewModel.togglePause()
+        XCTAssertTrue(viewModel.isPaused)
+
+        let draft = await viewModel.finishScan()
+
+        XCTAssertNotNil(draft)
+        XCTAssertFalse(viewModel.isScanning)
+        XCTAssertFalse(viewModel.isPaused)
+        XCTAssertEqual(mockCaptureService.stopCallCount, 1)
+    }
+
     func testPauseThenResume_doesNotFinishScan() async {
         viewModel.startScanning()
         await waitUntil { viewModel.hasMinimalStructure }
