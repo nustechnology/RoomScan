@@ -156,6 +156,7 @@ actor LocalInvitationService: InvitationService {
             return InvitationDetails(
                 token: token,
                 scope: .project,
+                type: .invitation,
                 title: "Empty Shared Project",
                 ownerName: "Nguyen Minh Anh",
                 invitedEmail: nil,
@@ -176,6 +177,17 @@ actor LocalInvitationService: InvitationService {
             )
         }
 
+        if token.hasPrefix("share-link-") {
+            return makeProjectInvitation(token: token, type: .shareLink)
+        }
+
+        return makeProjectInvitation(token: token, type: .invitation)
+    }
+
+    private func makeProjectInvitation(
+        token: String,
+        type: InvitationLinkType
+    ) -> InvitationDetails {
         let scans = makeProjectScans()
         let project = ProjectSummary(
             id: "shared-project-floor-3",
@@ -191,6 +203,7 @@ actor LocalInvitationService: InvitationService {
         return InvitationDetails(
             token: token,
             scope: .project,
+            type: type,
             title: project.name,
             ownerName: project.ownerName,
             invitedEmail: token.hasPrefix("mismatch-") ? "viewer@example.com" : nil,
@@ -203,6 +216,16 @@ actor LocalInvitationService: InvitationService {
     }
 
     private func scanInvitation(token: String) -> InvitationDetails {
+        if token.hasPrefix("share-link-") {
+            return makeScanInvitation(token: token, type: .shareLink)
+        }
+        return makeScanInvitation(token: token, type: .invitation)
+    }
+
+    private func makeScanInvitation(
+        token: String,
+        type: InvitationLinkType
+    ) -> InvitationDetails {
         let scan = RoomScanSummary(
             id: "shared-scan-meeting-3a",
             name: "Meeting Room 3A",
@@ -224,6 +247,7 @@ actor LocalInvitationService: InvitationService {
         return InvitationDetails(
             token: token,
             scope: .scan,
+            type: type,
             title: scan.name,
             ownerName: "Nguyen Minh Anh",
             invitedEmail: token.hasPrefix("mismatch-") ? "viewer@example.com" : nil,

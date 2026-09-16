@@ -317,24 +317,15 @@ nonisolated struct LiveHTTPClient: HTTPClient {
     }
 
     #if DEBUG
-    private static let sensitiveHeaderKeys: Set<String> = [
-        "authorization",
-        "cookie",
-        "set-cookie",
-        "x-api-key",
-    ]
-
     private static func logRequest(_ request: URLRequest) {
         let method = request.httpMethod ?? "?"
         let url = request.url?.absoluteString ?? "<nil>"
-        let headers = redactedHeaders(from: request.allHTTPHeaderFields ?? [:])
         let bodyBytes = request.httpBody?.count ?? 0
         let cachePolicy = request.cachePolicy.rawValue
         print(
             """
             [HTTP] → \(method) \(url)
             cachePolicy=\(cachePolicy)
-            headers=\(headers)
             bodyBytes=\(bodyBytes)
             """
         )
@@ -343,34 +334,12 @@ nonisolated struct LiveHTTPClient: HTTPClient {
     private static func logResponse(_ response: HTTPURLResponse, data: Data, for request: URLRequest) {
         let method = request.httpMethod ?? "?"
         let url = request.url?.absoluteString ?? response.url?.absoluteString ?? "<nil>"
-        let headers = redactedHeaders(from: response.allHeaderFields)
         print(
             """
             [HTTP] ← \(response.statusCode) \(method) \(url)
-            headers=\(headers)
             bodyBytes=\(data.count)
             """
         )
-    }
-
-    private static func redactedHeaders(from headers: [String: String]) -> [String: String] {
-        Dictionary(uniqueKeysWithValues: headers.map { key, value in
-            let redacted = sensitiveHeaderKeys.contains(key.lowercased()) ? "<redacted>" : value
-            return (key, redacted)
-        })
-    }
-
-    private static func redactedHeaders(from headers: [AnyHashable: Any]) -> [String: String] {
-        var result: [String: String] = [:]
-        for (key, value) in headers {
-            let keyString = String(describing: key)
-            if sensitiveHeaderKeys.contains(keyString.lowercased()) {
-                result[keyString] = "<redacted>"
-            } else {
-                result[keyString] = String(describing: value)
-            }
-        }
-        return result
     }
     #endif
 

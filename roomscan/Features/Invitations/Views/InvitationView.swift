@@ -183,24 +183,41 @@ struct InvitationView: View {
 
     private var actionButtons: some View {
         HStack(spacing: AppSpacing.medium) {
-            PrimaryActionButton(
-                title: String(localized: "invitation.action.decline"),
-                systemImageName: nil,
-                color: AppColors.background,
-                action: { viewModel.requestDecline() },
-                foregroundColor: AppColors.primaryText,
-                borderColor: AppColors.borderDefault,
-                cornerRadius: 18,
-                accessibilityIdentifier: "invitation.action.decline"
-            )
+            if !viewModel.hasExistingAccess {
+                PrimaryActionButton(
+                    title: secondaryAction.title,
+                    systemImageName: nil,
+                    color: AppColors.background,
+                    action: { viewModel.requestDecline() },
+                    foregroundColor: AppColors.primaryText,
+                    borderColor: AppColors.borderDefault,
+                    cornerRadius: 18,
+                    accessibilityIdentifier: secondaryAction.accessibilityIdentifier
+                )
+            }
 
-           PrimaryActionButton(
+            PrimaryActionButton(
                 title: primaryActionTitle,
                 systemImageName: nil,
                 color: AppColors.brandPrimary,
                 action: performPrimaryAction,
                 cornerRadius: 18,
                 accessibilityIdentifier: primaryActionAccessibilityIdentifier
+            )
+        }
+    }
+
+    private var secondaryAction: (title: String, accessibilityIdentifier: String) {
+        switch viewModel.invitation?.type {
+        case .shareLink:
+            (
+                String(localized: "invitation.action.cancel"),
+                "invitation.action.cancel"
+            )
+        case .invitation, nil:
+            (
+                String(localized: "invitation.action.decline"),
+                "invitation.action.decline"
             )
         }
     }
@@ -227,7 +244,7 @@ struct InvitationView: View {
     private var backButton: some View {
         Button {
             onFinished(
-                .dismissedToHome(toastMessage: "")
+                .dismissedToHome(toastMessage: nil)
             )
         } label: {
             Image(systemName: "chevron.left")

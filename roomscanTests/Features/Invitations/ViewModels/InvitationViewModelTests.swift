@@ -145,6 +145,7 @@ struct InvitationViewModelTests {
             return
         }
         #expect(toast == String(localized: "invitation.toast.accepted"))
+        #expect(outcome.feedbackToastMessage == toast)
         guard case .project(let project) = destination else {
             Issue.record("Expected project destination")
             return
@@ -178,6 +179,29 @@ struct InvitationViewModelTests {
         #expect(item.detailScan != nil)
     }
 
+    @Test func requestDeclineOnShareLinkDismissesWithoutConfirmation() async {
+        let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
+        let viewModel = InvitationViewModel(
+            pendingInvitation: PendingInvitation(scope: .project, token: "share-link-project"),
+            service: service,
+            currentUserEmail: nil
+        )
+
+        await viewModel.loadInvitation()
+        #expect(viewModel.invitation?.type == .shareLink)
+
+        viewModel.requestDecline()
+
+        #expect(viewModel.showsDeclineConfirmation == false)
+        guard let outcome = viewModel.navigationOutcome,
+              case .dismissedToHome(let toast) = outcome else {
+            Issue.record("Expected share-link decline to close the invitation")
+            return
+        }
+        #expect(toast == nil)
+        #expect(outcome.feedbackToastMessage == nil)
+    }
+
     @Test func confirmDeclineReturnsHomeWithToast() async {
         let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
         let viewModel = InvitationViewModel(
@@ -187,6 +211,7 @@ struct InvitationViewModelTests {
         )
 
         await viewModel.loadInvitation()
+        #expect(viewModel.invitation?.type == .invitation)
         viewModel.requestDecline()
         #expect(viewModel.showsDeclineConfirmation)
         await viewModel.confirmDecline()
@@ -197,6 +222,7 @@ struct InvitationViewModelTests {
             return
         }
         #expect(toast == String(localized: "invitation.toast.declined"))
+        #expect(outcome.feedbackToastMessage == toast)
         #expect(viewModel.showsDeclineConfirmation == false)
     }
 
@@ -216,7 +242,8 @@ struct InvitationViewModelTests {
             Issue.record("Expected dismissed navigation outcome")
             return
         }
-        #expect(toast.isEmpty)
+        #expect(toast == nil)
+        #expect(outcome.feedbackToastMessage == nil)
         #expect(viewModel.blockingAlert == nil)
     }
 

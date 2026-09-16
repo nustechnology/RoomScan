@@ -40,9 +40,27 @@ final class InvitationViewModel {
     }
 
     enum NavigationOutcome: Equatable {
-        case dismissedToHome(toastMessage: String)
+        case dismissedToHome(toastMessage: String?)
         case accepted(AcceptedInvitationDestination, toastMessage: String)
         case opened(AcceptedInvitationDestination)
+
+        var feedbackToastMessage: String? {
+            switch self {
+            case .dismissedToHome(let toastMessage):
+                return toastMessage
+            case .accepted(_, let toastMessage):
+                return toastMessage
+            case .opened:
+                return nil
+            }
+        }
+
+        /// Merges this outcome's toast (if any) onto whatever toast is already showing.
+        /// Outcomes without a toast of their own (`.opened`, or `.dismissedToHome` with a
+        /// nil message) must not clear one that's already on screen from a prior outcome.
+        func mergedFeedbackToastMessage(current: String?) -> String? {
+            feedbackToastMessage ?? current
+        }
     }
 
     enum Action: String, Equatable {
@@ -154,6 +172,10 @@ final class InvitationViewModel {
     }
 
     func requestDecline() {
+        if invitation?.type == .shareLink {
+            navigationOutcome = .dismissedToHome(toastMessage: nil)
+            return
+        }
         showsDeclineConfirmation = true
     }
 
@@ -230,7 +252,7 @@ final class InvitationViewModel {
     func dismissBlockingAlert() {
         guard blockingAlert != nil else { return }
         blockingAlert = nil
-        navigationOutcome = .dismissedToHome(toastMessage: "")
+        navigationOutcome = .dismissedToHome(toastMessage: nil)
     }
 
     func clearNavigationOutcome() {

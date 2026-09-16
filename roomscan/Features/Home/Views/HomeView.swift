@@ -27,8 +27,9 @@ struct HomeView: View {
     let onSignOut: () -> Void
 
     @State private var selectedTab: Tab = .projects
-    @State private var projectsViewModel: ProjectsViewModel
-    @State private var sharedViewModel: SharedWithMeViewModel
+    // Not `private`: also mutated from HomeView+InvitationOverlay.swift.
+    @State var projectsViewModel: ProjectsViewModel
+    @State var sharedViewModel: SharedWithMeViewModel
     @State private var showsNewProject = false
     @State private var pendingCreatedProject: ProjectSummary?
     @State private var selectedCreatedProject: ProjectSummary?
@@ -38,14 +39,17 @@ struct HomeView: View {
     @State private var scanRequestAfterProjectCreation: String?
     @State private var requestedScanSourceProjectID: String?
     @State private var isShowingProjectsDetail = false
-    @State private var activeInvitation: PendingInvitation?
-    @State private var isInvitationCoverPresented = false
-    @State private var pendingAcceptedDestination: AcceptedInvitationDestination?
-    @State private var acceptedProject: ProjectSummary?
-    @State private var acceptedViewerInput: ViewerInput?
-    @State private var acceptedInvitations = AcceptedInvitationCollection()
-    @State private var feedbackToastMessage: String?
+    // The following are also mutated from HomeView+InvitationOverlay.swift, so cannot
+    // be `private` (which is scoped to this file's declarations only).
+    @State var invitationOverlayPresenter: InvitationOverlayWindowPresenter
+    @State var acceptedProject: ProjectSummary?
+    @State var acceptedViewerInput: ViewerInput?
+    @State var pendingAcceptedDestination: AcceptedInvitationDestination?
+    @State var acceptedInvitations = AcceptedInvitationCollection()
+    @State var feedbackToastMessage: String?
     @State private var feedbackToastDismissTask: Task<Void, Never>?
+    @State var invitationOverlayRetryTask: Task<Void, Never>?
+    @Environment(\.scenePhase) private var scenePhase
 
     init(
         session: AuthenticationSession,
@@ -58,6 +62,7 @@ struct HomeView: View {
         usersService: any UsersService,
         syncEngine: SyncEngine? = nil,
         invitationService: any InvitationService,
+        overlayPresenter: InvitationOverlayWindowPresenter? = nil,
         pendingInvitation: Binding<PendingInvitation?> = .constant(nil),
         onUserUpdated: @escaping (AuthenticatedUser) -> Void = { _ in },
         onSignOut: @escaping () -> Void
@@ -72,6 +77,9 @@ struct HomeView: View {
         self.usersService = usersService
         self.syncEngine = syncEngine
         self.invitationService = invitationService
+        _invitationOverlayPresenter = State(
+            initialValue: overlayPresenter ?? InvitationOverlayWindowPresenter()
+        )
         _pendingInvitation = pendingInvitation
         self.onUserUpdated = onUserUpdated
         self.onSignOut = onSignOut
@@ -184,24 +192,6 @@ struct HomeView: View {
             onEditAppeared: { ownerActionHandoff.acknowledgeEditAppeared($0) },
             onDeleteDismissed: { ownerActionHandoff.acknowledgeDeleteDismissed() }
         )
-        .fullScreenCover(
-            item: $activeInvitation,
-            onDismiss: handleInvitationCoverDismissed
-        ) { invitation in
-            InvitationView(
-                viewModel: InvitationViewModel(
-                    pendingInvitation: invitation,
-                    service: invitationService,
-                    currentUserEmail: session.user.email
-                ),
-                onFinished: { outcome in
-                    handleInvitationFinished(outcome, for: invitation)
-                }
-            )
-            .onDisappear {
-                handleInvitationDismissed(invitation)
-            }
-        }
         .fullScreenCover(item: $acceptedProject) { project in
             ProjectDetailView(
                 project: project,
@@ -235,14 +225,27 @@ struct HomeView: View {
         }
         .onChange(of: pendingInvitation) { _, invitation in
             guard let invitation else { return }
-            activeInvitation = invitation
-            isInvitationCoverPresented = true
+            presentInvitationOverlay(invitation)
         }
         .onAppear {
             if let pendingInvitation {
-                activeInvitation = pendingInvitation
-                isInvitationCoverPresented = true
+                presentInvitationOverlay(pendingInvitation)
             }
+            flushPendingAcceptedDestinationIfReady()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // A failed presentation is most often caused by no foreground-active
+            // `UIWindowScene` existing yet (app launch, scene handoff, backgrounding).
+            // Becoming active is exactly the moment that resolves, so re-attempt then
+            // rather than relying on `onAppear`, which won't fire again while HomeView
+            // stays on screen.
+            guard phase == .active, let pendingInvitation, !invitationOverlayPresenter.isPresented else { return }
+            presentInvitationOverlay(pendingInvitation)
+        }
+        .onDisappear {
+            invitationOverlayRetryTask?.cancel()
+            invitationOverlayRetryTask = nil
+            invitationOverlayPresenter.dismissWithoutNotifying()
         }
         .onChange(of: selectedTab) { _, _ in
             // Avoid presenting a delayed edit/delete cover over a different tab.
@@ -294,93 +297,9 @@ private extension HomeView {
         }
     }
 
-    func handleInvitationFinished(
-        _ outcome: InvitationViewModel.NavigationOutcome,
-        for invitation: PendingInvitation
-    ) {
-        guard activeInvitation?.id == invitation.id else { return }
-        activeInvitation = nil
-        clearPendingInvitation(matching: invitation)
+}
 
-        switch outcome {
-        case .dismissedToHome(let toastMessage):
-            if !toastMessage.isEmpty { feedbackToastMessage = toastMessage }
-        case .accepted(let destination, let toastMessage):
-            acceptedInvitations.store(destination)
-            feedbackToastMessage = toastMessage
-            Task {
-                await sharedViewModel.ingestAcceptedDestination(destination)
-                Task { await sharedViewModel.refreshAllContent() }
-                await presentAcceptedDestinationWhenReady(destination)
-            }
-        case .opened(let destination): Task { await presentAcceptedDestinationWhenReady(destination) }
-        }
-    }
-
-    func handleInvitationDismissed(_ invitation: PendingInvitation) {
-        // Ignore transient teardown while this invite is still the presented item.
-        // If a newer invite replaced it, pendingInvitation has a different id and is left alone.
-        guard activeInvitation?.id != invitation.id else { return }
-        clearPendingInvitation(matching: invitation)
-    }
-
-    func handleInvitationCoverDismissed() {
-        isInvitationCoverPresented = false
-        guard let destination = pendingAcceptedDestination else { return }
-        pendingAcceptedDestination = nil
-        Task { await openAcceptedDestination(destination) }
-    }
-
-    func clearPendingInvitation(matching invitation: PendingInvitation) {
-        guard pendingInvitation?.id == invitation.id else { return }
-        pendingInvitation = nil
-    }
-
-    func presentAcceptedDestinationWhenReady(_ destination: AcceptedInvitationDestination) async {
-        guard !isInvitationCoverPresented else {
-            pendingAcceptedDestination = destination
-            return
-        }
-        await openAcceptedDestination(destination)
-    }
-
-    func openAcceptedDestination(_ destination: AcceptedInvitationDestination) async {
-        switch destination {
-        case .project(let project):
-            acceptedProject = project
-        case .scan(let item):
-            guard let scanDetailService else {
-                acceptedViewerInput = item.viewerInput
-                return
-            }
-
-            do {
-                let detail = try await scanDetailService.fetchScanDetail(id: item.id)
-                acceptedViewerInput = ViewerInput(
-                    projectID: item.projectID,
-                    projectName: item.projectName,
-                    scanID: item.id,
-                    scanName: detail.name,
-                    modelVersion: String(detail.modelVersion),
-                    modelURL: item.detailScan?.localModelURL,
-                    syncStatus: detail.syncStatus,
-                    assetStatus: detail.assetStatus
-                )
-            } catch {
-                acceptedViewerInput = item.viewerInput
-            }
-        }
-    }
-
-    func applyAcceptedProjectScanUpdate(projectID: ProjectSummary.ID, scan: RoomScanSummary) {
-        acceptedInvitations.applyUpdatedScan(projectID: projectID, scan: scan)
-        projectsViewModel.applyUpdatedScan(projectID: projectID, scan: scan)
-    }
-
-    func applyAcceptedProjectScanDeletion(projectID: ProjectSummary.ID, scanID: RoomScanSummary.ID) {
-        acceptedInvitations.applyDeletedScan(projectID: projectID, scanID: scanID)
-        projectsViewModel.applyDeletedScan(projectID: projectID, scanID: scanID)
-    }
+private extension HomeView {
     func saveNewProject(_ form: ProjectFormInput) async -> Bool {
         let name = form.name
         let projectDescription = form.projectDescription

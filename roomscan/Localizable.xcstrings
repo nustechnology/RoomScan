@@ -679,6 +679,17 @@
         }
       }
     },
+    "invitation.action.cancel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        }
+      }
+    },
     "invitation.action.decline" : {
       "extractionState" : "manual",
       "localizations" : {

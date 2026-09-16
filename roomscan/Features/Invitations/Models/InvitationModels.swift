@@ -13,6 +13,37 @@ nonisolated enum InvitationScope: String, Equatable, Sendable, Hashable {
 }
 
 /// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so value
+/// equality works from actors and nonisolated tests.
+nonisolated enum InvitationLinkType: String, Equatable, Sendable {
+    case invitation
+    case shareLink = "share-link"
+
+    /// Parses API / payload spellings such as `share-link`, `SHARE_LINK`, or `shareLink`.
+    /// Returns `nil` for empty or unrecognized values so callers can fail closed.
+    nonisolated static func parse(_ raw: String) -> InvitationLinkType? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let normalized = trimmed
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+
+        if let type = InvitationLinkType(rawValue: normalized) {
+            return type
+        }
+
+        switch normalized.replacingOccurrences(of: "-", with: "") {
+        case "invitation":
+            return .invitation
+        case "sharelink":
+            return .shareLink
+        default:
+            return nil
+        }
+    }
+}
+
+/// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so value
 /// equality and hashing work from actors and nonisolated tests.
 nonisolated struct PendingInvitation: Equatable, Hashable, Sendable, Identifiable {
     var id: String { "\(scope.rawValue)-\(token)" }
@@ -21,11 +52,14 @@ nonisolated struct PendingInvitation: Equatable, Hashable, Sendable, Identifiabl
     let token: String
 }
 
-struct InvitationDetails: Equatable, Sendable, Identifiable {
+/// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so actors and
+/// nonisolated mapping code can construct invitation details without hopping.
+nonisolated struct InvitationDetails: Equatable, Sendable, Identifiable {
     var id: String { token }
 
     let token: String
     let scope: InvitationScope
+    let type: InvitationLinkType
     let title: String
     let ownerName: String
     /// Email the invitation was issued to; nil means any authenticated user may accept.
@@ -36,6 +70,32 @@ struct InvitationDetails: Equatable, Sendable, Identifiable {
     let showsThumbnail: Bool
     let project: ProjectSummary?
     let scan: RoomScanSummary?
+
+    nonisolated init(
+        token: String,
+        scope: InvitationScope,
+        type: InvitationLinkType = .invitation,
+        title: String,
+        ownerName: String,
+        invitedEmail: String?,
+        existingAccessDestination: AcceptedInvitationDestination?,
+        itemCount: Int,
+        showsThumbnail: Bool,
+        project: ProjectSummary?,
+        scan: RoomScanSummary?
+    ) {
+        self.token = token
+        self.scope = scope
+        self.type = type
+        self.title = title
+        self.ownerName = ownerName
+        self.invitedEmail = invitedEmail
+        self.existingAccessDestination = existingAccessDestination
+        self.itemCount = itemCount
+        self.showsThumbnail = showsThumbnail
+        self.project = project
+        self.scan = scan
+    }
 }
 
 /// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so value
