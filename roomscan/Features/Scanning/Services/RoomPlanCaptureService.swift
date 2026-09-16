@@ -466,27 +466,20 @@ private extension RoomPlanCaptureService {
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
-            let resumeGate = TimeoutResumeGate()
+            let box = TimeoutResumeBox(continuation)
 
             let work = Task {
                 do {
-                    let value = try await operation()
-                    resumeGate.resume {
-                        continuation.resume(returning: value)
-                    }
+                    box.resume(with: .success(try await operation()))
                 } catch {
-                    resumeGate.resume {
-                        continuation.resume(throwing: error)
-                    }
+                    box.resume(with: .failure(error))
                 }
             }
 
             Task {
                 try? await Task.sleep(nanoseconds: nanoseconds)
                 work.cancel()
-                resumeGate.resume {
-                    continuation.resume(throwing: timeoutError())
-                }
+                box.resume(with: .failure(timeoutError()))
             }
         }
     }
@@ -562,19 +555,20 @@ private enum RoomPlanCaptureError: LocalizedError, Sendable {
 /// Resumes a continuation at most once so a timeout can return without waiting
 /// for non-cancellable work such as RoomPlan USDZ export.
 @available(iOS 16.0, *)
-private final class TimeoutResumeGate: @unchecked Sendable {
+private final class TimeoutResumeBox<Value: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
-    private var hasResumed = false
+    private var continuation: CheckedContinuation<Value, Error>?
 
-    func resume(_ action: () -> Void) {
+    init(_ continuation: CheckedContinuation<Value, Error>) {
+        self.continuation = continuation
+    }
+
+    func resume(with result: Result<Value, Error>) {
         lock.lock()
-        guard !hasResumed else {
-            lock.unlock()
-            return
-        }
-        hasResumed = true
+        let continuation = self.continuation
+        self.continuation = nil
         lock.unlock()
-        action()
+        continuation?.resume(with: result)
     }
 }
 #endif

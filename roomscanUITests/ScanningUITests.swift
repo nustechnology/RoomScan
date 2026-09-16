@@ -81,6 +81,7 @@ final class ScanningUITests: XCTestCase {
 
         let cancelButton = app.buttons["scancheck.cancelButton"]
         XCTAssertTrue(cancelButton.waitForExistence(timeout: 5))
+        XCTAssertEqual(cancelButton.label, "Cancel")
         cancelButton.tap()
 
         XCTAssertTrue(app.scrollViews["projects.list"].waitForExistence(timeout: 5))
