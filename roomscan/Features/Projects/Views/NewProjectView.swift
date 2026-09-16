@@ -11,6 +11,7 @@ struct ProjectFormInput: Equatable, Sendable {
     let projectDescription: String
 }
 
+/// Presents its title and back button via `.toolbar`; host this view in a `NavigationStack`.
 struct NewProjectView: View {
     enum Mode: Equatable {
         case create
@@ -57,8 +58,6 @@ struct NewProjectView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-
             ScrollView {
                 VStack(alignment: .leading, spacing: AppSpacing.extraLarge) {
                     nameField
@@ -79,6 +78,24 @@ struct NewProjectView: View {
             actions
         }
         .background(AppColors.background)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(AppColors.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                ToolbarBackButton(
+                    action: cancel,
+                    accessibilityIdentifier: "\(accessibilityRootID).back",
+                    isDisabled: isSaving
+                )
+            }
+
+            ToolbarItem(placement: .principal) {
+                Text(titleKey)
+                    .appTypography(AppTypography.headingLarge)
+                    .foregroundStyle(AppColors.primaryText)
+            }
+        }
         .interactiveDismissDisabled(isDirty || isSaving)
         .alert(discardTitleKey, isPresented: $showsDiscardAlert) {
             Button("projects.form.discard.keepEditing", role: .cancel) {}
@@ -125,33 +142,6 @@ struct NewProjectView: View {
             originalDescription: initialDescription,
             mode: mode
         )
-    }
-
-    private var header: some View {
-        ZStack {
-            Text(titleKey)
-                .appTypography(AppTypography.headingLarge)
-                .foregroundStyle(AppColors.primaryText)
-
-            HStack {
-                Button(action: cancel) {
-                    Image(systemName: "chevron.left")
-                        .font(.title2.weight(.medium))
-                        .foregroundStyle(AppColors.primaryText)
-                        .frame(width: 48, height: 48)
-                }
-                .buttonStyle(.plain)
-                .background(.quaternary.opacity(0.45), in: Circle())
-                .accessibilityLabel(String(localized: "common.back"))
-                .accessibilityIdentifier("\(accessibilityRootID).back")
-                .disabled(isSaving)
-
-                Spacer()
-            }
-        }
-        .padding(.horizontal, AppSpacing.extraLarge)
-        .padding(.top, AppSpacing.small)
-        .padding(.bottom, AppSpacing.medium)
     }
 
     private var nameField: some View {
@@ -385,15 +375,19 @@ enum ProjectValidation {
 }
 
 #Preview("Create") {
-    NewProjectView(onSave: { _ in true }, onCancel: {})
+    NavigationStack {
+        NewProjectView(onSave: { _ in true }, onCancel: {})
+    }
 }
 
 #Preview("Edit") {
-    NewProjectView(
-        mode: .edit,
-        initialName: "Lakeside Remodel",
-        initialDescription: "Kitchen and living room refresh",
-        onSave: { _ in true },
-        onCancel: {}
-    )
+    NavigationStack {
+        NewProjectView(
+            mode: .edit,
+            initialName: "Lakeside Remodel",
+            initialDescription: "Kitchen and living room refresh",
+            onSave: { _ in true },
+            onCancel: {}
+        )
+    }
 }

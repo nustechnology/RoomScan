@@ -34,14 +34,14 @@ struct ScanCheckView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    onCancel?()
-                    dismiss()
-                } label: {
-                    Text(String(localized: "scanning.action.cancel"))
-                        .font(.body)
-                }
-                .accessibilityIdentifier("scancheck.cancelButton")
+                ToolbarBackButton(
+                    action: {
+                        onCancel?()
+                        dismiss()
+                    },
+                    accessibilityIdentifier: "scancheck.cancelButton",
+                    accessibilityLabel: String(localized: "scanning.action.cancel")
+                )
             }
         }
         .background(AppColors.background)

@@ -165,14 +165,16 @@ struct HomeView: View {
                 pendingCreatedProject = nil
             },
             content: {
-                NewProjectView(
-                    onSave: { form in
-                        await saveNewProject(form)
-                    },
-                    onCancel: {
-                        showsNewProject = false
-                    }
-                )
+                NavigationStack {
+                    NewProjectView(
+                        onSave: { form in
+                            await saveNewProject(form)
+                        },
+                        onCancel: {
+                            showsNewProject = false
+                        }
+                    )
+                }
             }
         )
         .fullScreenCover(

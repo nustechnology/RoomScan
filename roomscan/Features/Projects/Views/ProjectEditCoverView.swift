@@ -12,27 +12,29 @@ struct ProjectEditCoverView: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        NewProjectView(
-            mode: .edit,
-            initialName: project.name,
-            initialDescription: project.description,
-            onSave: { form in
-                let didUpdate = await viewModel.updateProject(
-                    id: project.id,
-                    name: form.name,
-                    description: form.projectDescription,
-                    revision: project.revision
-                )
-                if didUpdate {
+        NavigationStack {
+            NewProjectView(
+                mode: .edit,
+                initialName: project.name,
+                initialDescription: project.description,
+                onSave: { form in
+                    let didUpdate = await viewModel.updateProject(
+                        id: project.id,
+                        name: form.name,
+                        description: form.projectDescription,
+                        revision: project.revision
+                    )
+                    if didUpdate {
+                        onDismiss()
+                    }
+                    return didUpdate
+                },
+                onCancel: {
                     onDismiss()
+                    viewModel.dismissActionErrorToast()
                 }
-                return didUpdate
-            },
-            onCancel: {
-                onDismiss()
-                viewModel.dismissActionErrorToast()
-            }
-        )
+            )
+        }
         .projectActionErrorAlert(viewModel: viewModel)
     }
 }

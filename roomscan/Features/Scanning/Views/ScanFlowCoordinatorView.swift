@@ -72,21 +72,23 @@ struct ScanFlowCoordinatorView: View {
                 )
 
             case .review(let draft):
-                ReviewScanView(
-                    draft: draft,
-                    preselectedProjectID: sourceProjectID,
-                    projectsService: projectsService,
-                    onSaveSuccess: { savedScan in
-                        onComplete(savedScan)
-                    },
-                    onScanAgain: {
-                        ScanTelemetry.shared.recordStartScanTapped()
-                        step = .camera
-                    },
-                    onDiscard: {
-                        onCancel()
-                    }
-                )
+                NavigationStack {
+                    ReviewScanView(
+                        draft: draft,
+                        preselectedProjectID: sourceProjectID,
+                        projectsService: projectsService,
+                        onSaveSuccess: { savedScan in
+                            onComplete(savedScan)
+                        },
+                        onScanAgain: {
+                            ScanTelemetry.shared.recordStartScanTapped()
+                            step = .camera
+                        },
+                        onDiscard: {
+                            onCancel()
+                        }
+                    )
+                }
             }
         }
     }
