@@ -15,16 +15,22 @@ struct ViewerViewModelViewModeTests {
         viewModel.setViewMode(.topView)
         #expect(viewModel.viewMode == .topView)
 
-        var didNotify = false
+        // `onChange` is `@Sendable`; mutate via a reference box, not a captured `var`.
+        let didNotify = NotifyFlag()
         withObservationTracking {
             _ = viewModel.viewMode
         } onChange: {
-            didNotify = true
+            didNotify.value = true
         }
 
         viewModel.setViewMode(.topView)
 
         #expect(viewModel.viewMode == .topView)
-        #expect(!didNotify)
+        #expect(!didNotify.value)
     }
+}
+
+/// Holds a mutable flag for `@Sendable` observation callbacks without capturing a local `var`.
+private final class NotifyFlag: @unchecked Sendable {
+    var value = false
 }

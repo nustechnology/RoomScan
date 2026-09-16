@@ -25,6 +25,19 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         let isSelected: Bool
     }
 
+    /// Canonical 3D-orbit resting pose. Logical fields, `displayedPose`, and reset
+    /// all read from here so the literals exist once.
+    private enum DefaultOrbit {
+        static let yaw: Float = 0.55
+        static let pitch: Float = 0.38
+        static let distance: Float = 6.5
+        static let target = SIMD3<Float>(0, 1.0, 0)
+
+        static var pose: CameraOrbitPose {
+            CameraOrbitPose(yaw: yaw, pitch: pitch, distance: distance, target: target)
+        }
+    }
+
     var onPinTapped: (String) -> Void
     var onSurfaceTapped: (SIMD3<Float>) -> Void
     var onMoveDraftChanged: (SIMD3<Float>) -> Void
@@ -44,14 +57,10 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     var pendingFileSource: ModelSource?
     var appliedCameraCommandIDs: Set<UUID> = []
 
-    private var yaw: Float = 0.55
-    private var pitch: Float = 0.38
-    private var distance: Float = 6.5
-    private var target = SIMD3<Float>(0, 1.0, 0)
-    private let defaultYaw: Float = 0.55
-    private let defaultPitch: Float = 0.38
-    private let defaultDistance: Float = 6.5
-    private let defaultTarget = SIMD3<Float>(0, 1.0, 0)
+    private var yaw: Float = DefaultOrbit.yaw
+    private var pitch: Float = DefaultOrbit.pitch
+    private var distance: Float = DefaultOrbit.distance
+    private var target = DefaultOrbit.target
     private let minDistance: Float = 2.5
     private let maxDistance: Float = 14
     /// Positive pitch = camera above target (looking down). Near π/2 = top view.
@@ -60,7 +69,9 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
 
     /// Pose currently drawn on screen. Differs from logical `yaw`/`pitch`/`distance`/
     /// `target` while an orbit animation is in flight; interrupt starts from here.
-    private lazy var displayedPose = logicalPose
+    /// Seeded eagerly (not lazy from `logicalPose`) so the first animated
+    /// `updateCamera` does not read start after the end pose was already written.
+    private var displayedPose = DefaultOrbit.pose
     private var lastOrbitPoint: CGPoint?
     private var lastPanPoint: CGPoint?
     private var activePinDrag: ActivePinDrag?
@@ -289,15 +300,15 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     private func applyViewModePose(for mode: ViewerMode) {
         switch mode {
         case .threeD:
-            pitch = defaultPitch
-            yaw = defaultYaw
-            distance = defaultDistance
+            pitch = DefaultOrbit.pitch
+            yaw = DefaultOrbit.yaw
+            distance = DefaultOrbit.distance
         case .topView:
             pitch = maxPitch
             yaw = 0
             distance = 8.5
         }
-        target = defaultTarget
+        target = DefaultOrbit.target
     }
 
     private var logicalPose: CameraOrbitPose {
