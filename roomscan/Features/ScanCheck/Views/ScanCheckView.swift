@@ -39,7 +39,8 @@ struct ScanCheckView: View {
                         onCancel?()
                         dismiss()
                     },
-                    accessibilityIdentifier: "scancheck.cancelButton"
+                    accessibilityIdentifier: "scancheck.cancelButton",
+                    accessibilityLabel: String(localized: "scanning.action.cancel")
                 )
             }
         }

@@ -160,12 +160,12 @@ struct ReviewScanView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color.white, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.light, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 ToolbarBackButton(
                     action: { viewModel.showDiscardConfirmation = true },
-                    accessibilityIdentifier: "review.backButton",
-                    foregroundColor: .black
+                    accessibilityIdentifier: "review.backButton"
                 )
             }
         }
