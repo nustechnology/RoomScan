@@ -43,6 +43,8 @@ struct HomeView: View {
     @State private var acceptedInvitations = AcceptedInvitationCollection()
     @State private var feedbackToastMessage: String?
     @State private var feedbackToastDismissTask: Task<Void, Never>?
+    @State private var invitationOverlayRetryTask: Task<Void, Never>?
+    @Environment(\.scenePhase) private var scenePhase
 
     init(
         session: AuthenticationSession,
@@ -214,7 +216,18 @@ struct HomeView: View {
                 presentInvitationOverlay(pendingInvitation)
             }
         }
+        .onChange(of: scenePhase) { _, phase in
+            // A failed presentation is most often caused by no foreground-active
+            // `UIWindowScene` existing yet (app launch, scene handoff, backgrounding).
+            // Becoming active is exactly the moment that resolves, so re-attempt then
+            // rather than relying on `onAppear`, which won't fire again while HomeView
+            // stays on screen.
+            guard phase == .active, let pendingInvitation, !invitationOverlayPresenter.isPresented else { return }
+            presentInvitationOverlay(pendingInvitation)
+        }
         .onDisappear {
+            invitationOverlayRetryTask?.cancel()
+            invitationOverlayRetryTask = nil
             invitationOverlayPresenter.dismissWithoutNotifying()
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
@@ -263,7 +276,32 @@ struct HomeView: View {
 }
 
 private extension HomeView {
+    /// Backoff schedule (nanoseconds) for retrying a failed overlay presentation, e.g. when
+    /// no foreground-active `UIWindowScene` is resolvable yet. Bounded so a persistently
+    /// unpresentable invitation (backgrounded app, scene never becomes active) doesn't retry
+    /// forever; `onChange(of: scenePhase)` and `onAppear` remain as event-driven retries on
+    /// top of this timed backoff.
+    static let invitationOverlayRetryDelaysNanoseconds: [UInt64] = [
+        300_000_000, 1_000_000_000, 3_000_000_000, 5_000_000_000,
+    ]
+
     func presentInvitationOverlay(_ invitation: PendingInvitation) {
+        invitationOverlayRetryTask?.cancel()
+        invitationOverlayRetryTask = nil
+
+        if !attemptInvitationOverlayPresentation(invitation) {
+            // Leave `pendingInvitation` untouched so the invite isn't silently lost, and
+            // actively retry with backoff instead of only waiting for `onChange(of:
+            // scenePhase)` / `onAppear` to fire again (they may not, e.g. if the app is
+            // already active but momentarily has no resolvable `UIWindowScene` during a
+            // scene transition).
+            scheduleInvitationOverlayRetry(for: invitation, attempt: 0)
+        }
+    }
+
+    /// Attempts to show `invitation`'s overlay once. Returns whether it was presented.
+    @discardableResult
+    func attemptInvitationOverlayPresentation(_ invitation: PendingInvitation) -> Bool {
         let didPresent = invitationOverlayPresenter.present(
             invitation: invitation,
             onDismiss: {},
@@ -286,11 +324,31 @@ private extension HomeView {
             #if DEBUG
             print("[Invitations] failed to present overlay for \(invitation.id)")
             #endif
-            // Leave `pendingInvitation` untouched so the invite isn't silently lost.
-            // Presentation is only triggered by `onChange(of: pendingInvitation)` / `onAppear`,
-            // so clearing it here (as we used to) meant a transient window-factory failure
-            // (e.g. no resolvable `UIWindowScene`) would drop the invitation forever with no
-            // retry and no feedback. Keeping the value around lets the next `onAppear` retry.
+        }
+
+        return didPresent
+    }
+
+    func scheduleInvitationOverlayRetry(for invitation: PendingInvitation, attempt: Int) {
+        guard attempt < Self.invitationOverlayRetryDelaysNanoseconds.count else {
+            #if DEBUG
+            print("[Invitations] giving up retrying overlay for \(invitation.id) after \(attempt) attempts")
+            #endif
+            return
+        }
+
+        let delay = Self.invitationOverlayRetryDelaysNanoseconds[attempt]
+        invitationOverlayRetryTask = Task {
+            try? await Task.sleep(nanoseconds: delay)
+            guard !Task.isCancelled else { return }
+            // The pending invitation may have changed or been cleared while we waited
+            // (e.g. resolved via a fresh `onChange`/`onAppear`/scene-phase trigger) —
+            // only retry if it's still the same one waiting to be shown.
+            guard pendingInvitation?.id == invitation.id, !invitationOverlayPresenter.isPresented else { return }
+
+            if !attemptInvitationOverlayPresentation(invitation) {
+                scheduleInvitationOverlayRetry(for: invitation, attempt: attempt + 1)
+            }
         }
     }
 
@@ -298,9 +356,18 @@ private extension HomeView {
         _ outcome: InvitationViewModel.NavigationOutcome,
         for invitation: PendingInvitation
     ) {
-        guard invitationOverlayPresenter.presentedInvitation?.id == invitation.id else { return }
+        // `outcome` reflects a real action the user already took (an accept/decline request
+        // that completed), so it must still be applied even if the overlay for `invitation`
+        // is no longer the one presented — e.g. HomeView tore the overlay down via
+        // `onDisappear`/`dismissWithoutNotifying()` while the request was in flight, or a
+        // newer invitation replaced this one before it finished. Bailing out entirely here
+        // (as we used to) silently dropped the user's action: no toast, no navigation, and
+        // — because `pendingInvitation` was never cleared — the same invitation could be
+        // shown again as if the user had never responded.
+        if invitationOverlayPresenter.presentedInvitation?.id == invitation.id {
+            invitationOverlayPresenter.dismiss()
+        }
         clearPendingInvitation(matching: invitation)
-        invitationOverlayPresenter.dismiss()
 
         if let toast = outcome.feedbackToastMessage {
             feedbackToastMessage = toast

@@ -103,9 +103,42 @@ extension InvitationOverlaySceneTests {
             ) { _ in
                 await InvitationOverlayTestSupport.waitUntil { presentAttempts > 0 }
 
-                // A window-factory failure must not drop the invitation: it stays pending so a
-                // later `onAppear` (e.g. returning from background) can retry presenting it.
+                // A window-factory failure must not drop the invitation: it stays pending
+                // (rather than being cleared) so it's still there for the automatic backoff
+                // retry and the `onChange(of: scenePhase)` / `onAppear` triggers to present.
                 #expect(!presenter.isPresented)
+                #expect(model.pendingInvitation == invitation)
+            }
+        }
+
+        @Test func failedOverlayPresentationRetriesWithBackoffUntilWindowFactoryRecovers() async throws {
+            let invitation = PendingInvitation(scope: .project, token: "home-retry-succeeds")
+            let model = HomeViewInvitationOverlayHarnessModel()
+            model.pendingInvitation = invitation
+            var presentAttempts = 0
+            let presenter = InvitationOverlayWindowPresenter {
+                presentAttempts += 1
+                // Fail the initial attempt (from `onAppear`) so the backoff retry kicks in,
+                // then succeed once that retry fires.
+                guard presentAttempts > 1 else { return nil }
+                return InvitationOverlayTestSupport.makeTestWindow()
+            }
+
+            try await InvitationOverlayTestSupport.withHostingWindow(
+                HomeViewInvitationOverlayHarness(model: model, presenter: presenter)
+            ) { _ in
+                // The first backoff delay is 300ms; give it real headroom.
+                await InvitationOverlayTestSupport.waitUntil(timeoutNanoseconds: 2_000_000_000) {
+                    presenter.isPresented
+                }
+
+                // A window-factory failure must lead to an actual retry, not just a
+                // silently-preserved pending value: the overlay ends up presented once
+                // the factory recovers, without any new trigger from the view (no further
+                // `onAppear`/`onChange(of: pendingInvitation)`).
+                #expect(presentAttempts >= 2)
+                #expect(presenter.isPresented)
+                #expect(presenter.presentedInvitation == invitation)
                 #expect(model.pendingInvitation == invitation)
             }
         }
