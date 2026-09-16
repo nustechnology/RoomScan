@@ -354,6 +354,8 @@ extension ViewerViewModel {
     }
 
     func setViewMode(_ mode: ViewerMode) {
+        // Re-tapping the selected chip must not notify observers and re-render the canvas.
+        guard mode != viewMode else { return }
         viewMode = mode
     }
 

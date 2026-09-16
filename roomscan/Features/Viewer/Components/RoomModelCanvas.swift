@@ -109,4 +109,13 @@ extension RoomModelCanvas {
 
         coordinator.appliedCameraCommandIDs.formIntersection(commandIDs)
     }
+
+    static func dismantleUIView(_ uiView: ARView, coordinator: RoomModelCanvasCoordinator) {
+        coordinator.cancelCameraMotion()
+        coordinator.cancelModelLoad()
+        coordinator.anchor = nil
+        coordinator.roomEntity = nil
+        coordinator.arView = nil
+        coordinator.camera = nil
+    }
 }
