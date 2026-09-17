@@ -194,13 +194,21 @@ final class SharedWithMeViewModel {
     }
 
     /// Keeps a fetch alive if SwiftUI cancels the view `.task` while awaiting.
+    ///
+    /// Uses a continuation instead of `Task.value` so a cancelled consumer still
+    /// receives the unstructured request’s result once it finishes.
     private func fetchKeepingAlive<T: Sendable>(
         _ operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        let requestTask = Task {
-            try await operation()
+        try await withCheckedThrowingContinuation { continuation in
+            Task {
+                do {
+                    continuation.resume(returning: try await operation())
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
         }
-        return try await requestTask.value
     }
 
     private func handleListLoadError(
