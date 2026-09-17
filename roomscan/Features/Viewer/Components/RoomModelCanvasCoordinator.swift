@@ -421,7 +421,12 @@ private final class CameraMotionDisplayLinkProxy: NSObject {
     }
 
     @objc func handleTick(_ link: CADisplayLink) {
-        owner?.handleCameraMotionTick(link)
+        guard let owner else {
+            // Coordinator released without cancelCameraMotion — stop the run-loop retain.
+            link.invalidate()
+            return
+        }
+        owner.handleCameraMotionTick(link)
     }
 }
 
