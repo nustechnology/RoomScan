@@ -360,31 +360,22 @@ private actor OperationStartSignal {
     }
 }
 
+/// Starts one signal, then waits on a second signal that `release()` fires.
 private actor FetchReleaseGate {
     private let started = OperationStartSignal()
-    private var isReleased = false
-    private var releaseContinuations: [CheckedContinuation<Void, Never>] = []
+    private let released = OperationStartSignal()
 
     func waitUntilStarted() async {
         await started.waitUntilStarted()
     }
 
-    func release() {
-        isReleased = true
-        let continuations = releaseContinuations
-        releaseContinuations.removeAll()
-        continuations.forEach { $0.resume() }
+    func release() async {
+        await released.markStarted()
     }
 
     func markStartedAndWaitForRelease() async {
         await started.markStarted()
-        await withCheckedContinuation { continuation in
-            if isReleased {
-                continuation.resume()
-                return
-            }
-            releaseContinuations.append(continuation)
-        }
+        await released.waitUntilStarted()
     }
 }
 
