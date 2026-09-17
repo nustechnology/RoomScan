@@ -163,7 +163,9 @@ final class SharedWithMeViewModel {
         projectsViewState = projects.isEmpty ? .loading : projectsViewState
 
         do {
-            let fetched = try await fetchProjects()
+            let fetched = try await fetchKeepingAlive { [service] in
+                try await service.fetchSharedProjects()
+            }
             guard generation == projectsRequestGeneration else { return }
             projects = fetched
             projectsViewState = fetched.isEmpty ? .empty : .loaded
@@ -179,7 +181,9 @@ final class SharedWithMeViewModel {
         scansViewState = scans.isEmpty ? .loading : scansViewState
 
         do {
-            let fetched = try await fetchScans()
+            let fetched = try await fetchKeepingAlive { [service] in
+                try await service.fetchSharedScans()
+            }
             guard generation == scansRequestGeneration else { return }
             scans = fetched
             scansViewState = fetched.isEmpty ? .empty : .loaded
@@ -190,17 +194,11 @@ final class SharedWithMeViewModel {
     }
 
     /// Keeps a fetch alive if SwiftUI cancels the view `.task` while awaiting.
-    private func fetchProjects() async throws -> [SharedProjectItem] {
-        let requestTask = Task { [service] in
-            try await service.fetchSharedProjects()
-        }
-        return try await requestTask.value
-    }
-
-    /// Keeps a fetch alive if SwiftUI cancels the view `.task` while awaiting.
-    private func fetchScans() async throws -> [SharedScanItem] {
-        let requestTask = Task { [service] in
-            try await service.fetchSharedScans()
+    private func fetchKeepingAlive<T: Sendable>(
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        let requestTask = Task {
+            try await operation()
         }
         return try await requestTask.value
     }
