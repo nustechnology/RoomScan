@@ -354,7 +354,10 @@ extension ViewerViewModel {
     }
 
     func setViewMode(_ mode: ViewerMode) {
-        // Re-tapping the selected chip must not notify observers and re-render the canvas.
+        // Same-mode taps must not assign `viewMode`: @Observable notifies on every
+        // write, which re-renders the canvas. Re-centering the current mode is
+        // `resetCamera()` (toolbar), not re-selecting the chip — and
+        // `RoomModelCanvas` already skips `applyViewMode` when the mode is unchanged.
         guard mode != viewMode else { return }
         viewMode = mode
     }

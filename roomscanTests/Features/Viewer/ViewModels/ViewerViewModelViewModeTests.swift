@@ -28,6 +28,23 @@ struct ViewerViewModelViewModeTests {
         #expect(viewModel.viewMode == .topView)
         #expect(!didNotify.value)
     }
+
+    @Test func setViewModeDifferentModeUpdatesAndNotifiesObservers() async {
+        let viewModel = await ViewerViewModelTestHelpers.loadedViewModel(scanID: "scan-mode-switch")
+        #expect(viewModel.viewMode == .threeD)
+
+        let didNotify = NotifyFlag()
+        withObservationTracking {
+            _ = viewModel.viewMode
+        } onChange: {
+            didNotify.value = true
+        }
+
+        viewModel.setViewMode(.topView)
+
+        #expect(viewModel.viewMode == .topView)
+        #expect(didNotify.value)
+    }
 }
 
 /// Holds a mutable flag for `@Sendable` observation callbacks without capturing a local `var`.
