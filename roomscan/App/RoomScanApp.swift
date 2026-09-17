@@ -6,18 +6,8 @@
 import Foundation
 import SwiftUI
 
-final class AppDelegate: NSObject, UIApplicationDelegate {
-    func application(
-        _ application: UIApplication,
-        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
-    ) -> Bool {
-        return true
-    }
-}
-
 @main
 struct RoomScanApp: App {
-    @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @Environment(\.scenePhase) private var scenePhase
     @State private var appState: AppState
     @State private var projectsService: any ProjectsService
