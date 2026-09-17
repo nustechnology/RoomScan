@@ -212,6 +212,27 @@ struct SharedWithMeViewModelTests {
         #expect(viewModel.toastMessage == nil)
     }
 
+    @Test func cancelledInitialLoadResetsToIdleAndRetriesOnReappear() async {
+        let service = MockSharedService(scenario: .cancelled, simulatedDelayNanoseconds: 0)
+        let viewModel = SharedWithMeViewModel(service: service)
+
+        await viewModel.loadInitialContent()
+
+        #expect(viewModel.projectsViewState == .idle)
+        #expect(viewModel.scansViewState == .idle)
+        #expect(viewModel.projects.isEmpty)
+        #expect(viewModel.scans.isEmpty)
+        #expect(viewModel.toastMessage == nil)
+
+        await service.setScenario(.success)
+        await viewModel.loadInitialContent()
+
+        #expect(viewModel.projectsViewState == .loaded)
+        #expect(viewModel.scansViewState == .loaded)
+        #expect(viewModel.projects.isEmpty == false)
+        #expect(viewModel.scans.isEmpty == false)
+    }
+
     @Test func failedAcceptedProjectIngestAppearsAfterSuccessfulRefresh() async {
         let project = ProjectSummary(
             id: "accepted-project",

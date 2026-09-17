@@ -10,6 +10,7 @@ actor MockSharedService: SharedService {
         case success
         case empty
         case failLoad
+        case cancelled
     }
 
     private var scenario: Scenario
@@ -136,8 +137,13 @@ actor MockSharedService: SharedService {
     }
 
     private func throwIfFailed() throws {
-        if scenario == .failLoad {
+        switch scenario {
+        case .failLoad:
             throw SharedServiceError.network
+        case .cancelled:
+            throw CancellationError()
+        case .success, .empty:
+            break
         }
     }
 

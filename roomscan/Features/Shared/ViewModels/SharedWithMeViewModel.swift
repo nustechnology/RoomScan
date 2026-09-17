@@ -163,17 +163,13 @@ final class SharedWithMeViewModel {
         projectsViewState = projects.isEmpty ? .loading : projectsViewState
 
         do {
-            let fetched = try await service.fetchSharedProjects()
+            let fetched = try await fetchProjects()
             guard generation == projectsRequestGeneration else { return }
             projects = fetched
             projectsViewState = fetched.isEmpty ? .empty : .loaded
         } catch {
             guard generation == projectsRequestGeneration else { return }
-            if projects.isEmpty {
-                projectsViewState = .failed
-            } else {
-                toastMessage = String(localized: "shared.action.error")
-            }
+            handleListLoadError(error, isEmpty: projects.isEmpty) { projectsViewState = $0 }
         }
     }
 
@@ -183,17 +179,49 @@ final class SharedWithMeViewModel {
         scansViewState = scans.isEmpty ? .loading : scansViewState
 
         do {
-            let fetched = try await service.fetchSharedScans()
+            let fetched = try await fetchScans()
             guard generation == scansRequestGeneration else { return }
             scans = fetched
             scansViewState = fetched.isEmpty ? .empty : .loaded
         } catch {
             guard generation == scansRequestGeneration else { return }
-            if scans.isEmpty {
-                scansViewState = .failed
-            } else {
-                toastMessage = String(localized: "shared.action.error")
+            handleListLoadError(error, isEmpty: scans.isEmpty) { scansViewState = $0 }
+        }
+    }
+
+    /// Keeps a fetch alive if SwiftUI cancels the view `.task` while awaiting.
+    private func fetchProjects() async throws -> [SharedProjectItem] {
+        let requestTask = Task { [service] in
+            try await service.fetchSharedProjects()
+        }
+        return try await requestTask.value
+    }
+
+    /// Keeps a fetch alive if SwiftUI cancels the view `.task` while awaiting.
+    private func fetchScans() async throws -> [SharedScanItem] {
+        let requestTask = Task { [service] in
+            try await service.fetchSharedScans()
+        }
+        return try await requestTask.value
+    }
+
+    private func handleListLoadError(
+        _ error: Error,
+        isEmpty: Bool,
+        updateViewState: (ViewState) -> Void
+    ) {
+        if error is CancellationError {
+            // Reset so load*IfNeeded can retry when the Shared tab reappears.
+            if isEmpty {
+                updateViewState(.idle)
             }
+            return
+        }
+
+        if isEmpty {
+            updateViewState(.failed)
+        } else {
+            toastMessage = String(localized: "shared.action.error")
         }
     }
 
