@@ -430,7 +430,9 @@ extension RoomModelCanvasCoordinator {
     }
 
     /// Aligns logical orbit distance with the pose currently on screen.
-    /// Required when interrupting an in-flight zoom or mode-switch animation.
+    /// Used when a distance-only interrupt (zoom button or pinch) cancels an
+    /// in-flight mode-switch or zoom animation — yaw/pitch/target stay on the
+    /// logical end pose so orientation is not frozen mid-transition.
     private func syncOrbitDistanceFromDisplayedPose() {
         distance = max(minDistance, min(maxDistance, displayedPose.distance))
     }
@@ -589,7 +591,10 @@ extension RoomModelCanvasCoordinator {
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
         if gesture.state == .changed {
             let factor = Float(gesture.scale)
-            syncLogicalPoseFromDisplayed()
+            // Distance only — same policy as zoom buttons. Full pose sync would
+            // freeze mid mode-switch orientation while the UI already shows the
+            // destination mode.
+            syncOrbitDistanceFromDisplayedPose()
             distance = max(minDistance, min(maxDistance, distance / factor))
             gesture.scale = 1
             updateCamera(animated: false)

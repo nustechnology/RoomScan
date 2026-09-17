@@ -27,8 +27,18 @@ struct CameraOrbitPoseTests {
         target: SIMD3<Float>(0, 1, 0)
     )
 
-    @Test func eyeMatchesOffsetFromTarget() {
-        #expect(start.eye == start.target + start.offsetFromTarget)
+    @Test func offsetFromTargetMatchesYawPitchDistance() {
+        let expectedOffset = SIMD3<Float>(
+            start.distance * cos(start.pitch) * sin(start.yaw),
+            start.distance * sin(start.pitch),
+            start.distance * cos(start.pitch) * cos(start.yaw)
+        )
+        let offset = start.offsetFromTarget
+        #expect(abs(offset.x - expectedOffset.x) < 0.0001)
+        #expect(abs(offset.y - expectedOffset.y) < 0.0001)
+        #expect(abs(offset.z - expectedOffset.z) < 0.0001)
+        #expect(abs(simd_length(offset) - start.distance) < 0.0001)
+        #expect(start.eye == start.target + expectedOffset)
     }
 
     @Test func panRightIsHorizontalAndPerpendicularToForward() {
