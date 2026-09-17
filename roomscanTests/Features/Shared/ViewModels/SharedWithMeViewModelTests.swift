@@ -99,15 +99,17 @@ struct SharedWithMeViewModelTests {
     }
 
     @Test func removalRequestIsIgnoredWhileAnotherRemovalIsRunning() async {
-        let service = RemovalBlockingSharedService(
-            base: MockSharedService(simulatedDelayNanoseconds: 100_000_000)
-        )
+        let removalStarted = OperationStartSignal()
+        let service = MockSharedService(simulatedDelayNanoseconds: 100_000_000)
+        await service.setBeforeRemove {
+            await removalStarted.markStarted()
+        }
         let viewModel = SharedWithMeViewModel(service: service)
         await viewModel.loadInitialContent()
         viewModel.requestRemove(scope: .project, id: "shared-project-active")
 
         let removalTask = Task { await viewModel.confirmPendingAlertAction() }
-        await service.waitForRemovalToStartForTesting()
+        await removalStarted.waitUntilStarted()
         #expect(viewModel.isRemovingItem)
 
         viewModel.requestRemove(scope: .scan, id: "shared-scan-active")
@@ -234,17 +236,20 @@ struct SharedWithMeViewModelTests {
     }
 
     @Test func cancellingConsumingLoadTaskStillAppliesFetchKeepingAliveResults() async {
-        let base = MockSharedService(simulatedDelayNanoseconds: 0)
-        let service = FetchGateSharedService(base: base)
+        let fetchGate = FetchReleaseGate()
+        let service = MockSharedService(simulatedDelayNanoseconds: 0)
+        await service.setBeforeFetch {
+            await fetchGate.markStartedAndWaitForRelease()
+        }
         let viewModel = SharedWithMeViewModel(service: service)
 
         let loadTask = Task {
             await viewModel.loadInitialContent()
         }
 
-        await service.waitUntilFetchStarted()
+        await fetchGate.waitUntilStarted()
         loadTask.cancel()
-        await service.releaseFetches()
+        await fetchGate.release()
         _ = await loadTask.result
 
         #expect(viewModel.projectsViewState == .loaded)
@@ -332,58 +337,31 @@ struct SharedWithMeViewModelTests {
     }
 }
 
-private actor FetchGateSharedService: SharedService {
-    private let base: MockSharedService
-    private var hasStartedFetch = false
-    private var fetchStartedContinuations: [CheckedContinuation<Void, Never>] = []
+private actor FetchReleaseGate {
+    private var hasStarted = false
+    private var startedContinuations: [CheckedContinuation<Void, Never>] = []
     private var isReleased = false
     private var releaseContinuations: [CheckedContinuation<Void, Never>] = []
 
-    init(base: MockSharedService) {
-        self.base = base
-    }
-
-    func waitUntilFetchStarted() async {
-        guard !hasStartedFetch else { return }
+    func waitUntilStarted() async {
+        guard !hasStarted else { return }
         await withCheckedContinuation { continuation in
-            fetchStartedContinuations.append(continuation)
+            startedContinuations.append(continuation)
         }
     }
 
-    func releaseFetches() {
+    func release() {
         isReleased = true
         let continuations = releaseContinuations
         releaseContinuations.removeAll()
         continuations.forEach { $0.resume() }
     }
 
-    func fetchSharedProjects() async throws -> [SharedProjectItem] {
-        await markFetchStartedAndWaitForRelease()
-        return try await base.fetchSharedProjects()
-    }
-
-    func fetchSharedScans() async throws -> [SharedScanItem] {
-        await markFetchStartedAndWaitForRelease()
-        return try await base.fetchSharedScans()
-    }
-
-    func removeSharedItem(id: String, scope: SharedItemScope) async throws {
-        try await base.removeSharedItem(id: id, scope: scope)
-    }
-
-    func ingestSharedProject(_ project: SharedProjectItem) async throws {
-        try await base.ingestSharedProject(project)
-    }
-
-    func ingestSharedScan(_ scan: SharedScanItem) async throws {
-        try await base.ingestSharedScan(scan)
-    }
-
-    private func markFetchStartedAndWaitForRelease() async {
-        if !hasStartedFetch {
-            hasStartedFetch = true
-            let started = fetchStartedContinuations
-            fetchStartedContinuations.removeAll()
+    func markStartedAndWaitForRelease() async {
+        if !hasStarted {
+            hasStarted = true
+            let started = startedContinuations
+            startedContinuations.removeAll()
             started.forEach { $0.resume() }
         }
 
@@ -394,44 +372,23 @@ private actor FetchGateSharedService: SharedService {
     }
 }
 
-private actor RemovalBlockingSharedService: SharedService {
-    private let base: MockSharedService
-    private var hasStartedRemoval = false
-    private var removalStartContinuations: [CheckedContinuation<Void, Never>] = []
+private actor OperationStartSignal {
+    private var hasStarted = false
+    private var continuations: [CheckedContinuation<Void, Never>] = []
 
-    init(base: MockSharedService) {
-        self.base = base
-    }
-
-    func waitForRemovalToStartForTesting() async {
-        guard !hasStartedRemoval else { return }
+    func waitUntilStarted() async {
+        guard !hasStarted else { return }
         await withCheckedContinuation { continuation in
-            removalStartContinuations.append(continuation)
+            continuations.append(continuation)
         }
     }
 
-    func fetchSharedProjects() async throws -> [SharedProjectItem] {
-        try await base.fetchSharedProjects()
-    }
-
-    func fetchSharedScans() async throws -> [SharedScanItem] {
-        try await base.fetchSharedScans()
-    }
-
-    func removeSharedItem(id: String, scope: SharedItemScope) async throws {
-        hasStartedRemoval = true
-        let continuations = removalStartContinuations
-        removalStartContinuations.removeAll()
-        continuations.forEach { $0.resume() }
-        try await base.removeSharedItem(id: id, scope: scope)
-    }
-
-    func ingestSharedProject(_ project: SharedProjectItem) async throws {
-        try await base.ingestSharedProject(project)
-    }
-
-    func ingestSharedScan(_ scan: SharedScanItem) async throws {
-        try await base.ingestSharedScan(scan)
+    func markStarted() {
+        guard !hasStarted else { return }
+        hasStarted = true
+        let pending = continuations
+        continuations.removeAll()
+        pending.forEach { $0.resume() }
     }
 }
 

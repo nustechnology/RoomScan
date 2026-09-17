@@ -18,6 +18,8 @@ actor MockSharedService: SharedService {
     private var scans: [SharedScanItem]
     private let simulatedDelayNanoseconds: UInt64
     private let now: Date
+    private var beforeFetch: (@Sendable () async -> Void)?
+    private var beforeRemove: (@Sendable () async -> Void)?
 
     init(
         scenario: Scenario = .success,
@@ -35,6 +37,14 @@ actor MockSharedService: SharedService {
 
     func setScenario(_ scenario: Scenario) {
         self.scenario = scenario
+    }
+
+    func setBeforeFetch(_ handler: (@Sendable () async -> Void)?) {
+        beforeFetch = handler
+    }
+
+    func setBeforeRemove(_ handler: (@Sendable () async -> Void)?) {
+        beforeRemove = handler
     }
 
     static func makeForCurrentProcess() -> MockSharedService {
@@ -61,6 +71,7 @@ actor MockSharedService: SharedService {
     }
 
     func fetchSharedProjects() async throws -> [SharedProjectItem] {
+        if let beforeFetch { await beforeFetch() }
         try await simulateDelay()
         try throwIfFailed()
 
@@ -78,6 +89,7 @@ actor MockSharedService: SharedService {
     }
 
     func fetchSharedScans() async throws -> [SharedScanItem] {
+        if let beforeFetch { await beforeFetch() }
         try await simulateDelay()
         try throwIfFailed()
 
@@ -95,6 +107,7 @@ actor MockSharedService: SharedService {
     }
 
     func removeSharedItem(id: String, scope: SharedItemScope) async throws {
+        if let beforeRemove { await beforeRemove() }
         try await simulateDelay()
         try throwIfFailed()
 
