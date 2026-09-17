@@ -337,48 +337,16 @@ struct SharedWithMeViewModelTests {
     }
 }
 
-private actor FetchReleaseGate {
-    private var hasStarted = false
-    private var startedContinuations: [CheckedContinuation<Void, Never>] = []
-    private var isReleased = false
-    private var releaseContinuations: [CheckedContinuation<Void, Never>] = []
-
-    func waitUntilStarted() async {
-        guard !hasStarted else { return }
-        await withCheckedContinuation { continuation in
-            startedContinuations.append(continuation)
-        }
-    }
-
-    func release() {
-        isReleased = true
-        let continuations = releaseContinuations
-        releaseContinuations.removeAll()
-        continuations.forEach { $0.resume() }
-    }
-
-    func markStartedAndWaitForRelease() async {
-        if !hasStarted {
-            hasStarted = true
-            let started = startedContinuations
-            startedContinuations.removeAll()
-            started.forEach { $0.resume() }
-        }
-
-        guard !isReleased else { return }
-        await withCheckedContinuation { continuation in
-            releaseContinuations.append(continuation)
-        }
-    }
-}
-
 private actor OperationStartSignal {
     private var hasStarted = false
     private var continuations: [CheckedContinuation<Void, Never>] = []
 
     func waitUntilStarted() async {
-        guard !hasStarted else { return }
         await withCheckedContinuation { continuation in
+            if hasStarted {
+                continuation.resume()
+                return
+            }
             continuations.append(continuation)
         }
     }
@@ -389,6 +357,34 @@ private actor OperationStartSignal {
         let pending = continuations
         continuations.removeAll()
         pending.forEach { $0.resume() }
+    }
+}
+
+private actor FetchReleaseGate {
+    private let started = OperationStartSignal()
+    private var isReleased = false
+    private var releaseContinuations: [CheckedContinuation<Void, Never>] = []
+
+    func waitUntilStarted() async {
+        await started.waitUntilStarted()
+    }
+
+    func release() {
+        isReleased = true
+        let continuations = releaseContinuations
+        releaseContinuations.removeAll()
+        continuations.forEach { $0.resume() }
+    }
+
+    func markStartedAndWaitForRelease() async {
+        await started.markStarted()
+        await withCheckedContinuation { continuation in
+            if isReleased {
+                continuation.resume()
+                return
+            }
+            releaseContinuations.append(continuation)
+        }
     }
 }
 
