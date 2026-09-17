@@ -357,8 +357,8 @@ extension RoomModelCanvasCoordinator {
 
         let proxy = CameraMotionDisplayLinkProxy(owner: self)
         let link = CADisplayLink(target: proxy, selector: #selector(CameraMotionDisplayLinkProxy.handleTick(_:)))
-        // Match the previous ~60 Hz pin-facing cadence; ProMotion 120 Hz doubles work for little gain.
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+        // Native display rate (60 or 120 on ProMotion). RealityKit previously drove
+        // `camera.move` on the ARView's own link; pin facing is cheap / no-ops when empty.
         link.add(to: .main, forMode: .common)
         cameraMotionTickProxy = proxy
         cameraMotionDisplayLink = link
