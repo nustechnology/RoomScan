@@ -455,15 +455,15 @@ extension RoomModelCanvasCoordinator {
         for command in commands {
             switch command {
             case .zoomIn:
-                distance = max(minDistance, distance * 0.82)
+                distance = clampedDistance(distance * 0.82)
             case .zoomOut:
-                distance = min(maxDistance, distance * 1.22)
+                distance = clampedDistance(distance * 1.22)
             case .reset:
                 applyViewModePose(for: currentViewMode)
                 updateAllPinModePresentations()
             case .focus(let position):
                 target = position
-                distance = max(minDistance, min(distance, 5.5))
+                distance = clampedDistance(min(distance, 5.5))
                 // Focus accompanies note selection, so it must not race the presenting sheet or gestures.
                 shouldAnimate = false
             }
@@ -480,20 +480,21 @@ extension RoomModelCanvasCoordinator {
         }
     }
 
+    private func clampedDistance(_ value: Float) -> Float {
+        max(minDistance, min(maxDistance, value))
+    }
+
     /// Aligns logical orbit distance with the pose currently on screen.
     /// Used when zoom buttons interrupt an in-flight animation — yaw/pitch/target stay
     /// on the logical end pose so the short easeOut continues toward the destination mode.
     private func syncOrbitDistanceFromDisplayedPose() {
-        distance = max(minDistance, min(maxDistance, displayedPose.distance))
+        distance = clampedDistance(displayedPose.distance)
     }
 
     /// Pinch zoom. While a mode/zoom animation is in flight, only distance is updated so
     /// orientation keeps lerping toward the logical end (no snap jump, no mid-pose freeze).
     fileprivate func adjustOrbitDistance(byFactor factor: Float) {
-        let nextDistance = max(
-            minDistance,
-            min(maxDistance, displayedPose.distance / factor)
-        )
+        let nextDistance = clampedDistance(displayedPose.distance / factor)
         distance = nextDistance
 
         guard cameraMotionDisplayLink != nil else {
