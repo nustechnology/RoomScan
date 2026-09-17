@@ -25,6 +25,19 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         let isSelected: Bool
     }
 
+    /// Canonical 3D-orbit resting pose. Logical fields, `displayedPose`, and reset
+    /// all read from here so the literals exist once.
+    private enum DefaultOrbit {
+        static let yaw: Float = 0.55
+        static let pitch: Float = 0.38
+        static let distance: Float = 6.5
+        static let target = SIMD3<Float>(0, 1.0, 0)
+
+        static var pose: CameraOrbitPose {
+            CameraOrbitPose(yaw: yaw, pitch: pitch, distance: distance, target: target)
+        }
+    }
+
     var onPinTapped: (String) -> Void
     var onSurfaceTapped: (SIMD3<Float>) -> Void
     var onMoveDraftChanged: (SIMD3<Float>) -> Void
@@ -44,27 +57,37 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     var pendingFileSource: ModelSource?
     var appliedCameraCommandIDs: Set<UUID> = []
 
-    private var yaw: Float = 0.55
-    private var pitch: Float = 0.38
-    private var distance: Float = 6.5
-    private var target = SIMD3<Float>(0, 1.0, 0)
-    private let defaultYaw: Float = 0.55
-    private let defaultPitch: Float = 0.38
-    private let defaultDistance: Float = 6.5
-    private let defaultTarget = SIMD3<Float>(0, 1.0, 0)
+    private var yaw: Float = DefaultOrbit.yaw
+    private var pitch: Float = DefaultOrbit.pitch
+    private var distance: Float = DefaultOrbit.distance
+    private var target = DefaultOrbit.target
     private let minDistance: Float = 2.5
     private let maxDistance: Float = 14
     /// Positive pitch = camera above target (looking down). Near π/2 = top view.
     private let minPitch: Float = 0.08
     private let maxPitch: Float = (.pi / 2) - 0.06
 
+    /// Pose currently drawn on screen. Differs from logical `yaw`/`pitch`/`distance`/
+    /// `target` while an orbit animation is in flight; interrupt starts from here.
+    /// Seeded eagerly (not lazy from `logicalPose`) so the first animated
+    /// `updateCamera` does not read start after the end pose was already written.
+    private var displayedPose = DefaultOrbit.pose
     private var lastOrbitPoint: CGPoint?
     private var lastPanPoint: CGPoint?
     private var activePinDrag: ActivePinDrag?
     var pinAppearanceStates: [ObjectIdentifier: PinAppearanceState] = [:]
-    private var pinFacingTask: Task<Void, Never>?
+    private var cameraMotionDisplayLink: CADisplayLink?
+    private var cameraMotionTickProxy: CameraMotionDisplayLinkProxy?
+    private var cameraMotionStartPose = CameraOrbitPose(yaw: 0, pitch: 0, distance: 1, target: .zero)
+    private var cameraMotionEndPose = CameraOrbitPose(yaw: 0, pitch: 0, distance: 1, target: .zero)
+    private var cameraMotionDuration: TimeInterval = 0
+    private var cameraMotionTiming: CameraMotionTiming = .easeInOut
+    private var cameraMotionStartedAt: CFTimeInterval = 0
     private var modelLoadCancellable: AnyCancellable?
     private var modelLoadTask: Task<Void, Never>?
+    /// Bumped on each `loadModel` / `cancelModelLoad` so deferred load reports cannot
+    /// apply to a superseded or torn-down generation.
+    private var modelLoadGeneration: UInt = 0
     private let cameraAnimationDuration: TimeInterval = 0.35
     /// Zoom buttons interrupt in-flight motion; easeOut starts moving immediately,
     /// unlike easeInOut whose first frames have near-zero velocity.
@@ -89,6 +112,8 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     @discardableResult
     func loadModel(source: ModelSource) -> Bool {
         guard let anchor else { return false }
+        modelLoadGeneration &+= 1
+        let generation = modelLoadGeneration
         roomEntity?.removeFromParent()
         pinsRoot.removeFromParent()
         loadedSource = nil
@@ -114,7 +139,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
             updateCamera(animated: false)
             // Defer off the current SwiftUI update cycle without capturing non-Sendable state
             // into a `DispatchQueue` `@Sendable` closure.
-            deferToNextRunLoop(onModelLoaded)
+            scheduleModelLoadReport(generation: generation, success: true)
             return true
         case .file(let url):
             pendingFileSource = source
@@ -126,13 +151,13 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
             // `await Entity(contentsOf:)` / `loadAsync` suspend so file I/O and USDZ
             // decode do not occupy the main run loop while in flight.
             modelLoadTask = Task { @MainActor [weak self] in
-                await self?.finishFileLoad(source: source, url: url)
+                await self?.finishFileLoad(source: source, url: url, generation: generation)
             }
             return true
         }
     }
 
-    private func finishFileLoad(source: ModelSource, url: URL) async {
+    private func finishFileLoad(source: ModelSource, url: URL, generation: UInt) async {
         do {
             let room: Entity
             if #available(iOS 18.0, *) {
@@ -146,11 +171,11 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
             // or shorten that hitch — RealityKit keeps collision generation on-main.
             await Task.yield()
             try Task.checkCancellation()
-            await applyLoadedFileEntity(room, source: source)
+            await applyLoadedFileEntity(room, source: source, generation: generation)
         } catch is CancellationError {
             // Superseded by a newer load or view teardown — do not surface as failure.
         } catch {
-            handleFileLoadFailure(source: source)
+            handleFileLoadFailure(source: source, generation: generation)
         }
     }
 
@@ -188,8 +213,10 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         }
     }
 
-    private func applyLoadedFileEntity(_ room: Entity, source: ModelSource) async {
-        guard pendingFileSource == source, let anchor else { return }
+    private func applyLoadedFileEntity(_ room: Entity, source: ModelSource, generation: UInt) async {
+        guard pendingFileSource == source,
+              modelLoadGeneration == generation,
+              let anchor else { return }
 
         // MainActor-only (RealityKit); cost scales with mesh complexity on every open.
         // Follow-ups: ShapeResource.generateStaticMesh off-actor, or bake at export.
@@ -201,7 +228,9 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         )
         await Task.yield()
 
-        guard pendingFileSource == source else { return }
+        // Recheck after the yield: a newer load (including A→B→A) may have bumped generation
+        // while collision generation ran past the last Task.checkCancellation().
+        guard pendingFileSource == source, modelLoadGeneration == generation else { return }
         pendingFileSource = nil
         roomEntity?.removeFromParent()
         roomEntity = room
@@ -210,22 +239,27 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         pinsRoot.name = "PinsRoot"
         anchor.addChild(pinsRoot)
         updateCamera(animated: false)
-        deferToNextRunLoop(onModelLoaded)
+        scheduleModelLoadReport(generation: generation, success: true)
     }
 
-    private func handleFileLoadFailure(source: ModelSource) {
-        guard pendingFileSource == source else { return }
+    private func handleFileLoadFailure(source: ModelSource, generation: UInt) {
+        guard pendingFileSource == source, modelLoadGeneration == generation else { return }
         pendingFileSource = nil
         loadedSource = nil
         roomEntity = nil
-        deferToNextRunLoop(onModelLoadFailed)
+        scheduleModelLoadReport(generation: generation, success: false)
     }
 
-    /// Schedules MainActor work on the next turn without `DispatchQueue.main.async`
-    /// capturing non-`@Sendable` closures.
-    private func deferToNextRunLoop(_ action: @escaping @MainActor @Sendable () -> Void) {
-        Task { @MainActor in
-            action()
+    /// Schedules a load success/failure callback on the next MainActor turn.
+    /// The report is dropped if `generation` no longer matches (superseded load or teardown).
+    private func scheduleModelLoadReport(generation: UInt, success: Bool) {
+        Task { @MainActor [weak self] in
+            guard let self, self.modelLoadGeneration == generation else { return }
+            if success {
+                self.onModelLoaded()
+            } else {
+                self.onModelLoadFailed()
+            }
         }
     }
 
@@ -261,79 +295,143 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         updateCamera(animated: animated)
     }
 
-    private func applyViewModePose(for mode: ViewerMode) {
+}
+
+@MainActor
+extension RoomModelCanvasCoordinator {
+    /// Cancels in-flight orbit animation. Call on view teardown so the display
+    /// link does not outlive the `ARView`.
+    func cancelCameraMotion() {
+        cameraMotionDisplayLink?.invalidate()
+        cameraMotionDisplayLink = nil
+        cameraMotionTickProxy = nil
+    }
+
+    /// Cancels an in-flight model load. Call on view teardown so a late completion cannot
+    /// keep generating collision shapes or attaching children to a detached `ARView`.
+    func cancelModelLoad() {
+        modelLoadGeneration &+= 1
+        pendingFileSource = nil
+        modelLoadTask?.cancel()
+        modelLoadTask = nil
+        modelLoadCancellable?.cancel()
+        modelLoadCancellable = nil
+    }
+
+    fileprivate func applyViewModePose(for mode: ViewerMode) {
         switch mode {
         case .threeD:
-            pitch = defaultPitch
-            yaw = defaultYaw
-            distance = defaultDistance
+            pitch = DefaultOrbit.pitch
+            yaw = DefaultOrbit.yaw
+            distance = DefaultOrbit.distance
         case .topView:
             pitch = maxPitch
             yaw = 0
             distance = 8.5
         }
-        target = defaultTarget
+        target = DefaultOrbit.target
     }
 
-    private func updateCamera(
+    fileprivate var logicalPose: CameraOrbitPose {
+        CameraOrbitPose(yaw: yaw, pitch: pitch, distance: distance, target: target)
+    }
+
+    fileprivate func updateCamera(
         animated: Bool,
         duration: TimeInterval? = nil,
-        timingFunction: AnimationTimingFunction = .easeInOut
+        timing: CameraMotionTiming = .easeInOut
     ) {
         guard let camera else { return }
-        let offset = SIMD3<Float>(
-            distance * cos(pitch) * sin(yaw),
-            distance * sin(pitch),
-            distance * cos(pitch) * cos(yaw)
-        )
-        let eye = target + offset
+        let end = logicalPose
 
-        pinFacingTask?.cancel()
-        pinFacingTask = nil
-        camera.stopAllAnimations()
+        cancelCameraMotion()
 
         guard animated else {
-            camera.look(at: target, from: eye, relativeTo: nil)
-            facePinsTowardCamera(eye: eye)
+            applyPose(end, to: camera)
+            displayedPose = end
+            facePinsTowardCameraIfNeeded(eye: end.eye)
             return
         }
 
-        let animationDuration = duration ?? cameraAnimationDuration
-        let startTransform = camera.transform
-        camera.look(at: target, from: eye, relativeTo: nil)
-        let endTransform = camera.transform
-        camera.transform = startTransform
+        cameraMotionStartPose = displayedPose
+        cameraMotionEndPose = end
+        cameraMotionDuration = duration ?? cameraAnimationDuration
+        cameraMotionTiming = timing
+        cameraMotionStartedAt = CACurrentMediaTime()
 
-        camera.move(
-            to: endTransform,
-            relativeTo: camera.parent,
-            duration: animationDuration,
-            timingFunction: timingFunction
-        )
+        let proxy = CameraMotionDisplayLinkProxy(owner: self)
+        let link = CADisplayLink(target: proxy, selector: #selector(CameraMotionDisplayLinkProxy.handleTick(_:)))
+        // Native display rate (60 or 120 on ProMotion). RealityKit previously drove
+        // `camera.move` on the ARView's own link; pin facing is cheap / no-ops when empty.
+        link.add(to: .main, forMode: .common)
+        cameraMotionTickProxy = proxy
+        cameraMotionDisplayLink = link
+    }
 
-        let destinationEye = eye
-        pinFacingTask = Task { @MainActor [weak self] in
-            let deadline = Date().addingTimeInterval(animationDuration)
-            while !Task.isCancelled, Date() < deadline {
-                guard let self, let camera = self.camera else { return }
-                self.facePinsTowardCamera(eye: camera.position(relativeTo: nil))
-                try? await Task.sleep(nanoseconds: 16_666_667)
-            }
-            guard !Task.isCancelled, let self else { return }
-            self.facePinsTowardCamera(eye: destinationEye)
+    fileprivate func handleCameraMotionTick(_ link: CADisplayLink) {
+        guard let camera else {
+            cancelCameraMotion()
+            return
         }
-    }
 
-    private var cameraRight: SIMD3<Float> {
-        let offset = SIMD3<Float>(
-            distance * cos(pitch) * sin(yaw),
-            distance * sin(pitch),
-            distance * cos(pitch) * cos(yaw)
+        let elapsed = CACurrentMediaTime() - cameraMotionStartedAt
+        let linearT = min(1, Float(elapsed / cameraMotionDuration))
+        if linearT >= 1 {
+            // Land on the logical end so `displayedPose` matches `logicalPose` exactly for
+            // the next interrupt (lerp's wrapped yaw can differ by a multiple of 2π).
+            applyPose(cameraMotionEndPose, to: camera)
+            displayedPose = cameraMotionEndPose
+            facePinsTowardCameraIfNeeded(eye: cameraMotionEndPose.eye)
+            cancelCameraMotion()
+            return
+        }
+
+        let easedT = cameraMotionTiming.progress(linear: linearT)
+        let pose = CameraOrbitPose.lerp(
+            from: cameraMotionStartPose,
+            to: cameraMotionEndPose,
+            progress: easedT
         )
-        let forward = normalize(-offset)
-        return normalize(cross(SIMD3<Float>(0, 1, 0), -forward))
+        applyPose(pose, to: camera)
+        displayedPose = pose
+        facePinsTowardCameraIfNeeded(eye: pose.eye)
     }
 
+    private func facePinsTowardCameraIfNeeded(eye: SIMD3<Float>) {
+        guard !pinsRoot.children.isEmpty else { return }
+        facePinsTowardCamera(eye: eye)
+    }
+
+    private func applyPose(_ pose: CameraOrbitPose, to camera: PerspectiveCamera) {
+        camera.look(at: pose.target, from: pose.eye, relativeTo: nil)
+    }
+
+    fileprivate var cameraRight: SIMD3<Float> {
+        logicalPose.panRight
+    }
+
+}
+
+// MARK: - Camera motion display-link proxy
+
+/// Weak bridge so `CADisplayLink` does not retain the coordinator.
+@MainActor
+private final class CameraMotionDisplayLinkProxy: NSObject {
+    weak var owner: RoomModelCanvasCoordinator?
+
+    init(owner: RoomModelCanvasCoordinator) {
+        self.owner = owner
+        super.init()
+    }
+
+    @objc func handleTick(_ link: CADisplayLink) {
+        guard let owner else {
+            // Coordinator released without cancelCameraMotion — stop the run-loop retain.
+            link.invalidate()
+            return
+        }
+        owner.handleCameraMotionTick(link)
+    }
 }
 
 @MainActor
@@ -350,22 +448,22 @@ extension RoomModelCanvasCoordinator {
         // Only sync for zoom-only batches. Mixed batches may change `target` first
         // (e.g. focus then zoom); measuring against the pre-focus target is wrong.
         if isZoomOnly {
-            syncOrbitDistanceFromCamera()
+            syncOrbitDistanceFromDisplayedPose()
         }
 
         var shouldAnimate = true
         for command in commands {
             switch command {
             case .zoomIn:
-                distance = max(minDistance, distance * 0.82)
+                distance = clampedDistance(distance * 0.82)
             case .zoomOut:
-                distance = min(maxDistance, distance * 1.22)
+                distance = clampedDistance(distance * 1.22)
             case .reset:
                 applyViewModePose(for: currentViewMode)
                 updateAllPinModePresentations()
             case .focus(let position):
                 target = position
-                distance = max(minDistance, min(distance, 5.5))
+                distance = clampedDistance(min(distance, 5.5))
                 // Focus accompanies note selection, so it must not race the presenting sheet or gestures.
                 shouldAnimate = false
             }
@@ -375,20 +473,43 @@ extension RoomModelCanvasCoordinator {
             updateCamera(
                 animated: true,
                 duration: zoomAnimationDuration,
-                timingFunction: .easeOut
+                timing: .easeOut
             )
         } else {
             updateCamera(animated: shouldAnimate)
         }
     }
 
-    /// Aligns logical orbit distance with the camera's current world position.
-    /// Required when interrupting an in-flight zoom animation.
-    private func syncOrbitDistanceFromCamera() {
+    private func clampedDistance(_ value: Float) -> Float {
+        max(minDistance, min(maxDistance, value))
+    }
+
+    /// Aligns logical orbit distance with the pose currently on screen.
+    /// Used when zoom buttons interrupt an in-flight animation — yaw/pitch/target stay
+    /// on the logical end pose so the short easeOut continues toward the destination mode.
+    private func syncOrbitDistanceFromDisplayedPose() {
+        distance = clampedDistance(displayedPose.distance)
+    }
+
+    /// Pinch zoom. While a mode/zoom animation is in flight, only distance is updated so
+    /// orientation keeps lerping toward the logical end (no snap jump, no mid-pose freeze).
+    fileprivate func adjustOrbitDistance(byFactor factor: Float) {
+        let nextDistance = clampedDistance(displayedPose.distance / factor)
+        distance = nextDistance
+
+        guard cameraMotionDisplayLink != nil else {
+            updateCamera(animated: false)
+            return
+        }
+
+        cameraMotionStartPose.distance = nextDistance
+        cameraMotionEndPose.distance = nextDistance
+        var pose = displayedPose
+        pose.distance = nextDistance
         guard let camera else { return }
-        let eye = camera.position(relativeTo: nil)
-        let current = simd_length(eye - target)
-        distance = max(minDistance, min(maxDistance, current))
+        applyPose(pose, to: camera)
+        displayedPose = pose
+        facePinsTowardCameraIfNeeded(eye: pose.eye)
     }
 }
 
@@ -421,6 +542,18 @@ extension RoomModelCanvasCoordinator {
         arView.addGestureRecognizer(tap)
     }
 
+    /// Copies the pose currently on screen into the logical fields.
+    ///
+    /// A gesture that interrupts an in-flight animation must continue from what the user
+    /// sees, not snap to the animation's target (which `applyViewModePose` wrote into the
+    /// logical fields before the animation started).
+    private func syncLogicalPoseFromDisplayed() {
+        yaw = displayedPose.yaw
+        pitch = displayedPose.pitch
+        distance = displayedPose.distance
+        target = displayedPose.target
+    }
+
     @objc private func handleOrbit(_ gesture: UIPanGestureRecognizer) {
         if activePinDrag != nil { return }
         guard currentViewMode == .threeD else { return }
@@ -430,6 +563,7 @@ extension RoomModelCanvasCoordinator {
             lastOrbitPoint = point
         case .changed:
             guard let lastOrbitPoint else { return }
+            syncLogicalPoseFromDisplayed()
             let dx = Float(point.x - lastOrbitPoint.x)
             let dy = Float(point.y - lastOrbitPoint.y)
             yaw += dx * 0.01
@@ -515,6 +649,7 @@ extension RoomModelCanvasCoordinator {
             lastPanPoint = point
         case .changed:
             guard let lastPanPoint else { return }
+            syncLogicalPoseFromDisplayed()
             let dx = Float(point.x - lastPanPoint.x)
             let dy = Float(point.y - lastPanPoint.y)
             let right = cameraRight
@@ -529,12 +664,10 @@ extension RoomModelCanvasCoordinator {
     }
 
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
-        if gesture.state == .changed {
-            let factor = Float(gesture.scale)
-            distance = max(minDistance, min(maxDistance, distance / factor))
-            gesture.scale = 1
-            updateCamera(animated: false)
-        }
+        guard gesture.state == .changed else { return }
+        let factor = Float(gesture.scale)
+        gesture.scale = 1
+        adjustOrbitDistance(byFactor: factor)
     }
 
     @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
