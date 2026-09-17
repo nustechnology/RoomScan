@@ -3,7 +3,6 @@
 //  roomscan
 //
 
-import FirebaseCore
 import Foundation
 import SwiftUI
 
@@ -12,7 +11,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        FirebaseApp.configure()
         return true
     }
 }
