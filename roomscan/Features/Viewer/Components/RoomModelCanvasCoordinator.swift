@@ -214,7 +214,9 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     }
 
     private func applyLoadedFileEntity(_ room: Entity, source: ModelSource, generation: UInt) async {
-        guard pendingFileSource == source, let anchor else { return }
+        guard pendingFileSource == source,
+              modelLoadGeneration == generation,
+              let anchor else { return }
 
         // MainActor-only (RealityKit); cost scales with mesh complexity on every open.
         // Follow-ups: ShapeResource.generateStaticMesh off-actor, or bake at export.
@@ -226,7 +228,9 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         )
         await Task.yield()
 
-        guard pendingFileSource == source else { return }
+        // Recheck after the yield: a newer load (including A→B→A) may have bumped generation
+        // while collision generation ran past the last Task.checkCancellation().
+        guard pendingFileSource == source, modelLoadGeneration == generation else { return }
         pendingFileSource = nil
         roomEntity?.removeFromParent()
         roomEntity = room
@@ -239,7 +243,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     }
 
     private func handleFileLoadFailure(source: ModelSource, generation: UInt) {
-        guard pendingFileSource == source else { return }
+        guard pendingFileSource == source, modelLoadGeneration == generation else { return }
         pendingFileSource = nil
         loadedSource = nil
         roomEntity = nil
@@ -477,11 +481,34 @@ extension RoomModelCanvasCoordinator {
     }
 
     /// Aligns logical orbit distance with the pose currently on screen.
-    /// Used when a distance-only interrupt (zoom button or pinch) cancels an
-    /// in-flight mode-switch or zoom animation — yaw/pitch/target stay on the
-    /// logical end pose so orientation is not frozen mid-transition.
+    /// Used when zoom buttons interrupt an in-flight animation — yaw/pitch/target stay
+    /// on the logical end pose so the short easeOut continues toward the destination mode.
     private func syncOrbitDistanceFromDisplayedPose() {
         distance = max(minDistance, min(maxDistance, displayedPose.distance))
+    }
+
+    /// Pinch zoom. While a mode/zoom animation is in flight, only distance is updated so
+    /// orientation keeps lerping toward the logical end (no snap jump, no mid-pose freeze).
+    fileprivate func adjustOrbitDistance(byFactor factor: Float) {
+        let nextDistance = max(
+            minDistance,
+            min(maxDistance, displayedPose.distance / factor)
+        )
+        distance = nextDistance
+
+        guard cameraMotionDisplayLink != nil else {
+            updateCamera(animated: false)
+            return
+        }
+
+        cameraMotionStartPose.distance = nextDistance
+        cameraMotionEndPose.distance = nextDistance
+        var pose = displayedPose
+        pose.distance = nextDistance
+        guard let camera else { return }
+        applyPose(pose, to: camera)
+        displayedPose = pose
+        facePinsTowardCameraIfNeeded(eye: pose.eye)
     }
 }
 
@@ -636,16 +663,10 @@ extension RoomModelCanvasCoordinator {
     }
 
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
-        if gesture.state == .changed {
-            let factor = Float(gesture.scale)
-            // Distance only — same policy as zoom buttons. Full pose sync would
-            // freeze mid mode-switch orientation while the UI already shows the
-            // destination mode.
-            syncOrbitDistanceFromDisplayedPose()
-            distance = max(minDistance, min(maxDistance, distance / factor))
-            gesture.scale = 1
-            updateCamera(animated: false)
-        }
+        guard gesture.state == .changed else { return }
+        let factor = Float(gesture.scale)
+        gesture.scale = 1
+        adjustOrbitDistance(byFactor: factor)
     }
 
     @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
