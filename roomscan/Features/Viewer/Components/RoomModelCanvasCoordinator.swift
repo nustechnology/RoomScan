@@ -77,6 +77,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     private var activePinDrag: ActivePinDrag?
     var pinAppearanceStates: [ObjectIdentifier: PinAppearanceState] = [:]
     private var cameraMotionDisplayLink: CADisplayLink?
+    private var cameraMotionTickProxy: CameraMotionDisplayLinkProxy?
     private var cameraMotionStartPose = CameraOrbitPose(yaw: 0, pitch: 0, distance: 1, target: .zero)
     private var cameraMotionEndPose = CameraOrbitPose(yaw: 0, pitch: 0, distance: 1, target: .zero)
     private var cameraMotionDuration: TimeInterval = 0
@@ -84,6 +85,9 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     private var cameraMotionStartedAt: CFTimeInterval = 0
     private var modelLoadCancellable: AnyCancellable?
     private var modelLoadTask: Task<Void, Never>?
+    /// Bumped on each `loadModel` / `cancelModelLoad` so deferred load reports cannot
+    /// apply to a superseded or torn-down generation.
+    private var modelLoadGeneration: UInt = 0
     private let cameraAnimationDuration: TimeInterval = 0.35
     /// Zoom buttons interrupt in-flight motion; easeOut starts moving immediately,
     /// unlike easeInOut whose first frames have near-zero velocity.
@@ -108,6 +112,8 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     @discardableResult
     func loadModel(source: ModelSource) -> Bool {
         guard let anchor else { return false }
+        modelLoadGeneration &+= 1
+        let generation = modelLoadGeneration
         roomEntity?.removeFromParent()
         pinsRoot.removeFromParent()
         loadedSource = nil
@@ -133,7 +139,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
             updateCamera(animated: false)
             // Defer off the current SwiftUI update cycle without capturing non-Sendable state
             // into a `DispatchQueue` `@Sendable` closure.
-            deferToNextRunLoop(onModelLoaded)
+            scheduleModelLoadReport(generation: generation, success: true)
             return true
         case .file(let url):
             pendingFileSource = source
@@ -145,13 +151,13 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
             // `await Entity(contentsOf:)` / `loadAsync` suspend so file I/O and USDZ
             // decode do not occupy the main run loop while in flight.
             modelLoadTask = Task { @MainActor [weak self] in
-                await self?.finishFileLoad(source: source, url: url)
+                await self?.finishFileLoad(source: source, url: url, generation: generation)
             }
             return true
         }
     }
 
-    private func finishFileLoad(source: ModelSource, url: URL) async {
+    private func finishFileLoad(source: ModelSource, url: URL, generation: UInt) async {
         do {
             let room: Entity
             if #available(iOS 18.0, *) {
@@ -165,11 +171,11 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
             // or shorten that hitch — RealityKit keeps collision generation on-main.
             await Task.yield()
             try Task.checkCancellation()
-            await applyLoadedFileEntity(room, source: source)
+            await applyLoadedFileEntity(room, source: source, generation: generation)
         } catch is CancellationError {
             // Superseded by a newer load or view teardown — do not surface as failure.
         } catch {
-            handleFileLoadFailure(source: source)
+            handleFileLoadFailure(source: source, generation: generation)
         }
     }
 
@@ -207,7 +213,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         }
     }
 
-    private func applyLoadedFileEntity(_ room: Entity, source: ModelSource) async {
+    private func applyLoadedFileEntity(_ room: Entity, source: ModelSource, generation: UInt) async {
         guard pendingFileSource == source, let anchor else { return }
 
         // MainActor-only (RealityKit); cost scales with mesh complexity on every open.
@@ -229,22 +235,27 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         pinsRoot.name = "PinsRoot"
         anchor.addChild(pinsRoot)
         updateCamera(animated: false)
-        deferToNextRunLoop(onModelLoaded)
+        scheduleModelLoadReport(generation: generation, success: true)
     }
 
-    private func handleFileLoadFailure(source: ModelSource) {
+    private func handleFileLoadFailure(source: ModelSource, generation: UInt) {
         guard pendingFileSource == source else { return }
         pendingFileSource = nil
         loadedSource = nil
         roomEntity = nil
-        deferToNextRunLoop(onModelLoadFailed)
+        scheduleModelLoadReport(generation: generation, success: false)
     }
 
-    /// Schedules MainActor work on the next turn without `DispatchQueue.main.async`
-    /// capturing non-`@Sendable` closures.
-    private func deferToNextRunLoop(_ action: @escaping @MainActor @Sendable () -> Void) {
-        Task { @MainActor in
-            action()
+    /// Schedules a load success/failure callback on the next MainActor turn.
+    /// The report is dropped if `generation` no longer matches (superseded load or teardown).
+    private func scheduleModelLoadReport(generation: UInt, success: Bool) {
+        Task { @MainActor [weak self] in
+            guard let self, self.modelLoadGeneration == generation else { return }
+            if success {
+                self.onModelLoaded()
+            } else {
+                self.onModelLoadFailed()
+            }
         }
     }
 
@@ -280,16 +291,22 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         updateCamera(animated: animated)
     }
 
+}
+
+@MainActor
+extension RoomModelCanvasCoordinator {
     /// Cancels in-flight orbit animation. Call on view teardown so the display
     /// link does not outlive the `ARView`.
     func cancelCameraMotion() {
         cameraMotionDisplayLink?.invalidate()
         cameraMotionDisplayLink = nil
+        cameraMotionTickProxy = nil
     }
 
     /// Cancels an in-flight model load. Call on view teardown so a late completion cannot
     /// keep generating collision shapes or attaching children to a detached `ARView`.
     func cancelModelLoad() {
+        modelLoadGeneration &+= 1
         pendingFileSource = nil
         modelLoadTask?.cancel()
         modelLoadTask = nil
@@ -297,7 +314,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         modelLoadCancellable = nil
     }
 
-    private func applyViewModePose(for mode: ViewerMode) {
+    fileprivate func applyViewModePose(for mode: ViewerMode) {
         switch mode {
         case .threeD:
             pitch = DefaultOrbit.pitch
@@ -311,11 +328,11 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         target = DefaultOrbit.target
     }
 
-    private var logicalPose: CameraOrbitPose {
+    fileprivate var logicalPose: CameraOrbitPose {
         CameraOrbitPose(yaw: yaw, pitch: pitch, distance: distance, target: target)
     }
 
-    private func updateCamera(
+    fileprivate func updateCamera(
         animated: Bool,
         duration: TimeInterval? = nil,
         timing: CameraMotionTiming = .easeInOut
@@ -328,7 +345,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         guard animated else {
             applyPose(end, to: camera)
             displayedPose = end
-            facePinsTowardCamera(eye: end.eye)
+            facePinsTowardCameraIfNeeded(eye: end.eye)
             return
         }
 
@@ -338,13 +355,16 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         cameraMotionTiming = timing
         cameraMotionStartedAt = CACurrentMediaTime()
 
-        let link = CADisplayLink(target: self, selector: #selector(handleCameraMotionTick(_:)))
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        let proxy = CameraMotionDisplayLinkProxy(owner: self)
+        let link = CADisplayLink(target: proxy, selector: #selector(CameraMotionDisplayLinkProxy.handleTick(_:)))
+        // Match the previous ~60 Hz pin-facing cadence; ProMotion 120 Hz doubles work for little gain.
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
         link.add(to: .main, forMode: .common)
+        cameraMotionTickProxy = proxy
         cameraMotionDisplayLink = link
     }
 
-    @objc private func handleCameraMotionTick(_ link: CADisplayLink) {
+    fileprivate func handleCameraMotionTick(_ link: CADisplayLink) {
         guard let camera else {
             cancelCameraMotion()
             return
@@ -357,7 +377,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
             // the next interrupt (lerp's wrapped yaw can differ by a multiple of 2π).
             applyPose(cameraMotionEndPose, to: camera)
             displayedPose = cameraMotionEndPose
-            facePinsTowardCamera(eye: cameraMotionEndPose.eye)
+            facePinsTowardCameraIfNeeded(eye: cameraMotionEndPose.eye)
             cancelCameraMotion()
             return
         }
@@ -370,17 +390,39 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         )
         applyPose(pose, to: camera)
         displayedPose = pose
-        facePinsTowardCamera(eye: pose.eye)
+        facePinsTowardCameraIfNeeded(eye: pose.eye)
+    }
+
+    private func facePinsTowardCameraIfNeeded(eye: SIMD3<Float>) {
+        guard !pinsRoot.children.isEmpty else { return }
+        facePinsTowardCamera(eye: eye)
     }
 
     private func applyPose(_ pose: CameraOrbitPose, to camera: PerspectiveCamera) {
         camera.look(at: pose.target, from: pose.eye, relativeTo: nil)
     }
 
-    private var cameraRight: SIMD3<Float> {
+    fileprivate var cameraRight: SIMD3<Float> {
         logicalPose.panRight
     }
 
+}
+
+// MARK: - Camera motion display-link proxy
+
+/// Weak bridge so `CADisplayLink` does not retain the coordinator.
+@MainActor
+private final class CameraMotionDisplayLinkProxy: NSObject {
+    weak var owner: RoomModelCanvasCoordinator?
+
+    init(owner: RoomModelCanvasCoordinator) {
+        self.owner = owner
+        super.init()
+    }
+
+    @objc func handleTick(_ link: CADisplayLink) {
+        owner?.handleCameraMotionTick(link)
+    }
 }
 
 @MainActor
