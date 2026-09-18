@@ -65,11 +65,12 @@ nonisolated struct UserMeAPIResponse: Decodable, Sendable {
 
     func toAuthenticatedUser(fallingBackTo current: AuthenticatedUser) -> AuthenticatedUser {
         let resolvedID = id?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let resolvedPublicUserId = publicUserId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return AuthenticatedUser(
             id: resolvedID.isEmpty ? current.id : resolvedID,
             displayName: displayName ?? current.displayName,
             email: email ?? current.email,
-            publicUserId: publicUserId ?? current.publicUserId
+            publicUserId: resolvedPublicUserId.isEmpty ? current.publicUserId : resolvedPublicUserId
         )
     }
 

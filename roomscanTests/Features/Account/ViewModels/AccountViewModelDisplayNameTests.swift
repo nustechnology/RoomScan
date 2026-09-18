@@ -209,12 +209,16 @@ struct AccountViewModelDisplayNameTests {
         #expect(user.displayName == "Pat")
     }
 
-    @Test func userMeResponseKeepsCurrentPublicUserIdWhenOmitted() throws {
+    @Test func userMeResponseKeepsCurrentPublicUserIdWhenOmittedOrBlank() throws {
         let current = AuthenticatedUser(id: "u1", displayName: nil, email: nil, publicUserId: "ADA1234567")
 
         let withoutID = try JSONDecoder().decode(
             UserMeAPIResponse.self,
             from: Data(#"{"id":"u1","displayName":"Ada"}"#.utf8)
+        )
+        let blankID = try JSONDecoder().decode(
+            UserMeAPIResponse.self,
+            from: Data(#"{"id":"u1","publicUserId":"  "}"#.utf8)
         )
         let withID = try JSONDecoder().decode(
             UserMeAPIResponse.self,
@@ -222,6 +226,7 @@ struct AccountViewModelDisplayNameTests {
         )
 
         #expect(withoutID.toAuthenticatedUser(fallingBackTo: current).publicUserId == "ADA1234567")
+        #expect(blankID.toAuthenticatedUser(fallingBackTo: current).publicUserId == "ADA1234567")
         #expect(withID.toAuthenticatedUser(fallingBackTo: current).publicUserId == "NEWID00001")
     }
 

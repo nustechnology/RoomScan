@@ -124,11 +124,12 @@ final class RemoteAuthenticationService: AuthenticationService {
             appleFullName: appleFullName,
             apiDisplayName: response.user.displayName
         ) != nil
+        let publicUserId = AppleUserDisplayName.nonBlank(response.user.publicUserId)
         let user = AuthenticatedUser(
             id: response.user.id,
             displayName: displayName,
             email: response.user.email,
-            publicUserId: response.user.publicUserId
+            publicUserId: publicUserId
         )
         let provider = AuthenticationProvider(rawValue: response.user.provider) ?? .apple
 
@@ -138,7 +139,7 @@ final class RemoteAuthenticationService: AuthenticationService {
             userId: response.user.id,
             userEmail: response.user.email,
             userDisplayName: displayName,
-            userPublicId: response.user.publicUserId,
+            userPublicId: publicUserId,
             needsDisplayNameUpload: needsDisplayNameUpload
         )
         do {

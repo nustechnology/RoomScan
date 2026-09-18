@@ -250,6 +250,18 @@ struct RemoteAuthenticationServiceTests {
         #expect(keychain.stored?.userDisplayName == AppleUserDisplayName.formatted(from: appleName))
     }
 
+    @Test func persistAppleSessionTreatsBlankPublicUserIdAsMissing() throws {
+        let (service, keychain) = makeOfflineService(storing: nil)
+
+        let session = try service.persistAppleSession(
+            from: .sample(displayName: "Jane Doe", publicUserId: "  "),
+            appleFullName: nil
+        )
+
+        #expect(session.user.publicUserId == nil)
+        #expect(keychain.stored?.userPublicId == nil)
+    }
+
     @Test func storePublicUserIdBackfillsKeychainAndKeepsEverythingElse() async throws {
         let (service, keychain) = makeOfflineService(storing: .sample(needsDisplayNameUpload: true))
 
@@ -422,7 +434,7 @@ private actor RecordingUsersService: UsersService {
 }
 
 private extension AuthAPIResponse {
-    static func sample(displayName: String?) -> AuthAPIResponse {
+    static func sample(displayName: String?, publicUserId: String? = "JANEDOE123") -> AuthAPIResponse {
         AuthAPIResponse(
             accessToken: "access",
             refreshToken: "refresh",
@@ -431,7 +443,7 @@ private extension AuthAPIResponse {
                 email: "jane@example.com",
                 provider: "apple",
                 displayName: displayName,
-                publicUserId: "JANEDOE123"
+                publicUserId: publicUserId
             )
         )
     }

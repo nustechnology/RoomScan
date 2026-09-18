@@ -82,7 +82,8 @@ final class AppState {
         guard let publicUserId = user.publicUserId, publicUserId != session.user.publicUserId else {
             return
         }
-        // A failed write only costs a re-fetch: the next /users/me load backfills it again.
+        // A failed write keeps the id in memory for this run; the next launch restores
+        // without it, so the first /users/me load after that retries the write.
         try? await authenticationService.storePublicUserId(publicUserId, forUserId: user.id)
     }
 

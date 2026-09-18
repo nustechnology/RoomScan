@@ -54,6 +54,9 @@ actor AccessTokenRefreshCoordinator {
     }
 
     /// Sign-out deletes here so it cannot land between this actor's read and save.
+    /// Restore and session invalidation still delete directly: restore runs before any save
+    /// can be pending, and a save racing invalidation can only write back a refresh token the
+    /// server already rejected, which the next restore deletes.
     func clearStoredSession() throws {
         try keychainStore.deleteTokens()
     }

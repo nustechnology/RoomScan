@@ -92,13 +92,17 @@ struct AccountView: View {
                 .padding(.vertical, AppSpacing.small)
         }
         .background(AppColors.background)
-        .toast(message: Binding(
-            get: { viewModel.toastMessage },
-            set: { if $0 == nil { viewModel.dismissToast() } }
-        ), style: Binding(
-            get: { viewModel.toastStyle },
-            set: { _ in }
-        ))
+        .toast(
+            message: Binding(
+                get: { viewModel.toastMessage },
+                set: { if $0 == nil { viewModel.dismissToast() } }
+            ),
+            style: Binding(
+                get: { viewModel.toastStyle },
+                set: { _ in }
+            ),
+            presentationID: viewModel.toastPresentationID
+        )
         .task {
             async let profile: Void = viewModel.loadProfile(currentUser: session.user)
             async let metrics: Void = viewModel.loadMetrics()

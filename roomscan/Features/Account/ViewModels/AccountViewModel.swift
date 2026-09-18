@@ -31,6 +31,8 @@ final class AccountViewModel {
 
     private(set) var toastStyle: ToastStyle = .success
     private(set) var toastMessage: String?
+    /// Bumped per copy so a repeat copy restarts the toast even though its text is unchanged.
+    private(set) var toastPresentationID = 0
 
     private var loadGeneration = 0
     private var profileLoadGeneration = 0
@@ -195,6 +197,7 @@ final class AccountViewModel {
         pasteboard.copy(publicUserID)
         toastStyle = .success
         toastMessage = String(localized: "account.toast.publicUserIdCopied")
+        toastPresentationID += 1
     }
 
     func dismissToast() {

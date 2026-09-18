@@ -5,7 +5,7 @@
 
 import Foundation
 
-protocol InvitationService: Sendable {
+nonisolated protocol InvitationService: Sendable {
     func fetchInvitation(
         scope: InvitationScope,
         token: String

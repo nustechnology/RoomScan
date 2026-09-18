@@ -524,6 +524,17 @@ struct AccountViewModelTests {
         #expect(pasteboard.copiedTexts == ["APPLEUSER1", "APPLEUSER1"])
     }
 
+    @Test func copyingAgainWhileToastIsShowingSignalsANewPresentation() {
+        let viewModel = makeViewModel(pasteboard: RecordingAccountPasteboard())
+        viewModel.copyPublicUserID("APPLEUSER1")
+        let firstPresentation = viewModel.toastPresentationID
+
+        viewModel.copyPublicUserID("APPLEUSER1")
+
+        #expect(viewModel.toastMessage == String(localized: "account.toast.publicUserIdCopied"))
+        #expect(viewModel.toastPresentationID != firstPresentation)
+    }
+
     private func makeViewModel(pasteboard: any AccountPasteboard) -> AccountViewModel {
         AccountViewModel(
             projectsService: MockProjectsService(simulatedDelayNanoseconds: 0),
