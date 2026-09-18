@@ -31,9 +31,11 @@ actor MockUsersService: UsersService {
         self.simulatedDelayNanoseconds = simulatedDelayNanoseconds
     }
 
+    @MainActor
     static func makeForCurrentProcess() -> MockUsersService {
         let delay: UInt64 = ProcessInfo.processInfo.arguments.contains("-UITesting") ? 0 : 80_000_000
-        return MockUsersService(simulatedDelayNanoseconds: delay)
+        // Same account the mock authentication signs in, so profile refreshes apply to it.
+        return MockUsersService(user: AuthenticationSession.mockAppleUser.user, simulatedDelayNanoseconds: delay)
     }
 
     func setScenario(_ scenario: Scenario) {

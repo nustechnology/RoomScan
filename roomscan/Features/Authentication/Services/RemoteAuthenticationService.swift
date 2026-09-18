@@ -187,11 +187,11 @@ final class RemoteAuthenticationService: AuthenticationService {
     // MARK: - Sign Out
 
     func signOut() async throws {
-        try keychainStore.deleteTokens()
+        try await refreshCoordinator.clearStoredSession()
     }
 
-    func storePublicUserId(_ publicUserId: String) async throws {
-        try await refreshCoordinator.storePublicUserId(publicUserId)
+    func storePublicUserId(_ publicUserId: String, forUserId userId: String) async throws {
+        try await refreshCoordinator.storePublicUserId(publicUserId, forUserId: userId)
     }
 
     // MARK: - Private Helpers

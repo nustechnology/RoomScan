@@ -43,11 +43,19 @@ actor AccessTokenRefreshCoordinator {
         try keychainStore.save(latest.withNeedsDisplayNameUpload(false))
     }
 
-    func storePublicUserId(_ publicUserId: String) throws {
+    /// Skips the write when the Keychain holds another account or none, e.g. after a
+    /// sign-out or a different sign-in landed while this call was queued.
+    func storePublicUserId(_ publicUserId: String, forUserId userId: String) throws {
         guard let latest = try keychainStore.getStoredAuthData(),
+              latest.userId == userId,
               latest.userPublicId != publicUserId
         else { return }
         try keychainStore.save(latest.withUserPublicId(publicUserId))
+    }
+
+    /// Sign-out deletes here so it cannot land between this actor's read and save.
+    func clearStoredSession() throws {
+        try keychainStore.deleteTokens()
     }
 
     private func executeRefresh() async throws -> StoredAuthData {

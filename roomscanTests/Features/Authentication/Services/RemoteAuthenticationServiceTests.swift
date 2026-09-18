@@ -265,7 +265,7 @@ struct RemoteAuthenticationServiceTests {
             keychainStore: keychain
         )
 
-        try await service.storePublicUserId("JANEDOE123")
+        try await service.storePublicUserId("JANEDOE123", forUserId: "user-1")
 
         #expect(keychain.stored?.userPublicId == "JANEDOE123")
         #expect(keychain.stored?.accessToken == "access")
@@ -281,7 +281,46 @@ struct RemoteAuthenticationServiceTests {
             keychainStore: keychain
         )
 
-        try await service.storePublicUserId("JANEDOE123")
+        try await service.storePublicUserId("JANEDOE123", forUserId: "user-1")
+
+        #expect(keychain.stored == nil)
+    }
+
+    @Test func storePublicUserIdSkipsWhenKeychainHoldsAnotherAccount() async throws {
+        let keychain = InMemoryKeychainStore()
+        keychain.stored = StoredAuthData(
+            accessToken: "access",
+            refreshToken: "refresh",
+            userId: "user-2",
+            userEmail: "other@example.com",
+            userDisplayName: "Other"
+        )
+        let service = RemoteAuthenticationService(
+            httpClient: AuthHTTPClient { _ in .failure(.networkError) },
+            keychainStore: keychain
+        )
+
+        try await service.storePublicUserId("JANEDOE123", forUserId: "user-1")
+
+        #expect(keychain.stored?.userId == "user-2")
+        #expect(keychain.stored?.userPublicId == nil)
+    }
+
+    @Test func signOutClearsStoredSession() async throws {
+        let keychain = InMemoryKeychainStore()
+        keychain.stored = StoredAuthData(
+            accessToken: "access",
+            refreshToken: "refresh",
+            userId: "user-1",
+            userEmail: "jane@example.com",
+            userDisplayName: "Jane Doe"
+        )
+        let service = RemoteAuthenticationService(
+            httpClient: AuthHTTPClient { _ in .failure(.networkError) },
+            keychainStore: keychain
+        )
+
+        try await service.signOut()
 
         #expect(keychain.stored == nil)
     }

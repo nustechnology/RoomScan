@@ -117,6 +117,49 @@ struct AppStateTests {
         #expect(appState.phase == .signedOut)
     }
 
+    @Test func updateSignedInUserIgnoresProfileFromAnotherAccount() async {
+        let service = MockAuthenticationService(
+            configuration: .init(
+                initialSession: .mockAppleUser,
+                signInOutcome: .success,
+                restoreFails: false,
+                simulatedDelayNanoseconds: 0
+            )
+        )
+        let appState = AppState(authenticationService: service)
+        await appState.restoreSession()
+
+        await appState.updateSignedInUser(
+            AuthenticatedUser(id: "previous-account", displayName: "Previous", email: nil, publicUserId: "PREV123456")
+        )
+
+        let restored = try? await service.restoreSession()
+        #expect(appState.currentSession == .mockAppleUser)
+        #expect(restored?.user.publicUserId == AuthenticationSession.mockAppleUser.user.publicUserId)
+    }
+
+    @Test func mockProfileRefreshAppliesToMockSignedInAccount() async throws {
+        let service = MockAuthenticationService(
+            configuration: .init(
+                initialSession: .mockAppleUser,
+                signInOutcome: .success,
+                restoreFails: false,
+                simulatedDelayNanoseconds: 0
+            )
+        )
+        let appState = AppState(authenticationService: service)
+        await appState.restoreSession()
+        let session = try #require(appState.currentSession)
+
+        let renamed = try await MockUsersService.makeForCurrentProcess().updateMe(
+            displayName: "Renamed",
+            fallingBackTo: session.user
+        )
+        await appState.updateSignedInUser(renamed)
+
+        #expect(appState.currentSession?.user.displayName == "Renamed")
+    }
+
     @Test func signOutReturnsToSignedOut() async {
         let service = MockAuthenticationService(
             configuration: .init(

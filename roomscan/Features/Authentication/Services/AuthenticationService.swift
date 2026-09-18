@@ -13,5 +13,6 @@ protocol AuthenticationService: AnyObject {
     func signInWithApple(authorization: ASAuthorization, rawNonce: String) async throws -> AuthenticationSession
     func signOut() async throws
     /// Persists an id learned after sign-in (e.g. from `/users/me`) so restored sessions keep it.
-    func storePublicUserId(_ publicUserId: String) async throws
+    /// Does nothing unless `userId` is still the stored account.
+    func storePublicUserId(_ publicUserId: String, forUserId userId: String) async throws
 }

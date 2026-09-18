@@ -137,8 +137,8 @@ final class MockAuthenticationService: AuthenticationService {
         session = nil
     }
 
-    func storePublicUserId(_ publicUserId: String) async throws {
-        guard let session else { return }
+    func storePublicUserId(_ publicUserId: String, forUserId userId: String) async throws {
+        guard let session, session.user.id == userId else { return }
         let user = session.user
         self.session = AuthenticationSession(
             user: AuthenticatedUser(
