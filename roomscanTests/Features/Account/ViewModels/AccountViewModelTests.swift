@@ -498,6 +498,61 @@ struct AccountViewModelTests {
         #expect(didSignOut)
         #expect(viewModel.showsSignOutConfirmation == false)
     }
+
+    @Test func copyPublicUserIDCopiesValueAndShowsSuccessToast() {
+        let pasteboard = RecordingAccountPasteboard()
+        let viewModel = makeViewModel(pasteboard: pasteboard)
+        #expect(viewModel.toastMessage == nil)
+
+        viewModel.copyPublicUserID("APPLEUSER1")
+
+        #expect(pasteboard.copiedTexts == ["APPLEUSER1"])
+        #expect(viewModel.toastStyle == .success)
+        #expect(viewModel.toastMessage == String(localized: "account.toast.publicUserIdCopied"))
+    }
+
+    @Test func dismissToastClearsMessageAndCopyingAgainShowsItAgain() {
+        let pasteboard = RecordingAccountPasteboard()
+        let viewModel = makeViewModel(pasteboard: pasteboard)
+        viewModel.copyPublicUserID("APPLEUSER1")
+
+        viewModel.dismissToast()
+        #expect(viewModel.toastMessage == nil)
+
+        viewModel.copyPublicUserID("APPLEUSER1")
+        #expect(viewModel.toastMessage == String(localized: "account.toast.publicUserIdCopied"))
+        #expect(pasteboard.copiedTexts == ["APPLEUSER1", "APPLEUSER1"])
+    }
+
+    @Test func copyingAgainWhileToastIsShowingSignalsANewPresentation() {
+        let viewModel = makeViewModel(pasteboard: RecordingAccountPasteboard())
+        viewModel.copyPublicUserID("APPLEUSER1")
+        let firstPresentation = viewModel.toastPresentationID
+
+        viewModel.copyPublicUserID("APPLEUSER1")
+
+        #expect(viewModel.toastMessage == String(localized: "account.toast.publicUserIdCopied"))
+        #expect(viewModel.toastPresentationID != firstPresentation)
+    }
+
+    private func makeViewModel(pasteboard: any AccountPasteboard) -> AccountViewModel {
+        AccountViewModel(
+            projectsService: MockProjectsService(simulatedDelayNanoseconds: 0),
+            sharedService: MockSharedService(simulatedDelayNanoseconds: 0),
+            syncService: MockSyncService(simulatedDelayNanoseconds: 0),
+            scanStorageService: MockScanStorageService(),
+            storageMeasuring: MockAccountStorageMeasuring(),
+            pasteboard: pasteboard
+        )
+    }
+}
+
+private final class RecordingAccountPasteboard: AccountPasteboard {
+    private(set) var copiedTexts: [String] = []
+
+    func copy(_ text: String) {
+        copiedTexts.append(text)
+    }
 }
 
 private final class RecordingAccountStorageMeasuring: AccountStorageMeasuring, @unchecked Sendable {

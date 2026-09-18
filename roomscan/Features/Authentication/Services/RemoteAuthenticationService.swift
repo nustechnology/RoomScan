@@ -58,7 +58,8 @@ final class RemoteAuthenticationService: AuthenticationService {
             user: AuthenticatedUser(
                 id: storedData.userId,
                 displayName: storedData.userDisplayName,
-                email: storedData.userEmail
+                email: storedData.userEmail,
+                publicUserId: storedData.userPublicId
             ),
             provider: .apple
         )
@@ -123,10 +124,12 @@ final class RemoteAuthenticationService: AuthenticationService {
             appleFullName: appleFullName,
             apiDisplayName: response.user.displayName
         ) != nil
+        let publicUserId = AppleUserDisplayName.nonBlank(response.user.publicUserId)
         let user = AuthenticatedUser(
             id: response.user.id,
             displayName: displayName,
-            email: response.user.email
+            email: response.user.email,
+            publicUserId: publicUserId
         )
         let provider = AuthenticationProvider(rawValue: response.user.provider) ?? .apple
 
@@ -136,6 +139,7 @@ final class RemoteAuthenticationService: AuthenticationService {
             userId: response.user.id,
             userEmail: response.user.email,
             userDisplayName: displayName,
+            userPublicId: publicUserId,
             needsDisplayNameUpload: needsDisplayNameUpload
         )
         do {
@@ -184,7 +188,11 @@ final class RemoteAuthenticationService: AuthenticationService {
     // MARK: - Sign Out
 
     func signOut() async throws {
-        try keychainStore.deleteTokens()
+        try await refreshCoordinator.clearStoredSession()
+    }
+
+    func storePublicUserId(_ publicUserId: String, forUserId userId: String) async throws {
+        try await refreshCoordinator.storePublicUserId(publicUserId, forUserId: userId)
     }
 
     // MARK: - Private Helpers

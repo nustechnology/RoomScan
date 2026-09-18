@@ -21,8 +21,7 @@ struct RemoteInvitationServiceTests {
 
         let details = try await service.fetchInvitation(
             scope: .project,
-            token: token,
-            currentUserEmail: "viewer@example.com"
+            token: token
         )
 
         #expect(details.token == token)
@@ -43,8 +42,7 @@ struct RemoteInvitationServiceTests {
 
         let details = try await service.fetchInvitation(
             scope: .scan,
-            token: "scan-token",
-            currentUserEmail: nil
+            token: "scan-token"
         )
 
         #expect(details.scope == .scan)
@@ -66,8 +64,7 @@ struct RemoteInvitationServiceTests {
         await #expect(throws: InvitationServiceError.alreadyAccepted) {
             try await service.fetchInvitation(
                 scope: .project,
-                token: "accepted-token",
-                currentUserEmail: nil
+                token: "accepted-token"
             )
         }
     }
@@ -81,8 +78,7 @@ struct RemoteInvitationServiceTests {
         await #expect(throws: InvitationServiceError.declined) {
             try await service.fetchInvitation(
                 scope: .project,
-                token: "declined-token",
-                currentUserEmail: nil
+                token: "declined-token"
             )
         }
     }
@@ -96,8 +92,7 @@ struct RemoteInvitationServiceTests {
         await #expect(throws: InvitationServiceError.unavailable) {
             try await service.fetchInvitation(
                 scope: .project,
-                token: "revoked-token",
-                currentUserEmail: nil
+                token: "revoked-token"
             )
         }
     }
@@ -111,8 +106,7 @@ struct RemoteInvitationServiceTests {
         await #expect(throws: InvitationServiceError.expired) {
             try await service.fetchInvitation(
                 scope: .project,
-                token: "expired-token",
-                currentUserEmail: nil
+                token: "expired-token"
             )
         }
     }
@@ -126,24 +120,52 @@ struct RemoteInvitationServiceTests {
         await #expect(throws: InvitationServiceError.expired) {
             try await service.fetchInvitation(
                 scope: .project,
-                token: "stale-token",
-                currentUserEmail: nil
+                token: "stale-token"
             )
         }
     }
 
-    @Test func fetchInvitation_rejectsPreviewIssuedToAnotherEmail() async {
+    /// Email invitations are bearer-style: the client must not reject them for any signed-in user.
+    @Test func fetchInvitation_allowsEmailInvitationWithoutClientSideRecipientCheck() async throws {
         let client = FakeInvitationHTTPClient { _ in
-            .success(Self.previewJSON(recipientEmail: "viewer@example.com", hasAccess: true))
+            .success(Self.previewJSON(recipientEmail: "someone-else@example.com", hasAccess: false))
+        }
+        let service = RemoteInvitationService(httpClient: client)
+
+        let details = try await service.fetchInvitation(scope: .project, token: "email-token")
+
+        #expect(details.invitedEmail == "someone-else@example.com")
+        #expect(details.invitedPublicUserId == nil)
+    }
+
+    @Test func fetchInvitation_mapsUserAddressedPreview() async throws {
+        let client = FakeInvitationHTTPClient { _ in
+            .success(Self.previewJSON(recipientEmail: nil, recipientPublicUserId: "VIEWER0001", hasAccess: false))
+        }
+        let service = RemoteInvitationService(httpClient: client)
+
+        let details = try await service.fetchInvitation(scope: .project, token: "user-id-token")
+
+        #expect(details.invitedEmail == nil)
+        #expect(details.invitedPublicUserId == "VIEWER0001")
+    }
+
+    @Test func fetchInvitation_mapsInvitationNotForUserToAccessDenied() async {
+        let client = FakeInvitationHTTPClient { _ in
+            .failure(
+                .serverError(
+                    statusCode: 403,
+                    apiError: APIErrorResponse(
+                        error: APIErrorBody(code: "INVITATION_NOT_FOR_USER", message: "Not yours", details: nil),
+                        requestId: "req-1"
+                    )
+                )
+            )
         }
         let service = RemoteInvitationService(httpClient: client)
 
         await #expect(throws: InvitationServiceError.accessDenied) {
-            try await service.fetchInvitation(
-                scope: .project,
-                token: "other-users-token",
-                currentUserEmail: "different-user@example.com"
-            )
+            try await service.fetchInvitation(scope: .project, token: "someone-elses-token")
         }
     }
 
@@ -155,8 +177,7 @@ struct RemoteInvitationServiceTests {
 
         let details = try await service.fetchInvitation(
             scope: .project,
-            token: "recipient-token",
-            currentUserEmail: "viewer@example.com"
+            token: "recipient-token"
         )
 
         #expect(details.invitedEmail == "viewer@example.com")
@@ -171,8 +192,7 @@ struct RemoteInvitationServiceTests {
 
         let details = try await service.fetchInvitation(
             scope: .project,
-            token: "invitation-token",
-            currentUserEmail: "viewer@example.com"
+            token: "invitation-token"
         )
 
         #expect(details.type == .invitation)
@@ -186,8 +206,7 @@ struct RemoteInvitationServiceTests {
 
         let details = try await service.fetchInvitation(
             scope: .project,
-            token: "share-link-underscore-token",
-            currentUserEmail: "viewer@example.com"
+            token: "share-link-underscore-token"
         )
 
         #expect(details.type == .shareLink)
@@ -201,8 +220,7 @@ struct RemoteInvitationServiceTests {
 
         let details = try await service.fetchInvitation(
             scope: .project,
-            token: "share-link-camel-token",
-            currentUserEmail: "viewer@example.com"
+            token: "share-link-camel-token"
         )
 
         #expect(details.type == .shareLink)
@@ -216,8 +234,7 @@ struct RemoteInvitationServiceTests {
 
         let details = try await service.fetchInvitation(
             scope: .project,
-            token: "unknown-type-token",
-            currentUserEmail: "viewer@example.com"
+            token: "unknown-type-token"
         )
 
         #expect(details.type == .invitation)
@@ -232,8 +249,7 @@ struct RemoteInvitationServiceTests {
         await #expect(throws: InvitationServiceError.notFound) {
             try await service.fetchInvitation(
                 scope: .project,
-                token: "missing-token",
-                currentUserEmail: nil
+                token: "missing-token"
             )
         }
     }
@@ -245,8 +261,7 @@ struct RemoteInvitationServiceTests {
         await #expect(throws: InvitationServiceError.network) {
             try await service.fetchInvitation(
                 scope: .project,
-                token: "token",
-                currentUserEmail: nil
+                token: "token"
             )
         }
     }
@@ -260,7 +275,7 @@ struct RemoteInvitationServiceTests {
 
         for token in ["token/extra", "../projects", "%2E%2E%2Fprojects"] {
             await #expect(throws: InvitationServiceError.unavailable) {
-                try await service.fetchInvitation(scope: .project, token: token, currentUserEmail: nil)
+                try await service.fetchInvitation(scope: .project, token: token)
             }
         }
     }
@@ -278,8 +293,7 @@ struct RemoteInvitationServiceTests {
 
         let destination = try await service.acceptInvitation(
             scope: .project,
-            token: token,
-            currentUserEmail: "viewer@example.com"
+            token: token
         )
 
         guard case .project(let project) = destination else {
@@ -298,8 +312,7 @@ struct RemoteInvitationServiceTests {
 
         let destination = try await service.acceptInvitation(
             scope: .scan,
-            token: "scan-token",
-            currentUserEmail: nil
+            token: "scan-token"
         )
 
         guard case .scan(let scan) = destination else {
@@ -326,8 +339,7 @@ struct RemoteInvitationServiceTests {
 
         try await service.declineInvitation(
             scope: .project,
-            token: token,
-            currentUserEmail: "viewer@example.com"
+            token: token
         )
 
         #expect(await recorder.requests.count == 1)
@@ -342,8 +354,7 @@ struct RemoteInvitationServiceTests {
         await #expect(throws: InvitationServiceError.accessDenied) {
             try await service.acceptInvitation(
                 scope: .project,
-                token: "token",
-                currentUserEmail: nil
+                token: "token"
             )
         }
     }
@@ -355,8 +366,7 @@ struct RemoteInvitationServiceTests {
         await #expect(throws: InvitationServiceError.network) {
             try await service.declineInvitation(
                 scope: .project,
-                token: "token",
-                currentUserEmail: nil
+                token: "token"
             )
         }
     }
@@ -436,9 +446,11 @@ struct RemoteInvitationServiceTests {
         status: String = "ACTIVE",
         expiresAt: String = "2027-08-17T04:53:54.132Z",
         recipientEmail: String? = "viewer@example.com",
+        recipientPublicUserId: String? = nil,
         hasAccess: Bool? = true
     ) -> Data {
         let recipientEmailJSON = recipientEmail.map { "\"\($0)\"" } ?? "null"
+        let recipientPublicUserIdJSON = recipientPublicUserId.map { "\"\($0)\"" } ?? "null"
         let hasAccessJSON = hasAccess.map(String.init) ?? "null"
 
         return Data(
@@ -460,6 +472,7 @@ struct RemoteInvitationServiceTests {
               "scan": null,
               "status": "\(status)",
               "recipientEmail": \(recipientEmailJSON),
+              "recipientPublicUserId": \(recipientPublicUserIdJSON),
               "expiresAt": "\(expiresAt)",
               "hasAccess": \(hasAccessJSON)
             }

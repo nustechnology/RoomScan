@@ -56,6 +56,7 @@ struct ToastView: View {
 struct ToastModifier: ViewModifier {
     @Binding var message: String?
     @Binding var style: ToastStyle
+    let presentationID: Int
     @State private var timerTask: Task<Void, Never>?
 
     func body(content: Content) -> some View {
@@ -74,16 +75,22 @@ struct ToastModifier: ViewModifier {
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: message != nil)
-        .onChange(of: message) { _, newValue in
-            timerTask?.cancel()
-            if newValue != nil {
-                timerTask = Task {
-                    try? await Task.sleep(nanoseconds: 3_500_000_000)
-                    if !Task.isCancelled {
-                        await MainActor.run {
-                            dismiss()
-                        }
-                    }
+        .onChange(of: message) { _, _ in
+            scheduleDismissal()
+        }
+        .onChange(of: presentationID) { _, _ in
+            scheduleDismissal()
+        }
+    }
+
+    private func scheduleDismissal() {
+        timerTask?.cancel()
+        guard message != nil else { return }
+        timerTask = Task {
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            if !Task.isCancelled {
+                await MainActor.run {
+                    dismiss()
                 }
             }
         }
@@ -95,7 +102,12 @@ struct ToastModifier: ViewModifier {
 }
 
 extension View {
-    func toast(message: Binding<String?>, style: Binding<ToastStyle> = .constant(.error)) -> some View {
-        modifier(ToastModifier(message: message, style: style))
+    /// Change `presentationID` to restart the auto-dismiss timer when the same message is shown again.
+    func toast(
+        message: Binding<String?>,
+        style: Binding<ToastStyle> = .constant(.error),
+        presentationID: Int = 0
+    ) -> some View {
+        modifier(ToastModifier(message: message, style: style, presentationID: presentationID))
     }
 }

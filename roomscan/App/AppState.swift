@@ -71,6 +71,22 @@ final class AppState {
         phase = .authenticated(session)
     }
 
+    /// Applies a refreshed profile, then persists a newly learned public user id so a
+    /// restored session keeps it. Applying first means a sign-out during the write is not undone.
+    /// Profiles for another account are ignored: a request started before a sign-out can
+    /// finish after a different account has signed in.
+    func updateSignedInUser(_ user: AuthenticatedUser) async {
+        guard let session = currentSession, session.user.id == user.id else { return }
+        applySignedInSession(AuthenticationSession(user: user, provider: session.provider))
+
+        guard let publicUserId = user.publicUserId, publicUserId != session.user.publicUserId else {
+            return
+        }
+        // A failed write keeps the id in memory for this run; the next launch restores
+        // without it, so the first /users/me load after that retries the write.
+        try? await authenticationService.storePublicUserId(publicUserId, forUserId: user.id)
+    }
+
     func recordActivity() {
         guard isAuthenticated else { return }
         if activityTracker.isSessionExpired() {

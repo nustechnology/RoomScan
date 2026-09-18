@@ -13,6 +13,7 @@ nonisolated struct InvitationPreviewAPIResponse: Decodable, Sendable {
     let scan: InvitationPreviewScanDTO?
     let status: String
     let recipientEmail: String?
+    let recipientPublicUserId: String?
     let expiresAt: Date
     let hasAccess: Bool?
 }
@@ -98,6 +99,7 @@ nonisolated enum InvitationAPIMapping {
                 title: summary.name,
                 ownerName: summary.ownerName,
                 invitedEmail: response.recipientEmail,
+                invitedPublicUserId: response.recipientPublicUserId,
                 existingAccessDestination: response.hasAccess == true ? .project(summary) : nil,
                 itemCount: summary.scanCount,
                 showsThumbnail: hasThumbnail(project.thumbnail),
@@ -137,6 +139,7 @@ nonisolated enum InvitationAPIMapping {
                 title: summary.name,
                 ownerName: summary.creatorDisplayName,
                 invitedEmail: response.recipientEmail,
+                invitedPublicUserId: response.recipientPublicUserId,
                 existingAccessDestination: existingAccessDestination,
                 itemCount: summary.noteCount,
                 showsThumbnail: hasThumbnail(scan.thumbnail),

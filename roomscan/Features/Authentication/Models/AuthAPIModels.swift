@@ -33,4 +33,5 @@ nonisolated struct AuthUserDTO: Decodable, Sendable {
     let email: String?
     let provider: String
     let displayName: String?
+    let publicUserId: String?
 }

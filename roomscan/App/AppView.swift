@@ -49,9 +49,9 @@ struct AppView: View {
                         }
                     ),
                     onUserUpdated: { user in
-                        appState.applySignedInSession(
-                            AuthenticationSession(user: user, provider: session.provider)
-                        )
+                        Task {
+                            await appState.updateSignedInUser(user)
+                        }
                     },
                     onSignOut: {
                         Task {

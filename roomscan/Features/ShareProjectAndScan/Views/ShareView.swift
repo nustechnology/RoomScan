@@ -49,11 +49,11 @@ struct ShareView: View {
             )
         ) {
             InvitePeopleBottomSheet(
-                email: Binding(
-                    get: { viewModel.inviteEmail },
-                    set: { viewModel.updateInviteEmail($0) }
+                userID: Binding(
+                    get: { viewModel.inviteUserID },
+                    set: { viewModel.updateInviteUserID($0) }
                 ),
-                validationMessage: viewModel.emailValidationMessage,
+                validationMessage: viewModel.userIDValidationMessage,
                 permission: .viewOnly,
                 isOffline: viewModel.isOffline,
                 isSending: viewModel.isSendingInvite,
