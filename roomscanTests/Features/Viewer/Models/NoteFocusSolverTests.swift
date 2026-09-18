@@ -9,11 +9,11 @@ import simd
 import Testing
 
 struct NoteFocusSolverTests {
-    private let minPitch: Float = 0.08
-    private let maxPitch: Float = (.pi / 2) - 0.06
+    private let minPitch = CameraOrbitLimits.minPitch
+    private let maxPitch = CameraOrbitLimits.maxPitch
     private let tolerance: Float = 0.0001
 
-    @Test func horizontalDirectionLiftsToMinimumPitch() {
+    @Test func horizontalDirectionRemainsLevel() {
         let angles = NoteFocusSolver.orbitAngles(
             forDirection: SIMD3<Float>(0, 0, 1),
             minPitch: minPitch,
@@ -21,7 +21,7 @@ struct NoteFocusSolverTests {
             fallbackYaw: 0
         )
         #expect(abs(angles.yaw) < tolerance)
-        #expect(abs(angles.pitch - minPitch) < tolerance)
+        #expect(abs(angles.pitch) < tolerance)
     }
 
     @Test func directionMapsToYaw() {
@@ -56,7 +56,7 @@ struct NoteFocusSolverTests {
         #expect(abs(angles.pitch - minPitch) < tolerance)
     }
 
-    @Test func zeroDirectionFallsBackToForwardAtMinimumPitch() {
+    @Test func zeroDirectionFallsBackToLevelForward() {
         let angles = NoteFocusSolver.orbitAngles(
             forDirection: .zero,
             minPitch: minPitch,
@@ -64,7 +64,7 @@ struct NoteFocusSolverTests {
             fallbackYaw: 0.4
         )
         #expect(abs(angles.yaw) < tolerance)
-        #expect(abs(angles.pitch - minPitch) < tolerance)
+        #expect(abs(angles.pitch) < tolerance)
     }
 
     @Test func candidatesPreferCurrentDirectionThenInward() {
@@ -76,11 +76,9 @@ struct NoteFocusSolverTests {
             elevation: 0.28
         )
 
-        #expect(candidates.count == 11)
         #expect(simd_length(candidates[0] - current) < tolerance)
 
-        let expectedInward = SIMD3<Float>(0, sin(0.28), -cos(0.28))
-        #expect(simd_length(candidates[1] - expectedInward) < tolerance)
+        #expect(simd_length(candidates[1] - inward) < tolerance)
     }
 
     @Test func candidatesWithoutCurrentStartWithInward() {
@@ -91,12 +89,10 @@ struct NoteFocusSolverTests {
             elevation: 0.28
         )
 
-        #expect(candidates.count == 10)
-        let expectedInward = SIMD3<Float>(0, sin(0.28), -cos(0.28))
-        #expect(simd_length(candidates[0] - expectedInward) < tolerance)
+        #expect(simd_length(candidates[0] - inward) < tolerance)
     }
 
-    @Test func interiorCandidateMatchesSecondCandidateWhenCurrentPresent() {
+    @Test func elevatedSearchRemainsAvailableWhenCurrentPresent() {
         let current = SIMD3<Float>(0, 0, 1)
         let inward = SIMD3<Float>(0, 0, -1)
         let candidates = NoteFocusSolver.candidateDirections(
@@ -109,10 +105,10 @@ struct NoteFocusSolverTests {
             current: current,
             elevation: 0.28
         )
-        #expect(simd_length(candidates[1] - interior) < tolerance)
+        #expect(candidates.contains { simd_length($0 - interior) < tolerance })
     }
 
-    @Test func interiorCandidateIsFirstWhenCurrentMissing() {
+    @Test func elevatedSearchRemainsAvailableWhenCurrentMissing() {
         let inward = SIMD3<Float>(0, 0, -1)
         let candidates = NoteFocusSolver.candidateDirections(
             inward: inward,
@@ -124,7 +120,7 @@ struct NoteFocusSolverTests {
             current: nil,
             elevation: 0.28
         )
-        #expect(simd_length(candidates[0] - interior) < tolerance)
+        #expect(candidates.contains { simd_length($0 - interior) < tolerance })
     }
 
     @Test func allCandidatesAreUnitLength() {
@@ -146,8 +142,8 @@ struct NoteFocusSolverTests {
         )
         for candidate in candidates {
             #expect(abs(simd_length(candidate) - 1) < tolerance)
-            #expect(candidate.y > 0)
         }
+        #expect(candidates.contains { $0.y < 0 })
     }
 
     @Test func offsetDirectionMatchesOrbitConvention() {

@@ -61,11 +61,9 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     private var pitch: Float = DefaultOrbit.pitch
     private var distance: Float = DefaultOrbit.distance
     private var target = DefaultOrbit.target
-    private let minDistance: Float = 2.5
-    private let maxDistance: Float = 14
+    private let maxDistance = CameraOrbitLimits.maxDistance
     /// Positive pitch = camera above target (looking down). Near π/2 = top view.
-    private let minPitch: Float = 0.08
-    private let maxPitch: Float = (.pi / 2) - 0.06
+    private let maxPitch = CameraOrbitLimits.maxPitch
 
     /// Pose currently drawn on screen. Differs from logical `yaw`/`pitch`/`distance`/
     /// `target` while an orbit animation is in flight; interrupt starts from here.
@@ -92,16 +90,6 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     /// Zoom buttons interrupt in-flight motion; easeOut starts moving immediately,
     /// unlike easeInOut whose first frames have near-zero velocity.
     private let zoomAnimationDuration: TimeInterval = 0.16
-    /// Framing used when a note is selected from the list or tapped in the canvas.
-    /// The camera is placed inside the room, in front of the note, so notes on back
-    /// walls or behind the model's cut plane are not occluded.
-    private let noteFocusDistance: Float = 3.2
-    private let noteFocusElevation: Float = 0.28
-    private let noteFocusTargetYOffset: Float = 0.12
-    private let noteFocusOcclusionTolerance: Float = 0.1
-    /// Top view has no orbit and renders flat floor markers, so a selected note keeps
-    /// the top-down pose and is only recentered; this mirrors the pre-focus behavior.
-    private let noteFocusTopViewDistanceCap: Float = 5.5
     /// Cached world-space center of the loaded room, used to derive the interior
     /// viewing direction. Invalidated whenever the room entity changes.
     private var roomInteriorCenter: SIMD3<Float>?
@@ -467,6 +455,7 @@ extension RoomModelCanvasCoordinator {
             syncOrbitDistanceFromDisplayedPose()
         }
 
+        var shouldAnimate = true
         for command in commands {
             switch command {
             case .zoomIn:
@@ -477,7 +466,7 @@ extension RoomModelCanvasCoordinator {
                 applyViewModePose(for: currentViewMode)
                 updateAllPinModePresentations()
             case .focus(let position):
-                applyNoteFocus(on: position)
+                shouldAnimate = applyNoteFocus(on: position)
             }
         }
 
@@ -488,87 +477,41 @@ extension RoomModelCanvasCoordinator {
                 timing: .easeOut
             )
         } else {
-            updateCamera(animated: true)
+            updateCamera(animated: shouldAnimate)
         }
     }
 
     /// Frames a note so it is visible: moves the orbit target onto the note and
     /// re-aims the camera from inside the room, picking the first candidate
     /// direction with an unobstructed line of sight.
-    private func applyNoteFocus(on notePosition: SIMD3<Float>) {
+    private func applyNoteFocus(on notePosition: SIMD3<Float>) -> Bool {
         // Top view has no orbit gestures and renders pins as flat floor markers, so
         // keep the top-down pose and only recenter toward the note.
         guard currentViewMode == .threeD else {
-            target = notePosition
-            distance = clampedDistance(min(distance, noteFocusTopViewDistanceCap))
-            return
+            let pose = NoteFocusSolver.topViewPose(from: logicalPose, note: notePosition)
+            target = pose.target
+            distance = pose.distance
+            return true
         }
 
-        let pose = noteFocusPose(for: notePosition)
+        guard let pose = NoteFocusSolver.resolve(
+            note: notePosition,
+            displayedPose: displayedPose,
+            roomCenter: roomInteriorCenterPoint(),
+            surfaceDistance: { self.openSurfaceDistance(from: $0, along: $1) },
+            lineOfSight: { self.hasClearLineOfSight(from: $0, to: $1) }
+        ) else {
+            // Keep what the user sees, not the old animation's destination. Selection
+            // remains active even when no safe view can be found within orbit limits.
+            cancelCameraMotion()
+            syncLogicalPoseFromDisplayed()
+            return false
+        }
         yaw = pose.yaw
         pitch = pose.pitch
         distance = pose.distance
         target = pose.target
-    }
-
-    private func noteFocusPose(for notePosition: SIMD3<Float>) -> CameraOrbitPose {
-        let focusTarget = notePosition + SIMD3<Float>(0, noteFocusTargetYOffset, 0)
-        let currentDirection = NoteFocusSolver.direction(from: notePosition, to: displayedPose.eye)
-        let inward = noteInteriorDirection(from: notePosition)
-        let candidates = NoteFocusSolver.candidateDirections(
-            inward: inward,
-            current: currentDirection,
-            elevation: noteFocusElevation
-        )
-
-        for direction in candidates {
-            let pose = makeNoteFocusPose(forDirection: direction, target: focusTarget)
-            if hasClearLineOfSight(from: pose.eye, to: notePosition) {
-                return pose
-            }
-        }
-
-        // No unobstructed view exists (e.g. a note tucked into a tight gap): prefer
-        // the room-interior direction over the current, possibly occluded, view.
-        let interior = NoteFocusSolver.interiorCandidate(
-            inward: inward,
-            current: currentDirection,
-            elevation: noteFocusElevation
-        )
-        return makeNoteFocusPose(forDirection: interior, target: focusTarget)
-    }
-
-    /// Builds a candidate pose, keeping the distance within the orbit bounds so the
-    /// next zoom/pinch continues from a consistent state.
-    private func makeNoteFocusPose(
-        forDirection direction: SIMD3<Float>,
-        target focusTarget: SIMD3<Float>
-    ) -> CameraOrbitPose {
-        let angles = NoteFocusSolver.orbitAngles(
-            forDirection: direction,
-            minPitch: minPitch,
-            maxPitch: maxPitch,
-            fallbackYaw: yaw
-        )
-        let offsetDirection = NoteFocusSolver.offsetDirection(yaw: angles.yaw, pitch: angles.pitch)
-        let openDistance = openSurfaceDistance(from: focusTarget, along: offsetDirection)
-        let focusDistance = clampedDistance(min(noteFocusDistance, openDistance * 0.85))
-        return CameraOrbitPose(
-            yaw: angles.yaw,
-            pitch: angles.pitch,
-            distance: focusDistance,
-            target: focusTarget
-        )
-    }
-
-    /// Direction the camera should sit in to look at a note from the room interior.
-    /// Falls back to the opposite of the current view for notes outside the room.
-    private func noteInteriorDirection(from notePosition: SIMD3<Float>) -> SIMD3<Float> {
-        if let center = roomInteriorCenterPoint(),
-           let inward = NoteFocusSolver.direction(from: notePosition, to: center) {
-            return inward
-        }
-        return -displayedPose.forward
+        return true
     }
 
     private func roomInteriorCenterPoint() -> SIMD3<Float>? {
@@ -587,17 +530,18 @@ extension RoomModelCanvasCoordinator {
     }
 
     /// Distance from `origin` to the nearest room surface along `direction`, or
-    /// `maxDistance` when the ray reaches no surface (open space).
-    private func openSurfaceDistance(from origin: SIMD3<Float>, along direction: SIMD3<Float>) -> Float {
-        let start = origin + direction * 0.05
+    /// nil when the ray reaches no surface (open space). Measure from the target,
+    /// including the origin offset, to match CameraOrbitPose.eye.
+    private func openSurfaceDistance(from origin: SIMD3<Float>, along direction: SIMD3<Float>) -> Float? {
+        let start = origin + direction * NoteFocusSolver.rayOriginOffset
         guard let hit = firstRoomSurfaceHit(
             origin: start,
             direction: direction,
             length: maxDistance * 2
         ) else {
-            return maxDistance
+            return nil
         }
-        return simd_distance(start, hit)
+        return simd_distance(origin, hit)
     }
 
     /// True when no room surface lies between `eye` and the note. The surface the
@@ -606,10 +550,11 @@ extension RoomModelCanvasCoordinator {
     private func hasClearLineOfSight(from eye: SIMD3<Float>, to notePosition: SIMD3<Float>) -> Bool {
         guard let direction = NoteFocusSolver.direction(from: eye, to: notePosition) else { return true }
         let distanceToNote = simd_distance(eye, notePosition)
-        guard let hit = firstRoomSurfaceHit(origin: eye, direction: direction, length: distanceToNote) else {
-            return true
-        }
-        return simd_distance(eye, hit) >= distanceToNote - noteFocusOcclusionTolerance
+        let hit = firstRoomSurfaceHit(origin: eye, direction: direction, length: distanceToNote)
+        return NoteFocusSolver.hasClearLineOfSight(
+            hitDistance: hit.map { simd_distance(eye, $0) },
+            targetDistance: distanceToNote
+        )
     }
 
     private func firstRoomSurfaceHit(
@@ -631,7 +576,7 @@ extension RoomModelCanvasCoordinator {
     }
 
     private func clampedDistance(_ value: Float) -> Float {
-        max(minDistance, min(maxDistance, value))
+        CameraOrbitLimits.clampedDistance(value)
     }
 
     /// Aligns logical orbit distance with the pose currently on screen.
@@ -718,7 +663,7 @@ extension RoomModelCanvasCoordinator {
             let dy = Float(point.y - lastOrbitPoint.y)
             yaw += dx * 0.01
             // Drag up → lower camera elevation; drag down → raise toward top view.
-            pitch = min(maxPitch, max(minPitch, pitch + dy * 0.01))
+            pitch = CameraOrbitLimits.clampedPitch(pitch + dy * 0.01)
             self.lastOrbitPoint = point
             updateCamera(animated: false)
         default:
