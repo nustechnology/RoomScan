@@ -264,7 +264,7 @@ struct AccountViewModelDisplayNameTests {
 
     @Test func mockKeepsItsAccountWhenCallerHasNoID() async throws {
         let usersService = MockUsersService(
-            user: AuthenticatedUser(id: "u1", displayName: "Old Name", email: "a@example.com"),
+            user: AuthenticatedUser(id: "u1", displayName: "Old Name", email: "a@example.com", publicUserId: "U1PUBLIC01"),
             simulatedDelayNanoseconds: 0
         )
         let callerWithoutID = AuthenticatedUser(id: "", displayName: nil, email: nil)
@@ -274,7 +274,12 @@ struct AccountViewModelDisplayNameTests {
 
         #expect(updated.id == "u1")
         #expect(updated.displayName == "New Name")
+        #expect(updated.email == "a@example.com")
+        #expect(updated.publicUserId == "U1PUBLIC01")
         #expect(fetched.id == "u1")
+        #expect(fetched.displayName == "New Name")
+        #expect(fetched.email == "a@example.com")
+        #expect(fetched.publicUserId == "U1PUBLIC01")
     }
 }
 
