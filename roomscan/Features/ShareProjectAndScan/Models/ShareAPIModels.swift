@@ -85,8 +85,8 @@ nonisolated enum ShareAPIMapping {
         InvitedMember(
             id: response.invitationId,
             displayName: nil,
-            email: nonBlank(response.recipientEmail),
-            publicUserId: nonBlank(response.recipientPublicUserId),
+            email: InvitedMember.nonBlank(response.recipientEmail),
+            publicUserId: InvitedMember.nonBlank(response.recipientPublicUserId),
             initials: InvitedMember.initials(
                 displayName: nil,
                 email: response.recipientEmail,
@@ -101,9 +101,9 @@ nonisolated enum ShareAPIMapping {
     static func toInvitedMember(_ invitation: PendingProjectInvitationDTO) -> InvitedMember {
         InvitedMember(
             id: invitation.invitationId,
-            displayName: nonBlank(invitation.recipientDisplayName),
-            email: nonBlank(invitation.recipientEmail),
-            publicUserId: nonBlank(invitation.recipientPublicUserId),
+            displayName: InvitedMember.nonBlank(invitation.recipientDisplayName),
+            email: InvitedMember.nonBlank(invitation.recipientEmail),
+            publicUserId: InvitedMember.nonBlank(invitation.recipientPublicUserId),
             initials: InvitedMember.initials(
                 displayName: invitation.recipientDisplayName,
                 email: invitation.recipientEmail,
@@ -118,9 +118,9 @@ nonisolated enum ShareAPIMapping {
     static func toInvitedMember(_ viewer: ProjectViewerDTO) -> InvitedMember {
         InvitedMember(
             id: viewer.userId,
-            displayName: nonBlank(viewer.recipientUser.displayName),
-            email: nonBlank(viewer.recipientUser.email),
-            publicUserId: nonBlank(viewer.recipientUser.publicUserId),
+            displayName: InvitedMember.nonBlank(viewer.recipientUser.displayName),
+            email: InvitedMember.nonBlank(viewer.recipientUser.email),
+            publicUserId: InvitedMember.nonBlank(viewer.recipientUser.publicUserId),
             initials: InvitedMember.initials(
                 displayName: viewer.recipientUser.displayName,
                 email: viewer.recipientUser.email,
@@ -130,15 +130,6 @@ nonisolated enum ShareAPIMapping {
             sentAt: viewer.grantedAt,
             acceptedAt: viewer.grantedAt
         )
-    }
-
-    private static func nonBlank(_ value: String?) -> String? {
-        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !trimmed.isEmpty
-        else {
-            return nil
-        }
-        return trimmed
     }
 
     static func toMembers(_ response: ProjectSharesAPIResponse) -> [InvitedMember] {

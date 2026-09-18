@@ -5,7 +5,6 @@
 
 import Foundation
 import Observation
-import UIKit
 
 @MainActor
 @Observable
@@ -16,6 +15,7 @@ final class AccountViewModel {
     private let usersService: any UsersService
     private let scanStorageService: any ScanStorageService
     private let storageMeasuring: any AccountStorageMeasuring
+    private let pasteboard: any AccountPasteboard
     private let onUserUpdated: (AuthenticatedUser) -> Void
 
     private(set) var metrics: AccountMetrics?
@@ -44,6 +44,7 @@ final class AccountViewModel {
         usersService: any UsersService = MockUsersService(),
         scanStorageService: any ScanStorageService = LocalScanStorageService(),
         storageMeasuring: any AccountStorageMeasuring = MockAccountStorageMeasuring(),
+        pasteboard: any AccountPasteboard = RealAccountPasteboard(),
         onUserUpdated: @escaping (AuthenticatedUser) -> Void = { _ in }
     ) {
         self.projectsService = projectsService
@@ -52,6 +53,7 @@ final class AccountViewModel {
         self.usersService = usersService
         self.scanStorageService = scanStorageService
         self.storageMeasuring = storageMeasuring
+        self.pasteboard = pasteboard
         self.onUserUpdated = onUserUpdated
     }
 
@@ -190,7 +192,7 @@ final class AccountViewModel {
     }
 
     func copyPublicUserID(_ publicUserID: String) {
-        UIPasteboard.general.string = publicUserID
+        pasteboard.copy(publicUserID)
         toastStyle = .success
         toastMessage = String(localized: "account.toast.publicUserIdCopied")
     }

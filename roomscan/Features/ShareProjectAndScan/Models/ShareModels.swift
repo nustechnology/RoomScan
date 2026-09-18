@@ -104,7 +104,8 @@ nonisolated struct InvitedMember: Identifiable, Equatable, Hashable, Sendable {
         return result.isEmpty ? "?" : result
     }
 
-    private static func nonBlank(_ value: String?) -> String? {
+    /// The feature's single rule for blank server strings: trimmed, or nil when empty.
+    static func nonBlank(_ value: String?) -> String? {
         guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
               !trimmed.isEmpty
         else {

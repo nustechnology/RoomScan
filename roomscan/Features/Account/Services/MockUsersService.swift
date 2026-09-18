@@ -85,7 +85,7 @@ actor MockUsersService: UsersService {
             id: self.currentUser.id.isEmpty ? currentUser.id : self.currentUser.id,
             displayName: trimmed,
             email: self.currentUser.email ?? currentUser.email,
-            publicUserId: self.currentUser.publicUserId
+            publicUserId: self.currentUser.publicUserId ?? currentUser.publicUserId
         )
         return self.currentUser
     }
