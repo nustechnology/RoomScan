@@ -61,6 +61,18 @@ nonisolated struct StoredAuthData: Codable, Sendable {
         )
     }
 
+    func withUserPublicId(_ value: String) -> StoredAuthData {
+        StoredAuthData(
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            userId: userId,
+            userEmail: userEmail,
+            userDisplayName: userDisplayName,
+            userPublicId: value,
+            needsDisplayNameUpload: needsDisplayNameUpload
+        )
+    }
+
     private enum CodingKeys: String, CodingKey {
         case accessToken
         case refreshToken

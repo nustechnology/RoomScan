@@ -43,6 +43,13 @@ actor AccessTokenRefreshCoordinator {
         try keychainStore.save(latest.withNeedsDisplayNameUpload(false))
     }
 
+    func storePublicUserId(_ publicUserId: String) throws {
+        guard let latest = try keychainStore.getStoredAuthData(),
+              latest.userPublicId != publicUserId
+        else { return }
+        try keychainStore.save(latest.withUserPublicId(publicUserId))
+    }
+
     private func executeRefresh() async throws -> StoredAuthData {
         let storedData: StoredAuthData
         do {

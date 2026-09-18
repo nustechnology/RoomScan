@@ -74,6 +74,49 @@ struct AppStateTests {
         #expect(appState.phase == .authenticated(.mockAppleUser))
     }
 
+    @Test func updateSignedInUserPersistsNewPublicUserIdForRestore() async {
+        let legacySession = AuthenticationSession(
+            user: AuthenticatedUser(id: "u1", displayName: "Jane", email: "jane@example.com"),
+            provider: .apple
+        )
+        let service = MockAuthenticationService(
+            configuration: .init(
+                initialSession: legacySession,
+                signInOutcome: .success,
+                restoreFails: false,
+                simulatedDelayNanoseconds: 0
+            )
+        )
+        let appState = AppState(authenticationService: service)
+        await appState.restoreSession()
+
+        await appState.updateSignedInUser(
+            AuthenticatedUser(id: "u1", displayName: "Jane", email: "jane@example.com", publicUserId: "JANE123456")
+        )
+
+        let restored = try? await service.restoreSession()
+        #expect(appState.currentSession?.user.publicUserId == "JANE123456")
+        #expect(appState.currentSession?.provider == .apple)
+        #expect(restored?.user.publicUserId == "JANE123456")
+    }
+
+    @Test func updateSignedInUserDoesNotSignBackInAfterSignOut() async {
+        let service = MockAuthenticationService(
+            configuration: .init(
+                initialSession: nil,
+                signInOutcome: .success,
+                restoreFails: false,
+                simulatedDelayNanoseconds: 0
+            )
+        )
+        let appState = AppState(authenticationService: service)
+        await appState.restoreSession()
+
+        await appState.updateSignedInUser(AuthenticationSession.mockAppleUser.user)
+
+        #expect(appState.phase == .signedOut)
+    }
+
     @Test func signOutReturnsToSignedOut() async {
         let service = MockAuthenticationService(
             configuration: .init(

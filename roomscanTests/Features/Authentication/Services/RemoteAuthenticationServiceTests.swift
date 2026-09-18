@@ -250,6 +250,42 @@ struct RemoteAuthenticationServiceTests {
         #expect(keychain.stored?.userDisplayName == AppleUserDisplayName.formatted(from: appleName))
     }
 
+    @Test func storePublicUserIdBackfillsKeychainAndKeepsEverythingElse() async throws {
+        let keychain = InMemoryKeychainStore()
+        keychain.stored = StoredAuthData(
+            accessToken: "access",
+            refreshToken: "refresh",
+            userId: "user-1",
+            userEmail: "jane@example.com",
+            userDisplayName: "Jane Doe",
+            needsDisplayNameUpload: true
+        )
+        let service = RemoteAuthenticationService(
+            httpClient: AuthHTTPClient { _ in .failure(.networkError) },
+            keychainStore: keychain
+        )
+
+        try await service.storePublicUserId("JANEDOE123")
+
+        #expect(keychain.stored?.userPublicId == "JANEDOE123")
+        #expect(keychain.stored?.accessToken == "access")
+        #expect(keychain.stored?.refreshToken == "refresh")
+        #expect(keychain.stored?.userDisplayName == "Jane Doe")
+        #expect(keychain.stored?.needsDisplayNameUpload == true)
+    }
+
+    @Test func storePublicUserIdDoesNothingWhenSignedOut() async throws {
+        let keychain = InMemoryKeychainStore()
+        let service = RemoteAuthenticationService(
+            httpClient: AuthHTTPClient { _ in .failure(.networkError) },
+            keychainStore: keychain
+        )
+
+        try await service.storePublicUserId("JANEDOE123")
+
+        #expect(keychain.stored == nil)
+    }
+
     @Test func restoreSessionKeepsPersistedDisplayNameAfterRefresh() async throws {
         let keychain = InMemoryKeychainStore()
         keychain.stored = StoredAuthData(

@@ -137,6 +137,20 @@ final class MockAuthenticationService: AuthenticationService {
         session = nil
     }
 
+    func storePublicUserId(_ publicUserId: String) async throws {
+        guard let session else { return }
+        let user = session.user
+        self.session = AuthenticationSession(
+            user: AuthenticatedUser(
+                id: user.id,
+                displayName: user.displayName,
+                email: user.email,
+                publicUserId: publicUserId
+            ),
+            provider: session.provider
+        )
+    }
+
     private func simulateDelay() async throws {
         let delay = configuration.simulatedDelayNanoseconds
         guard delay > 0 else { return }

@@ -190,6 +190,10 @@ final class RemoteAuthenticationService: AuthenticationService {
         try keychainStore.deleteTokens()
     }
 
+    func storePublicUserId(_ publicUserId: String) async throws {
+        try await refreshCoordinator.storePublicUserId(publicUserId)
+    }
+
     // MARK: - Private Helpers
 
     private func buildAppleAuthEndpoint(identityToken: String, nonce: String) -> APIEndpoint {

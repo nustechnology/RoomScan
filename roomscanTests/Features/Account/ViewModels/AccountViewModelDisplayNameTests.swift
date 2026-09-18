@@ -208,6 +208,45 @@ struct AccountViewModelDisplayNameTests {
         #expect(user.id == "abc")
         #expect(user.displayName == "Pat")
     }
+
+    @Test func userMeResponseKeepsCurrentPublicUserIdWhenOmitted() throws {
+        let current = AuthenticatedUser(id: "u1", displayName: nil, email: nil, publicUserId: "ADA1234567")
+
+        let withoutID = try JSONDecoder().decode(
+            UserMeAPIResponse.self,
+            from: Data(#"{"id":"u1","displayName":"Ada"}"#.utf8)
+        )
+        let withID = try JSONDecoder().decode(
+            UserMeAPIResponse.self,
+            from: Data(#"{"user":{"id":"u1","publicUserId":"NEWID00001"}}"#.utf8)
+        )
+
+        #expect(withoutID.toAuthenticatedUser(fallingBackTo: current).publicUserId == "ADA1234567")
+        #expect(withID.toAuthenticatedUser(fallingBackTo: current).publicUserId == "NEWID00001")
+    }
+
+    @Test func mockUpdateMeStoresCallersPublicUserIdWhenItHasNone() async throws {
+        let usersService = MockUsersService(
+            user: AuthenticatedUser(id: "u1", displayName: "Old Name", email: "a@example.com"),
+            simulatedDelayNanoseconds: 0
+        )
+
+        let updated = try await usersService.updateMe(
+            displayName: "New Name",
+            fallingBackTo: AuthenticatedUser(
+                id: "u1",
+                displayName: "Old Name",
+                email: "a@example.com",
+                publicUserId: "JANE123456"
+            )
+        )
+        let fetched = try await usersService.fetchMe(
+            fallingBackTo: AuthenticatedUser(id: "u1", displayName: nil, email: nil)
+        )
+
+        #expect(updated.publicUserId == "JANE123456")
+        #expect(fetched.publicUserId == "JANE123456")
+    }
 }
 
 private actor GatedFetchUsersService: UsersService {
