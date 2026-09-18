@@ -31,11 +31,9 @@ actor MockUsersService: UsersService {
         self.simulatedDelayNanoseconds = simulatedDelayNanoseconds
     }
 
-    @MainActor
     static func makeForCurrentProcess() -> MockUsersService {
         let delay: UInt64 = ProcessInfo.processInfo.arguments.contains("-UITesting") ? 0 : 80_000_000
-        // Same account the mock authentication signs in, so profile refreshes apply to it.
-        return MockUsersService(user: AuthenticationSession.mockAppleUser.user, simulatedDelayNanoseconds: delay)
+        return MockUsersService(simulatedDelayNanoseconds: delay)
     }
 
     func setScenario(_ scenario: Scenario) {
@@ -51,6 +49,7 @@ actor MockUsersService: UsersService {
         if scenario == .fetchFailure {
             throw UsersServiceError.network
         }
+        adoptCallerIfDifferentAccount(currentUser)
         return UserMeAPIResponse(
             id: self.currentUser.id,
             email: self.currentUser.email,
@@ -83,6 +82,7 @@ actor MockUsersService: UsersService {
             throw UsersServiceError.server
         }
 
+        adoptCallerIfDifferentAccount(currentUser)
         self.currentUser = AuthenticatedUser(
             id: self.currentUser.id.isEmpty ? currentUser.id : self.currentUser.id,
             displayName: trimmed,
@@ -90,6 +90,14 @@ actor MockUsersService: UsersService {
             publicUserId: self.currentUser.publicUserId ?? currentUser.publicUserId
         )
         return self.currentUser
+    }
+
+    /// Like the real `/users/me`, answers for whoever is signed in: a caller signed in as a
+    /// different account than the one held here becomes the account this mock serves.
+    private func adoptCallerIfDifferentAccount(_ caller: AuthenticatedUser) {
+        if currentUser.id != caller.id {
+            currentUser = caller
+        }
     }
 
     private func simulateDelay() async throws {

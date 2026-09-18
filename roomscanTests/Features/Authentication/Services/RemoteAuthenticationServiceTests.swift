@@ -251,19 +251,7 @@ struct RemoteAuthenticationServiceTests {
     }
 
     @Test func storePublicUserIdBackfillsKeychainAndKeepsEverythingElse() async throws {
-        let keychain = InMemoryKeychainStore()
-        keychain.stored = StoredAuthData(
-            accessToken: "access",
-            refreshToken: "refresh",
-            userId: "user-1",
-            userEmail: "jane@example.com",
-            userDisplayName: "Jane Doe",
-            needsDisplayNameUpload: true
-        )
-        let service = RemoteAuthenticationService(
-            httpClient: AuthHTTPClient { _ in .failure(.networkError) },
-            keychainStore: keychain
-        )
+        let (service, keychain) = makeOfflineService(storing: .sample(needsDisplayNameUpload: true))
 
         try await service.storePublicUserId("JANEDOE123", forUserId: "user-1")
 
@@ -275,11 +263,7 @@ struct RemoteAuthenticationServiceTests {
     }
 
     @Test func storePublicUserIdDoesNothingWhenSignedOut() async throws {
-        let keychain = InMemoryKeychainStore()
-        let service = RemoteAuthenticationService(
-            httpClient: AuthHTTPClient { _ in .failure(.networkError) },
-            keychainStore: keychain
-        )
+        let (service, keychain) = makeOfflineService(storing: nil)
 
         try await service.storePublicUserId("JANEDOE123", forUserId: "user-1")
 
@@ -287,18 +271,7 @@ struct RemoteAuthenticationServiceTests {
     }
 
     @Test func storePublicUserIdSkipsWhenKeychainHoldsAnotherAccount() async throws {
-        let keychain = InMemoryKeychainStore()
-        keychain.stored = StoredAuthData(
-            accessToken: "access",
-            refreshToken: "refresh",
-            userId: "user-2",
-            userEmail: "other@example.com",
-            userDisplayName: "Other"
-        )
-        let service = RemoteAuthenticationService(
-            httpClient: AuthHTTPClient { _ in .failure(.networkError) },
-            keychainStore: keychain
-        )
+        let (service, keychain) = makeOfflineService(storing: .sample(userId: "user-2"))
 
         try await service.storePublicUserId("JANEDOE123", forUserId: "user-1")
 
@@ -307,18 +280,7 @@ struct RemoteAuthenticationServiceTests {
     }
 
     @Test func signOutClearsStoredSession() async throws {
-        let keychain = InMemoryKeychainStore()
-        keychain.stored = StoredAuthData(
-            accessToken: "access",
-            refreshToken: "refresh",
-            userId: "user-1",
-            userEmail: "jane@example.com",
-            userDisplayName: "Jane Doe"
-        )
-        let service = RemoteAuthenticationService(
-            httpClient: AuthHTTPClient { _ in .failure(.networkError) },
-            keychainStore: keychain
-        )
+        let (service, keychain) = makeOfflineService(storing: .sample())
 
         try await service.signOut()
 
@@ -403,6 +365,16 @@ struct RemoteAuthenticationServiceTests {
         #expect(named.user.displayName == "Ada")
         #expect(unnamed.user.displayName == nil)
     }
+
+    /// A service whose Keychain holds `stored` and whose network calls all fail.
+    private func makeOfflineService(
+        storing stored: StoredAuthData?
+    ) -> (service: RemoteAuthenticationService, keychain: InMemoryKeychainStore) {
+        let keychain = InMemoryKeychainStore()
+        keychain.stored = stored
+        let service = RemoteAuthenticationService(httpClient: UnusedHTTPClient(), keychainStore: keychain)
+        return (service, keychain)
+    }
 }
 
 private actor RecordingUsersService: UsersService {
@@ -461,6 +433,19 @@ private extension AuthAPIResponse {
                 displayName: displayName,
                 publicUserId: "JANEDOE123"
             )
+        )
+    }
+}
+
+private extension StoredAuthData {
+    static func sample(userId: String = "user-1", needsDisplayNameUpload: Bool = false) -> StoredAuthData {
+        StoredAuthData(
+            accessToken: "access",
+            refreshToken: "refresh",
+            userId: userId,
+            userEmail: "jane@example.com",
+            userDisplayName: "Jane Doe",
+            needsDisplayNameUpload: needsDisplayNameUpload
         )
     }
 }
