@@ -67,21 +67,26 @@ actor MockShareService: ShareService {
         )
     }
 
-    func sendInvitation(for input: ShareScreenInput, email: String) async throws -> InvitedMember {
+    func sendInvitation(for input: ShareScreenInput, publicUserID: String) async throws -> InvitedMember {
         try await simulateDelay()
         try ensureOnline()
 
-        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedUserID = publicUserID.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         let existingMembers = storage.membersByInputID[input.id, default: []]
-        if existingMembers.contains(where: { $0.email.lowercased() == normalizedEmail }) {
-            throw ShareServiceError.duplicateEmail
+        if existingMembers.contains(where: { $0.publicUserId?.uppercased() == normalizedUserID }) {
+            throw ShareServiceError.duplicateRecipient
         }
 
         let member = InvitedMember(
             id: "invite-\(UUID().uuidString)",
             displayName: nil,
-            email: normalizedEmail,
-            initials: InvitedMember.initials(for: normalizedEmail),
+            email: nil,
+            publicUserId: normalizedUserID,
+            initials: InvitedMember.initials(
+                displayName: nil,
+                email: nil,
+                publicUserId: normalizedUserID
+            ),
             status: .pending,
             sentAt: Date(),
             acceptedAt: nil
@@ -105,6 +110,7 @@ actor MockShareService: ShareService {
             id: existing.id,
             displayName: existing.displayName,
             email: existing.email,
+            publicUserId: existing.publicUserId,
             initials: existing.initials,
             status: .pending,
             sentAt: Date(),
@@ -198,6 +204,7 @@ actor MockShareService: ShareService {
                     id: "member-1",
                     displayName: "Avery Stone",
                     email: "avery@example.com",
+                    publicUserId: nil,
                     initials: "AS",
                     status: .accepted,
                     sentAt: makeDate(year: 2026, month: 6, day: 6),
@@ -206,7 +213,8 @@ actor MockShareService: ShareService {
                 InvitedMember(
                     id: "member-2",
                     displayName: nil,
-                    email: "morgan@example.com",
+                    email: nil,
+                    publicUserId: "MORGAN1234",
                     initials: "MO",
                     status: .pending,
                     sentAt: makeDate(year: 2026, month: 7, day: 18),
@@ -218,6 +226,7 @@ actor MockShareService: ShareService {
                     id: "member-3",
                     displayName: "Taylor Chen",
                     email: "taylor@example.com",
+                    publicUserId: nil,
                     initials: "TC",
                     status: .accepted,
                     sentAt: makeDate(year: 2026, month: 6, day: 16),

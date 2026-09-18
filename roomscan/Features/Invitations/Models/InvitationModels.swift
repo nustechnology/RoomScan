@@ -62,8 +62,10 @@ nonisolated struct InvitationDetails: Equatable, Sendable, Identifiable {
     let type: InvitationLinkType
     let title: String
     let ownerName: String
-    /// Email the invitation was issued to; nil means any authenticated user may accept.
+    /// Email the invitation was issued to; nil when it was addressed by public user id.
     let invitedEmail: String?
+    /// Public user id the invitation is bound to; nil when it was addressed by email.
+    let invitedPublicUserId: String?
     /// Destination that can be opened directly when the current user already has access.
     let existingAccessDestination: AcceptedInvitationDestination?
     let itemCount: Int
@@ -78,6 +80,7 @@ nonisolated struct InvitationDetails: Equatable, Sendable, Identifiable {
         title: String,
         ownerName: String,
         invitedEmail: String?,
+        invitedPublicUserId: String? = nil,
         existingAccessDestination: AcceptedInvitationDestination?,
         itemCount: Int,
         showsThumbnail: Bool,
@@ -90,6 +93,7 @@ nonisolated struct InvitationDetails: Equatable, Sendable, Identifiable {
         self.title = title
         self.ownerName = ownerName
         self.invitedEmail = invitedEmail
+        self.invitedPublicUserId = invitedPublicUserId
         self.existingAccessDestination = existingAccessDestination
         self.itemCount = itemCount
         self.showsThumbnail = showsThumbnail

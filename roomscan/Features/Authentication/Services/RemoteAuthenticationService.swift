@@ -58,7 +58,8 @@ final class RemoteAuthenticationService: AuthenticationService {
             user: AuthenticatedUser(
                 id: storedData.userId,
                 displayName: storedData.userDisplayName,
-                email: storedData.userEmail
+                email: storedData.userEmail,
+                publicUserId: storedData.userPublicId
             ),
             provider: .apple
         )
@@ -126,7 +127,8 @@ final class RemoteAuthenticationService: AuthenticationService {
         let user = AuthenticatedUser(
             id: response.user.id,
             displayName: displayName,
-            email: response.user.email
+            email: response.user.email,
+            publicUserId: response.user.publicUserId
         )
         let provider = AuthenticationProvider(rawValue: response.user.provider) ?? .apple
 
@@ -136,6 +138,7 @@ final class RemoteAuthenticationService: AuthenticationService {
             userId: response.user.id,
             userEmail: response.user.email,
             userDisplayName: displayName,
+            userPublicId: response.user.publicUserId,
             needsDisplayNameUpload: needsDisplayNameUpload
         )
         do {

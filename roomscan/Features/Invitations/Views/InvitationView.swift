@@ -471,8 +471,7 @@ private struct InvitationAccessRow: View {
     InvitationView(
         viewModel: InvitationViewModel(
             pendingInvitation: PendingInvitation(scope: .project, token: "valid-project"),
-            service: LocalInvitationService(simulatedDelayNanoseconds: 0),
-            currentUserEmail: "viewer@example.com"
+            service: LocalInvitationService(simulatedDelayNanoseconds: 0)
         ),
         onFinished: { _ in }
     )

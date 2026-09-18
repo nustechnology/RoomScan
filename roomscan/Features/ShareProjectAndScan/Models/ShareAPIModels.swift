@@ -6,16 +6,20 @@
 import Foundation
 
 /// POST body for `/api/v1/projects/{projectId}/invitations`.
+/// The API accepts exactly one recipient channel; this client only addresses by public user id.
 nonisolated struct CreateProjectInvitationAPIRequest: Encodable, Sendable {
-    let recipientEmail: String
+    let recipientPublicUserId: String
     let expiresInSeconds: Int
 }
 
 /// Shared invitation payload returned by create and resend endpoints.
+/// `recipientEmail` stays decodable for invitations addressed by email before
+/// this client switched to public user ids.
 nonisolated struct CreateProjectInvitationAPIResponse: Decodable, Sendable {
     let invitationId: String
     let invitationUrl: String
-    let recipientEmail: String
+    let recipientEmail: String?
+    let recipientPublicUserId: String?
     let expiresAt: Date
     let status: String
     let sentAt: Date
@@ -53,7 +57,9 @@ nonisolated struct ProjectSharesAPIResponse: Decodable, Sendable {
 
 nonisolated struct PendingProjectInvitationDTO: Decodable, Sendable {
     let invitationId: String
-    let recipientEmail: String
+    let recipientEmail: String?
+    let recipientPublicUserId: String?
+    let recipientDisplayName: String?
     let status: String
     let sentAt: Date
     let expiresAt: Date
@@ -69,6 +75,7 @@ nonisolated struct ProjectShareUserDTO: Decodable, Sendable {
     let id: String
     let email: String?
     let displayName: String?
+    let publicUserId: String?
 }
 
 /// Nonisolated under `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` so actors
@@ -78,8 +85,13 @@ nonisolated enum ShareAPIMapping {
         InvitedMember(
             id: response.invitationId,
             displayName: nil,
-            email: response.recipientEmail,
-            initials: InvitedMember.initials(for: response.recipientEmail),
+            email: nonBlank(response.recipientEmail),
+            publicUserId: nonBlank(response.recipientPublicUserId),
+            initials: InvitedMember.initials(
+                displayName: nil,
+                email: response.recipientEmail,
+                publicUserId: response.recipientPublicUserId
+            ),
             status: invitationStatus(from: response.status),
             sentAt: response.sentAt,
             acceptedAt: nil
@@ -89,9 +101,14 @@ nonisolated enum ShareAPIMapping {
     static func toInvitedMember(_ invitation: PendingProjectInvitationDTO) -> InvitedMember {
         InvitedMember(
             id: invitation.invitationId,
-            displayName: nil,
-            email: invitation.recipientEmail,
-            initials: InvitedMember.initials(for: invitation.recipientEmail),
+            displayName: nonBlank(invitation.recipientDisplayName),
+            email: nonBlank(invitation.recipientEmail),
+            publicUserId: nonBlank(invitation.recipientPublicUserId),
+            initials: InvitedMember.initials(
+                displayName: invitation.recipientDisplayName,
+                email: invitation.recipientEmail,
+                publicUserId: invitation.recipientPublicUserId
+            ),
             status: invitationStatus(from: invitation.status),
             sentAt: invitation.sentAt,
             acceptedAt: nil
@@ -99,21 +116,16 @@ nonisolated enum ShareAPIMapping {
     }
 
     static func toInvitedMember(_ viewer: ProjectViewerDTO) -> InvitedMember {
-        let email = nonBlank(viewer.recipientUser.email) ?? ""
-        let displayName = nonBlank(viewer.recipientUser.displayName)
-        let initials: String
-        if !email.isEmpty {
-            initials = InvitedMember.initials(for: email)
-        } else if let displayName {
-            initials = AccountDisplayName.initials(from: displayName)
-        } else {
-            initials = "?"
-        }
-        return InvitedMember(
+        InvitedMember(
             id: viewer.userId,
-            displayName: displayName,
-            email: email,
-            initials: initials,
+            displayName: nonBlank(viewer.recipientUser.displayName),
+            email: nonBlank(viewer.recipientUser.email),
+            publicUserId: nonBlank(viewer.recipientUser.publicUserId),
+            initials: InvitedMember.initials(
+                displayName: viewer.recipientUser.displayName,
+                email: viewer.recipientUser.email,
+                publicUserId: viewer.recipientUser.publicUserId
+            ),
             status: .accepted,
             sentAt: viewer.grantedAt,
             acceptedAt: viewer.grantedAt

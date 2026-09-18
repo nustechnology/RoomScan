@@ -27,8 +27,10 @@ struct RemoteAuthenticationServiceTests {
 
         #expect(session.user.displayName == expectedName)
         #expect(session.user.email == "jane@example.com")
+        #expect(session.user.publicUserId == "JANEDOE123")
         #expect(keychain.stored?.userDisplayName == expectedName)
         #expect(keychain.stored?.userId == "user-1")
+        #expect(keychain.stored?.userPublicId == "JANEDOE123")
         #expect(keychain.stored?.needsDisplayNameUpload == false)
     }
 
@@ -255,7 +257,8 @@ struct RemoteAuthenticationServiceTests {
             refreshToken: "old-refresh",
             userId: "user-1",
             userEmail: "jane@example.com",
-            userDisplayName: "Jane Doe"
+            userDisplayName: "Jane Doe",
+            userPublicId: "JANEDOE123"
         )
         let client = AuthHTTPClient { _ in
             .success(Data(#"{"accessToken":"new-access","refreshToken":"new-refresh"}"#.utf8))
@@ -270,8 +273,10 @@ struct RemoteAuthenticationServiceTests {
         #expect(session?.user.id == "user-1")
         #expect(session?.user.displayName == "Jane Doe")
         #expect(session?.user.email == "jane@example.com")
+        #expect(session?.user.publicUserId == "JANEDOE123")
         #expect(keychain.stored?.accessToken == "new-access")
         #expect(keychain.stored?.userDisplayName == "Jane Doe")
+        #expect(keychain.stored?.userPublicId == "JANEDOE123")
     }
 
     @Test func storedAuthDataDecodesLegacyPayloadWithoutDisplayName() throws {
@@ -378,7 +383,8 @@ private extension AuthAPIResponse {
                 id: "user-1",
                 email: "jane@example.com",
                 provider: "apple",
-                displayName: displayName
+                displayName: displayName,
+                publicUserId: "JANEDOE123"
             )
         )
     }

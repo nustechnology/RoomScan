@@ -40,8 +40,7 @@ extension HomeView {
                 InvitationView(
                     viewModel: InvitationViewModel(
                         pendingInvitation: invitation,
-                        service: invitationService,
-                        currentUserEmail: session.user.email
+                        service: invitationService
                     ),
                     onFinished: { outcome in
                         handleInvitationFinished(outcome, for: invitation)

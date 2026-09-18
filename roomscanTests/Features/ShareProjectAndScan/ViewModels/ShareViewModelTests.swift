@@ -30,15 +30,48 @@ struct ShareViewModelTests {
         #expect(viewModel.members.isEmpty)
     }
 
-    @Test func duplicateEmailShowsInlineValidation() async {
+    @Test func duplicateUserIDShowsInlineValidation() async {
         let service = TestShareService()
         let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project", hasUploadedScan: true), service: service)
         await viewModel.loadIfNeeded()
 
-        viewModel.updateInviteEmail("avery@example.com")
+        viewModel.updateInviteUserID("morgan1234")
         await viewModel.sendInvite()
 
-        #expect(viewModel.emailValidationMessage == String(localized: "share.validation.email.duplicate"))
+        #expect(viewModel.userIDValidationMessage == String(localized: "share.validation.userId.duplicate"))
+        #expect(viewModel.members.count == 2)
+    }
+
+    @Test func blankUserIDShowsRequiredValidationWithoutSending() async {
+        let service = TestShareService()
+        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project", hasUploadedScan: true), service: service)
+        await viewModel.loadIfNeeded()
+
+        viewModel.openInviteSheet()
+        viewModel.updateInviteUserID("   ")
+        await viewModel.sendInvite()
+
+        #expect(viewModel.userIDValidationMessage == String(localized: "share.validation.userId.required"))
+        #expect(await service.sentUserIDs().isEmpty)
+    }
+
+    @Test(arguments: zip(
+        [ShareServiceError.recipientNotFound, .invalidRecipient, .cannotInviteSelf],
+        ["share.validation.userId.notFound", "share.validation.userId.invalid", "share.validation.userId.self"]
+    ))
+    func recipientErrorsShowInlineAndKeepSheetOpen(error: ShareServiceError, messageKey: String) async {
+        let service = TestShareService()
+        await service.setSendError(error)
+        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project", hasUploadedScan: true), service: service)
+        await viewModel.loadIfNeeded()
+
+        viewModel.openInviteSheet()
+        viewModel.updateInviteUserID("ABCDE12345")
+        await viewModel.sendInvite()
+
+        #expect(viewModel.userIDValidationMessage == String(localized: String.LocalizationValue(messageKey)))
+        #expect(viewModel.isInviteSheetPresented)
+        #expect(viewModel.toastMessage == nil)
         #expect(viewModel.members.count == 2)
     }
 
@@ -48,15 +81,45 @@ struct ShareViewModelTests {
         await viewModel.loadIfNeeded()
 
         viewModel.openInviteSheet()
-        viewModel.updateInviteEmail("new.person@example.com")
+        viewModel.updateInviteUserID("  NEWUSER123 ")
         await viewModel.sendInvite()
 
+        #expect(await service.sentUserIDs() == ["NEWUSER123"])
         #expect(viewModel.members.count == 3)
-        #expect(viewModel.members.first?.email == "new.person@example.com")
+        #expect(viewModel.members.first?.publicUserId == "NEWUSER123")
+        #expect(viewModel.members.first?.email == nil)
         #expect(viewModel.members.first?.status == .pending)
         #expect(viewModel.isInviteSheetPresented == false)
         #expect(viewModel.toastStyle == .success)
         #expect(viewModel.toastMessage == String(localized: "share.toast.invitationSent"))
+    }
+
+    @Test func sendInviteReloadsMembersToPickUpDisplayName() async {
+        let service = TestShareService()
+        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project", hasUploadedScan: true), service: service)
+        await viewModel.loadIfNeeded()
+
+        viewModel.openInviteSheet()
+        viewModel.updateInviteUserID("NEWUSER123")
+        await viewModel.sendInvite()
+
+        #expect(viewModel.members.first?.displayName == TestShareService.listedDisplayName)
+        #expect(viewModel.members.first?.rowTitle == TestShareService.listedDisplayName)
+    }
+
+    @Test func resendKeepsDisplayNameMissingFromResponse() async throws {
+        let service = TestShareService()
+        let viewModel = ShareViewModel(input: .project(id: "project-1", name: "Project", hasUploadedScan: true), service: service)
+        await viewModel.loadIfNeeded()
+        let member = try #require(viewModel.members.first(where: { $0.status == .pending }))
+
+        await viewModel.resendInvitation(for: member)
+
+        let updated = try #require(viewModel.members.first(where: { $0.id == member.id }))
+        #expect(updated.displayName == "Morgan Lee")
+        #expect(updated.publicUserId == "MORGAN1234")
+        #expect(updated.initials == member.initials)
+        #expect(updated.publicUserIdLabel != nil)
     }
 
     @Test func resendUpdatesSentDate() async throws {
@@ -76,7 +139,7 @@ struct ShareViewModelTests {
         #expect(
             viewModel.toastMessage == String.localizedStringWithFormat(
                 String(localized: "share.toast.invitationResent.format"),
-                member.email
+                member.rowTitle
             )
         )
         #expect(viewModel.performingMemberAction == nil)
@@ -266,11 +329,17 @@ struct ShareViewModelTests {
     }
 }
 
+/// Mirrors the real API: create and resend responses carry no display name,
+/// while the shares list does.
 actor TestShareService: ShareService {
+    static let listedDisplayName = "New Person"
+
     private var members: [InvitedMember]
     private var isOffline: Bool
     private var resendDate: Date
     private var replacementInvitationID: String?
+    private var sendError: ShareServiceError?
+    private var sentUserIDValues: [String] = []
     private var revokedInvitationIDValues: [String] = []
     private var isActionGated = false
     private var isWaitingAtGate = false
@@ -283,6 +352,7 @@ actor TestShareService: ShareService {
                 id: "accepted-1",
                 displayName: "Avery Stone",
                 email: "avery@example.com",
+                publicUserId: "AVERYSTONE",
                 initials: "AS",
                 status: .accepted,
                 sentAt: Date(timeIntervalSince1970: 1_780_531_200),
@@ -290,9 +360,10 @@ actor TestShareService: ShareService {
             ),
             InvitedMember(
                 id: "pending-1",
-                displayName: nil,
-                email: "morgan@example.com",
-                initials: "MO",
+                displayName: "Morgan Lee",
+                email: nil,
+                publicUserId: "MORGAN1234",
+                initials: "ML",
                 status: .pending,
                 sentAt: Date(timeIntervalSince1970: 1_784_073_600),
                 acceptedAt: nil
@@ -311,6 +382,14 @@ actor TestShareService: ShareService {
 
     func setReplacementInvitationID(_ id: String?) {
         replacementInvitationID = id
+    }
+
+    func setSendError(_ error: ShareServiceError?) {
+        sendError = error
+    }
+
+    func sentUserIDs() -> [String] {
+        sentUserIDValues
     }
 
     func revokedInvitationIDs() -> [String] {
@@ -339,24 +418,44 @@ actor TestShareService: ShareService {
         ShareMembersSnapshot(members: members, isOffline: isOffline)
     }
 
-    func sendInvitation(for input: ShareScreenInput, email: String) async throws -> InvitedMember {
+    func sendInvitation(for input: ShareScreenInput, publicUserID: String) async throws -> InvitedMember {
         try ensureOnline()
-
-        if members.contains(where: { $0.email.caseInsensitiveCompare(email) == .orderedSame }) {
-            throw ShareServiceError.duplicateEmail
+        sentUserIDValues.append(publicUserID)
+        if let sendError {
+            throw sendError
         }
 
-        let member = InvitedMember(
-            id: "pending-\(members.count + 1)",
+        if members.contains(where: {
+            $0.publicUserId?.caseInsensitiveCompare(publicUserID) == .orderedSame
+        }) {
+            throw ShareServiceError.duplicateRecipient
+        }
+
+        let id = "pending-\(members.count + 1)"
+        let sentAt = Date(timeIntervalSince1970: 1_784_246_400)
+        members.insert(
+            InvitedMember(
+                id: id,
+                displayName: Self.listedDisplayName,
+                email: nil,
+                publicUserId: publicUserID,
+                initials: "NP",
+                status: .pending,
+                sentAt: sentAt,
+                acceptedAt: nil
+            ),
+            at: 0
+        )
+        return InvitedMember(
+            id: id,
             displayName: nil,
-            email: email,
-            initials: "NP",
+            email: nil,
+            publicUserId: publicUserID,
+            initials: String(publicUserID.prefix(2)),
             status: .pending,
-            sentAt: Date(timeIntervalSince1970: 1_784_246_400),
+            sentAt: sentAt,
             acceptedAt: nil
         )
-        members.insert(member, at: 0)
-        return member
     }
 
     func resendInvitation(for input: ShareScreenInput, id: String) async throws -> InvitedMember {
@@ -369,9 +468,10 @@ actor TestShareService: ShareService {
         let current = members[index]
         let updated = InvitedMember(
             id: replacementInvitationID ?? current.id,
-            displayName: current.displayName,
+            displayName: nil,
             email: current.email,
-            initials: current.initials,
+            publicUserId: current.publicUserId,
+            initials: current.publicUserId.map { String($0.prefix(2)) } ?? "?",
             status: .pending,
             sentAt: resendDate,
             acceptedAt: nil

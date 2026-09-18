@@ -5,6 +5,7 @@
 
 import Foundation
 import Observation
+import UIKit
 
 @MainActor
 @Observable
@@ -27,6 +28,9 @@ final class AccountViewModel {
     private(set) var isSavingDisplayName = false
     private(set) var editValidationMessage: String?
     private(set) var saveErrorMessage: String?
+
+    private(set) var toastStyle: ToastStyle = .success
+    private(set) var toastMessage: String?
 
     private var loadGeneration = 0
     private var profileLoadGeneration = 0
@@ -183,6 +187,16 @@ final class AccountViewModel {
             isSavingDisplayName = false
             saveErrorMessage = String(localized: "account.editName.error")
         }
+    }
+
+    func copyPublicUserID(_ publicUserID: String) {
+        UIPasteboard.general.string = publicUserID
+        toastStyle = .success
+        toastMessage = String(localized: "account.toast.publicUserIdCopied")
+    }
+
+    func dismissToast() {
+        toastMessage = nil
     }
 
     func requestSignOut() {

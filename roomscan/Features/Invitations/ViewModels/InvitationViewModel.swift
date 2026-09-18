@@ -86,16 +86,13 @@ final class InvitationViewModel {
 
     let pendingInvitation: PendingInvitation
     private let service: any InvitationService
-    private let currentUserEmail: String?
 
     init(
         pendingInvitation: PendingInvitation,
-        service: any InvitationService,
-        currentUserEmail: String?
+        service: any InvitationService
     ) {
         self.pendingInvitation = pendingInvitation
         self.service = service
-        self.currentUserEmail = currentUserEmail
     }
 
     var invitation: InvitationDetails? {
@@ -159,8 +156,7 @@ final class InvitationViewModel {
         do {
             let details = try await service.fetchInvitation(
                 scope: pendingInvitation.scope,
-                token: pendingInvitation.token,
-                currentUserEmail: currentUserEmail
+                token: pendingInvitation.token
             )
             loadState = .loaded(details)
         } catch let error as InvitationServiceError {
@@ -193,8 +189,7 @@ final class InvitationViewModel {
         do {
             try await service.declineInvitation(
                 scope: pendingInvitation.scope,
-                token: pendingInvitation.token,
-                currentUserEmail: currentUserEmail
+                token: pendingInvitation.token
             )
             navigationOutcome = .dismissedToHome(
                 toastMessage: String(localized: "invitation.toast.declined")
@@ -215,8 +210,7 @@ final class InvitationViewModel {
         do {
             let destination = try await service.acceptInvitation(
                 scope: pendingInvitation.scope,
-                token: pendingInvitation.token,
-                currentUserEmail: currentUserEmail
+                token: pendingInvitation.token
             )
             navigationOutcome = .accepted(
                 destination,

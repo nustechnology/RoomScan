@@ -17,6 +17,20 @@ nonisolated struct AuthenticatedUser: Equatable, Codable, Sendable, Identifiable
     let id: String
     let displayName: String?
     let email: String?
+    /// Shareable identifier other users type to invite this account.
+    let publicUserId: String?
+
+    init(
+        id: String,
+        displayName: String?,
+        email: String?,
+        publicUserId: String? = nil
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.email = email
+        self.publicUserId = publicUserId
+    }
 }
 
 nonisolated struct AuthenticationSession: Equatable, Codable, Sendable {

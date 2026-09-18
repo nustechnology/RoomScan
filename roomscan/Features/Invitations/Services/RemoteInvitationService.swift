@@ -16,8 +16,7 @@ actor RemoteInvitationService: InvitationService {
 
     func fetchInvitation(
         scope: InvitationScope,
-        token: String,
-        currentUserEmail: String?
+        token: String
     ) async throws -> InvitationDetails {
         guard let token = InvitationTokenValidator.sanitized(token) else {
             throw InvitationServiceError.unavailable
@@ -26,7 +25,7 @@ actor RemoteInvitationService: InvitationService {
 
         do {
             let response: InvitationPreviewAPIResponse = try await httpClient.request(endpoint)
-            try throwIfPreviewUnavailable(response, currentUserEmail: currentUserEmail)
+            try throwIfPreviewUnavailable(response)
             return try InvitationAPIMapping.toInvitationDetails(
                 token: token,
                 scope: scope,
@@ -45,8 +44,7 @@ actor RemoteInvitationService: InvitationService {
 
     func acceptInvitation(
         scope: InvitationScope,
-        token: String,
-        currentUserEmail _: String?
+        token: String
     ) async throws -> AcceptedInvitationDestination {
         guard let token = InvitationTokenValidator.sanitized(token) else {
             throw InvitationServiceError.unavailable
@@ -69,8 +67,7 @@ actor RemoteInvitationService: InvitationService {
 
     func declineInvitation(
         scope _: InvitationScope,
-        token: String,
-        currentUserEmail _: String?
+        token: String
     ) async throws {
         guard let token = InvitationTokenValidator.sanitized(token) else {
             throw InvitationServiceError.unavailable
@@ -102,18 +99,15 @@ actor RemoteInvitationService: InvitationService {
         return APIEndpoint(path: path, method: method)
     }
 
+    /// Recipient eligibility is the server's call: email invitations are bearer-style,
+    /// and user-addressed ones answer `403` for anyone but the bound account.
     private func throwIfPreviewUnavailable(
-        _ response: InvitationPreviewAPIResponse,
-        currentUserEmail: String?
+        _ response: InvitationPreviewAPIResponse
     ) throws {
         switch response.status.uppercased() {
         case "PENDING", "ACTIVE":
             if response.expiresAt <= Date() {
                 throw InvitationServiceError.expired
-            }
-            if let recipientEmail = normalizedEmail(response.recipientEmail),
-               normalizedEmail(currentUserEmail) != recipientEmail {
-                throw InvitationServiceError.accessDenied
             }
         case "ACCEPTED":
             throw InvitationServiceError.alreadyAccepted
@@ -126,12 +120,6 @@ actor RemoteInvitationService: InvitationService {
         default:
             throw InvitationServiceError.unavailable
         }
-    }
-
-    private func normalizedEmail(_ email: String?) -> String? {
-        guard let email else { return nil }
-        let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return normalized.isEmpty ? nil : normalized
     }
 
     private func mapHTTPClientError(_ error: HTTPClientError) -> InvitationServiceError {

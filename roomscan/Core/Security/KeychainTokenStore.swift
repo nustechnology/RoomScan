@@ -16,6 +16,7 @@ nonisolated struct StoredAuthData: Codable, Sendable {
     let userId: String
     let userEmail: String?
     let userDisplayName: String?
+    let userPublicId: String?
     let needsDisplayNameUpload: Bool
 
     init(
@@ -24,6 +25,7 @@ nonisolated struct StoredAuthData: Codable, Sendable {
         userId: String,
         userEmail: String?,
         userDisplayName: String?,
+        userPublicId: String? = nil,
         needsDisplayNameUpload: Bool = false
     ) {
         self.accessToken = accessToken
@@ -31,6 +33,7 @@ nonisolated struct StoredAuthData: Codable, Sendable {
         self.userId = userId
         self.userEmail = userEmail
         self.userDisplayName = userDisplayName
+        self.userPublicId = userPublicId
         self.needsDisplayNameUpload = needsDisplayNameUpload
     }
 
@@ -41,6 +44,7 @@ nonisolated struct StoredAuthData: Codable, Sendable {
             userId: userId,
             userEmail: userEmail,
             userDisplayName: userDisplayName,
+            userPublicId: userPublicId,
             needsDisplayNameUpload: value
         )
     }
@@ -52,6 +56,7 @@ nonisolated struct StoredAuthData: Codable, Sendable {
             userId: userId,
             userEmail: userEmail,
             userDisplayName: userDisplayName,
+            userPublicId: userPublicId,
             needsDisplayNameUpload: needsDisplayNameUpload
         )
     }
@@ -62,6 +67,7 @@ nonisolated struct StoredAuthData: Codable, Sendable {
         case userId
         case userEmail
         case userDisplayName
+        case userPublicId
         case needsDisplayNameUpload
     }
 
@@ -72,6 +78,7 @@ nonisolated struct StoredAuthData: Codable, Sendable {
         userId = try container.decode(String.self, forKey: .userId)
         userEmail = try container.decodeIfPresent(String.self, forKey: .userEmail)
         userDisplayName = try container.decodeIfPresent(String.self, forKey: .userDisplayName)
+        userPublicId = try container.decodeIfPresent(String.self, forKey: .userPublicId)
         needsDisplayNameUpload = try container.decodeIfPresent(Bool.self, forKey: .needsDisplayNameUpload) ?? false
     }
 }

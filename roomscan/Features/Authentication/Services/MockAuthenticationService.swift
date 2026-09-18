@@ -158,7 +158,8 @@ extension AuthenticationSession {
         user: AuthenticatedUser(
             id: "mock-user-apple",
             displayName: "Mock Apple User",
-            email: "mock.user@example.com"
+            email: "mock.user@example.com",
+            publicUserId: "APPLEUSER1"
         ),
         provider: .apple
     )
@@ -172,7 +173,8 @@ extension AuthenticationSession {
                 user: AuthenticatedUser(
                     id: "mock-user-google",
                     displayName: "Mock Google User",
-                    email: "mock.google@example.com"
+                    email: "mock.google@example.com",
+                    publicUserId: "GOOGLEUSR1"
                 ),
                 provider: .google
             )
@@ -181,7 +183,8 @@ extension AuthenticationSession {
                 user: AuthenticatedUser(
                     id: "mock-user-facebook",
                     displayName: "Mock Facebook User",
-                    email: "mock.facebook@example.com"
+                    email: "mock.facebook@example.com",
+                    publicUserId: "FACEBKUSR1"
                 ),
                 provider: .facebook
             )

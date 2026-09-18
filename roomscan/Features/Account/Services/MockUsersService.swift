@@ -20,7 +20,8 @@ actor MockUsersService: UsersService {
         user: AuthenticatedUser = AuthenticatedUser(
             id: "mock-user",
             displayName: "Mock User",
-            email: "mock@example.com"
+            email: "mock@example.com",
+            publicUserId: "MOCKUSER01"
         ),
         scenario: Scenario = .success,
         simulatedDelayNanoseconds: UInt64 = 0
@@ -52,7 +53,8 @@ actor MockUsersService: UsersService {
             id: self.currentUser.id,
             email: self.currentUser.email,
             displayName: self.currentUser.displayName,
-            provider: nil
+            provider: nil,
+            publicUserId: self.currentUser.publicUserId
         ).toAuthenticatedUser(fallingBackTo: currentUser)
     }
 
@@ -82,7 +84,8 @@ actor MockUsersService: UsersService {
         self.currentUser = AuthenticatedUser(
             id: self.currentUser.id.isEmpty ? currentUser.id : self.currentUser.id,
             displayName: trimmed,
-            email: self.currentUser.email ?? currentUser.email
+            email: self.currentUser.email ?? currentUser.email,
+            publicUserId: self.currentUser.publicUserId
         )
         return self.currentUser
     }
