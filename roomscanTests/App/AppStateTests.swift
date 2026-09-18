@@ -138,7 +138,7 @@ struct AppStateTests {
         #expect(restored?.user.publicUserId == AuthenticationSession.mockAppleUser.user.publicUserId)
     }
 
-    @Test func mockProfileRefreshAppliesToAnyMockSignedInAccount() async throws {
+    @Test func mockRenameAppliesToAnyMockSignedInAccount() async throws {
         let googleSession = AuthenticationSession.mock(for: .google)
         let service = MockAuthenticationService(
             configuration: .init(
@@ -150,10 +150,8 @@ struct AppStateTests {
         )
         let appState = AppState(authenticationService: service)
         await appState.restoreSession()
-        let usersService = MockUsersService.makeForCurrentProcess()
+        let usersService = MockUsersService(user: AuthenticationSession.mockAppleUser.user)
 
-        let fetched = try await usersService.fetchMe(fallingBackTo: googleSession.user)
-        await appState.updateSignedInUser(fetched)
         let renamed = try await usersService.updateMe(displayName: "Renamed", fallingBackTo: googleSession.user)
         await appState.updateSignedInUser(renamed)
 

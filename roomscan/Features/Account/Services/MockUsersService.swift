@@ -84,7 +84,7 @@ actor MockUsersService: UsersService {
 
         adoptCallerIfDifferentAccount(currentUser)
         self.currentUser = AuthenticatedUser(
-            id: self.currentUser.id.isEmpty ? currentUser.id : self.currentUser.id,
+            id: self.currentUser.id,
             displayName: trimmed,
             email: self.currentUser.email ?? currentUser.email,
             publicUserId: self.currentUser.publicUserId ?? currentUser.publicUserId
@@ -94,8 +94,9 @@ actor MockUsersService: UsersService {
 
     /// Like the real `/users/me`, answers for whoever is signed in: a caller signed in as a
     /// different account than the one held here becomes the account this mock serves.
+    /// A caller without an id identifies no account, so the held one is kept.
     private func adoptCallerIfDifferentAccount(_ caller: AuthenticatedUser) {
-        if currentUser.id != caller.id {
+        if !caller.id.isEmpty, currentUser.id != caller.id {
             currentUser = caller
         }
     }
