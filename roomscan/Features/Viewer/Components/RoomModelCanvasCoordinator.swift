@@ -92,6 +92,19 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     /// Zoom buttons interrupt in-flight motion; easeOut starts moving immediately,
     /// unlike easeInOut whose first frames have near-zero velocity.
     private let zoomAnimationDuration: TimeInterval = 0.16
+    /// Framing used when a note is selected from the list or tapped in the canvas.
+    /// The camera is placed inside the room, in front of the note, so notes on back
+    /// walls or behind the model's cut plane are not occluded.
+    private let noteFocusDistance: Float = 3.2
+    private let noteFocusElevation: Float = 0.28
+    private let noteFocusTargetYOffset: Float = 0.12
+    private let noteFocusOcclusionTolerance: Float = 0.1
+    /// Top view has no orbit and renders flat floor markers, so a selected note keeps
+    /// the top-down pose and is only recentered; this mirrors the pre-focus behavior.
+    private let noteFocusTopViewDistanceCap: Float = 5.5
+    /// Cached world-space center of the loaded room, used to derive the interior
+    /// viewing direction. Invalidated whenever the room entity changes.
+    private var roomInteriorCenter: SIMD3<Float>?
     static var materialCache: [NoteColor: UnlitMaterial] = [:]
 
     init(
@@ -117,6 +130,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         roomEntity?.removeFromParent()
         pinsRoot.removeFromParent()
         loadedSource = nil
+        roomInteriorCenter = nil
         pendingFileSource = nil
         modelLoadTask?.cancel()
         modelLoadTask = nil
@@ -234,6 +248,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         pendingFileSource = nil
         roomEntity?.removeFromParent()
         roomEntity = room
+        roomInteriorCenter = nil
         loadedSource = source
         anchor.addChild(room)
         pinsRoot.name = "PinsRoot"
@@ -247,6 +262,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
         pendingFileSource = nil
         loadedSource = nil
         roomEntity = nil
+        roomInteriorCenter = nil
         scheduleModelLoadReport(generation: generation, success: false)
     }
 
@@ -451,7 +467,6 @@ extension RoomModelCanvasCoordinator {
             syncOrbitDistanceFromDisplayedPose()
         }
 
-        var shouldAnimate = true
         for command in commands {
             switch command {
             case .zoomIn:
@@ -462,10 +477,7 @@ extension RoomModelCanvasCoordinator {
                 applyViewModePose(for: currentViewMode)
                 updateAllPinModePresentations()
             case .focus(let position):
-                target = position
-                distance = clampedDistance(min(distance, 5.5))
-                // Focus accompanies note selection, so it must not race the presenting sheet or gestures.
-                shouldAnimate = false
+                applyNoteFocus(on: position)
             }
         }
 
@@ -476,8 +488,146 @@ extension RoomModelCanvasCoordinator {
                 timing: .easeOut
             )
         } else {
-            updateCamera(animated: shouldAnimate)
+            updateCamera(animated: true)
         }
+    }
+
+    /// Frames a note so it is visible: moves the orbit target onto the note and
+    /// re-aims the camera from inside the room, picking the first candidate
+    /// direction with an unobstructed line of sight.
+    private func applyNoteFocus(on notePosition: SIMD3<Float>) {
+        // Top view has no orbit gestures and renders pins as flat floor markers, so
+        // keep the top-down pose and only recenter toward the note.
+        guard currentViewMode == .threeD else {
+            target = notePosition
+            distance = clampedDistance(min(distance, noteFocusTopViewDistanceCap))
+            return
+        }
+
+        let pose = noteFocusPose(for: notePosition)
+        yaw = pose.yaw
+        pitch = pose.pitch
+        distance = pose.distance
+        target = pose.target
+    }
+
+    private func noteFocusPose(for notePosition: SIMD3<Float>) -> CameraOrbitPose {
+        let focusTarget = notePosition + SIMD3<Float>(0, noteFocusTargetYOffset, 0)
+        let currentDirection = NoteFocusSolver.direction(from: notePosition, to: displayedPose.eye)
+        let inward = noteInteriorDirection(from: notePosition)
+        let candidates = NoteFocusSolver.candidateDirections(
+            inward: inward,
+            current: currentDirection,
+            elevation: noteFocusElevation
+        )
+
+        for direction in candidates {
+            let pose = makeNoteFocusPose(forDirection: direction, target: focusTarget)
+            if hasClearLineOfSight(from: pose.eye, to: notePosition) {
+                return pose
+            }
+        }
+
+        // No unobstructed view exists (e.g. a note tucked into a tight gap): prefer
+        // the room-interior direction over the current, possibly occluded, view.
+        let interior = NoteFocusSolver.interiorCandidate(
+            inward: inward,
+            current: currentDirection,
+            elevation: noteFocusElevation
+        )
+        return makeNoteFocusPose(forDirection: interior, target: focusTarget)
+    }
+
+    /// Builds a candidate pose, keeping the distance within the orbit bounds so the
+    /// next zoom/pinch continues from a consistent state.
+    private func makeNoteFocusPose(
+        forDirection direction: SIMD3<Float>,
+        target focusTarget: SIMD3<Float>
+    ) -> CameraOrbitPose {
+        let angles = NoteFocusSolver.orbitAngles(
+            forDirection: direction,
+            minPitch: minPitch,
+            maxPitch: maxPitch,
+            fallbackYaw: yaw
+        )
+        let offsetDirection = NoteFocusSolver.offsetDirection(yaw: angles.yaw, pitch: angles.pitch)
+        let openDistance = openSurfaceDistance(from: focusTarget, along: offsetDirection)
+        let focusDistance = clampedDistance(min(noteFocusDistance, openDistance * 0.85))
+        return CameraOrbitPose(
+            yaw: angles.yaw,
+            pitch: angles.pitch,
+            distance: focusDistance,
+            target: focusTarget
+        )
+    }
+
+    /// Direction the camera should sit in to look at a note from the room interior.
+    /// Falls back to the opposite of the current view for notes outside the room.
+    private func noteInteriorDirection(from notePosition: SIMD3<Float>) -> SIMD3<Float> {
+        if let center = roomInteriorCenterPoint(),
+           let inward = NoteFocusSolver.direction(from: notePosition, to: center) {
+            return inward
+        }
+        return -displayedPose.forward
+    }
+
+    private func roomInteriorCenterPoint() -> SIMD3<Float>? {
+        if let roomInteriorCenter {
+            return roomInteriorCenter
+        }
+        guard let roomEntity else { return nil }
+        let bounds = roomEntity.visualBounds(relativeTo: nil)
+        // Never cache empty/invalid bounds (zero extents): it would poison every
+        // later focus until the room entity changes.
+        guard bounds.extents.x > 0 || bounds.extents.y > 0 || bounds.extents.z > 0 else {
+            return nil
+        }
+        roomInteriorCenter = bounds.center
+        return bounds.center
+    }
+
+    /// Distance from `origin` to the nearest room surface along `direction`, or
+    /// `maxDistance` when the ray reaches no surface (open space).
+    private func openSurfaceDistance(from origin: SIMD3<Float>, along direction: SIMD3<Float>) -> Float {
+        let start = origin + direction * 0.05
+        guard let hit = firstRoomSurfaceHit(
+            origin: start,
+            direction: direction,
+            length: maxDistance * 2
+        ) else {
+            return maxDistance
+        }
+        return simd_distance(start, hit)
+    }
+
+    /// True when no room surface lies between `eye` and the note. The surface the
+    /// note is attached to meets the ray at the note itself, so a small tolerance
+    /// keeps an attached note visible while still rejecting walls in front of it.
+    private func hasClearLineOfSight(from eye: SIMD3<Float>, to notePosition: SIMD3<Float>) -> Bool {
+        guard let direction = NoteFocusSolver.direction(from: eye, to: notePosition) else { return true }
+        let distanceToNote = simd_distance(eye, notePosition)
+        guard let hit = firstRoomSurfaceHit(origin: eye, direction: direction, length: distanceToNote) else {
+            return true
+        }
+        return simd_distance(eye, hit) >= distanceToNote - noteFocusOcclusionTolerance
+    }
+
+    private func firstRoomSurfaceHit(
+        origin: SIMD3<Float>,
+        direction: SIMD3<Float>,
+        length: Float
+    ) -> SIMD3<Float>? {
+        guard let arView, length > 0 else { return nil }
+        return arView.scene.raycast(
+            origin: origin,
+            direction: direction,
+            length: length,
+            query: .nearest,
+            mask: RoomModelCollision.roomSurfaceGroup,
+            relativeTo: nil
+        )
+        .first(where: { isRoomSurfaceEntity($0.entity) })?
+        .position
     }
 
     private func clampedDistance(_ value: Float) -> Float {
