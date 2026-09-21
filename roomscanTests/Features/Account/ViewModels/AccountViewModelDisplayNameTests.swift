@@ -208,6 +208,84 @@ struct AccountViewModelDisplayNameTests {
         #expect(user.id == "abc")
         #expect(user.displayName == "Pat")
     }
+
+    @Test func userMeResponseKeepsCurrentPublicUserIdWhenOmittedOrBlank() throws {
+        let current = AuthenticatedUser(id: "u1", displayName: nil, email: nil, publicUserId: "ADA1234567")
+
+        let withoutID = try JSONDecoder().decode(
+            UserMeAPIResponse.self,
+            from: Data(#"{"id":"u1","displayName":"Ada"}"#.utf8)
+        )
+        let blankID = try JSONDecoder().decode(
+            UserMeAPIResponse.self,
+            from: Data(#"{"id":"u1","publicUserId":"  "}"#.utf8)
+        )
+        let withID = try JSONDecoder().decode(
+            UserMeAPIResponse.self,
+            from: Data(#"{"user":{"id":"u1","publicUserId":"NEWID00001"}}"#.utf8)
+        )
+
+        #expect(withoutID.toAuthenticatedUser(fallingBackTo: current).publicUserId == "ADA1234567")
+        #expect(blankID.toAuthenticatedUser(fallingBackTo: current).publicUserId == "ADA1234567")
+        #expect(withID.toAuthenticatedUser(fallingBackTo: current).publicUserId == "NEWID00001")
+    }
+
+    @Test func mockUpdateMeStoresCallersPublicUserIdWhenItHasNone() async throws {
+        let usersService = MockUsersService(
+            user: AuthenticatedUser(id: "u1", displayName: "Old Name", email: "a@example.com"),
+            simulatedDelayNanoseconds: 0
+        )
+
+        let updated = try await usersService.updateMe(
+            displayName: "New Name",
+            fallingBackTo: AuthenticatedUser(
+                id: "u1",
+                displayName: "Old Name",
+                email: "a@example.com",
+                publicUserId: "JANE123456"
+            )
+        )
+        let fetched = try await usersService.fetchMe(
+            fallingBackTo: AuthenticatedUser(id: "u1", displayName: nil, email: nil)
+        )
+
+        #expect(updated.publicUserId == "JANE123456")
+        #expect(fetched.publicUserId == "JANE123456")
+    }
+
+    @Test func mockFetchMeAnswersForTheCallingAccount() async throws {
+        let usersService = MockUsersService(
+            user: AuthenticatedUser(id: "held", displayName: "Held", email: "held@example.com", publicUserId: "HELD000001"),
+            simulatedDelayNanoseconds: 0
+        )
+        let caller = AuthenticatedUser(id: "caller", displayName: "Caller", email: nil, publicUserId: "CALLER0001")
+
+        let fetched = try await usersService.fetchMe(fallingBackTo: caller)
+
+        #expect(fetched.id == "caller")
+        #expect(fetched.displayName == "Caller")
+        #expect(fetched.publicUserId == "CALLER0001")
+    }
+
+    @Test func mockKeepsItsAccountWhenCallerHasNoID() async throws {
+        let usersService = MockUsersService(
+            user: AuthenticatedUser(id: "u1", displayName: "Old Name", email: "a@example.com", publicUserId: "U1PUBLIC01"),
+            simulatedDelayNanoseconds: 0
+        )
+        let callerWithoutID = AuthenticatedUser(id: "", displayName: nil, email: nil)
+
+        let updated = try await usersService.updateMe(displayName: "New Name", fallingBackTo: callerWithoutID)
+        let fetched = try await usersService.fetchMe(fallingBackTo: callerWithoutID)
+
+        #expect(updated.id == "u1")
+        #expect(updated.displayName == "New Name")
+        #expect(updated.email == "a@example.com")
+        #expect(updated.publicUserId == "U1PUBLIC01")
+        #expect(fetched.id == "u1")
+        #expect(fetched.displayName == "New Name")
+        #expect(fetched.email == "a@example.com")
+        #expect(fetched.publicUserId == "U1PUBLIC01")
+    }
 }
 
 private actor GatedFetchUsersService: UsersService {

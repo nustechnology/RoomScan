@@ -30,8 +30,8 @@ final class ShareViewModel {
     private(set) var toastStyle: ToastStyle = .error
     private(set) var toastMessage: String?
     private(set) var errorMessage: String?
-    private(set) var inviteEmail = ""
-    private(set) var emailValidationMessage: String?
+    private(set) var inviteUserID = ""
+    private(set) var userIDValidationMessage: String?
     private(set) var isSendingInvite = false
     private(set) var isCopyingInvitationLink = false
     private(set) var selectedMember: InvitedMember?
@@ -100,15 +100,15 @@ final class ShareViewModel {
             }
             return
         }
-        emailValidationMessage = nil
-        inviteEmail = ""
+        userIDValidationMessage = nil
+        inviteUserID = ""
         isInviteSheetPresented = true
     }
 
     func closeInviteSheet() {
         isInviteSheetPresented = false
-        inviteEmail = ""
-        emailValidationMessage = nil
+        inviteUserID = ""
+        userIDValidationMessage = nil
     }
 
     func dismissToast() {
@@ -116,32 +116,37 @@ final class ShareViewModel {
         toastStyle = .error
     }
 
-    func updateInviteEmail(_ value: String) {
-        inviteEmail = value
-        emailValidationMessage = nil
+    func updateInviteUserID(_ value: String) {
+        inviteUserID = value
+        userIDValidationMessage = nil
     }
 
     func sendInvite() async {
-        guard canSendInvite, validateInviteEmail() else { return }
+        guard canSendInvite, validateInviteUserID() else { return }
 
         isSendingInvite = true
-        defer { isSendingInvite = false }
-
+        let member: InvitedMember
         do {
-            let member = try await service.sendInvitation(
+            member = try await service.sendInvitation(
                 for: input,
-                email: inviteEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+                publicUserID: inviteUserID.trimmingCharacters(in: .whitespacesAndNewlines)
             )
-            withAnimation(.easeInOut(duration: 0.2)) {
-                members.insert(member, at: 0)
-                viewState = .loaded
-            }
-            toastStyle = .success
-            toastMessage = String(localized: "share.toast.invitationSent")
-            closeInviteSheet()
         } catch {
-            handleActionError(error, duplicateInline: true)
+            isSendingInvite = false
+            handleActionError(error, inviteInline: true)
+            return
         }
+        isSendingInvite = false
+
+        withAnimation(.easeInOut(duration: 0.2)) {
+            members.insert(member, at: 0)
+            viewState = .loaded
+        }
+        toastStyle = .success
+        toastMessage = String(localized: "share.toast.invitationSent")
+        closeInviteSheet()
+
+        await reloadMembersAfterInvite()
     }
 
     func copyInvitationLink() async {
@@ -174,12 +179,12 @@ final class ShareViewModel {
             if let index = self.members.firstIndex(where: {
                 $0.id == member.id || $0.id == updated.id
             }) {
-                self.members[index] = updated
+                self.members[index] = self.members[index].updatedByResend(updated)
             }
             self.toastStyle = .success
             self.toastMessage = String.localizedStringWithFormat(
                 String(localized: "share.toast.invitationResent.format"),
-                member.email
+                member.rowTitle
             )
         }
     }
@@ -239,21 +244,20 @@ final class ShareViewModel {
         }
     }
 
-    private func validateInviteEmail() -> Bool {
-        let trimmedEmail = inviteEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Format is intentionally unvalidated: the backend owns what a public user id
+    /// looks like and rejects malformed values with a validation error.
+    private func validateInviteUserID() -> Bool {
+        let trimmedUserID = inviteUserID.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard !trimmedEmail.isEmpty else {
-            emailValidationMessage = String(localized: "share.validation.email.required")
+        guard !trimmedUserID.isEmpty else {
+            userIDValidationMessage = String(localized: "share.validation.userId.required")
             return false
         }
 
-        guard Self.isValidEmail(trimmedEmail) else {
-            emailValidationMessage = String(localized: "share.validation.email.invalid")
-            return false
-        }
-
-        if members.contains(where: { $0.email.caseInsensitiveCompare(trimmedEmail) == .orderedSame }) {
-            emailValidationMessage = String(localized: "share.validation.email.duplicate")
+        if members.contains(where: {
+            $0.publicUserId?.caseInsensitiveCompare(trimmedUserID) == .orderedSame
+        }) {
+            userIDValidationMessage = String(localized: "share.validation.userId.duplicate")
             return false
         }
 
@@ -278,15 +282,25 @@ final class ShareViewModel {
         }
     }
 
+    /// A failed reload keeps the optimistic row instead of contradicting the "sent" toast.
+    private func reloadMembersAfterInvite() async {
+        guard let snapshot = try? await service.loadInvitedMembers(for: input) else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            members = snapshot.members
+            isOffline = snapshot.isOffline
+            syncViewStateAfterMutation()
+        }
+    }
+
     private func syncViewStateAfterMutation() {
         viewState = members.isEmpty ? .empty : .loaded
     }
 
-    private func handleActionError(_ error: Error, duplicateInline: Bool = false) {
-        if duplicateInline,
+    private func handleActionError(_ error: Error, inviteInline: Bool = false) {
+        if inviteInline,
            let shareError = error as? ShareServiceError,
-           shareError == .duplicateEmail {
-            emailValidationMessage = String(localized: "share.validation.email.duplicate")
+           let message = shareError.inviteValidationMessage {
+            userIDValidationMessage = message
             return
         }
 
@@ -296,10 +310,23 @@ final class ShareViewModel {
         toastStyle = .error
         toastMessage = error.userFacingMessage
     }
+}
 
-    private static func isValidEmail(_ value: String) -> Bool {
-        let pattern = #"^[A-Z0-9a-z._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$"#
-        return value.range(of: pattern, options: .regularExpression) != nil
+private extension ShareServiceError {
+    /// Failures the Owner can fix by editing the User ID, shown inline instead of as a toast.
+    var inviteValidationMessage: String? {
+        switch self {
+        case .duplicateRecipient:
+            return String(localized: "share.validation.userId.duplicate")
+        case .invalidRecipient:
+            return String(localized: "share.validation.userId.invalid")
+        case .recipientNotFound:
+            return String(localized: "share.validation.userId.notFound")
+        case .cannotInviteSelf:
+            return String(localized: "share.validation.userId.self")
+        case .offline, .memberNotFound, .unavailable:
+            return nil
+        }
     }
 }
 
@@ -313,8 +340,6 @@ private extension Error {
         switch self as? ShareServiceError {
         case .offline:
             return String(localized: "share.error.offline")
-        case .duplicateEmail:
-            return String(localized: "share.validation.email.duplicate")
         case .memberNotFound:
             return String(localized: "share.error.memberNotFound")
         default:

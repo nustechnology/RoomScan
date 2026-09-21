@@ -43,6 +43,24 @@ actor AccessTokenRefreshCoordinator {
         try keychainStore.save(latest.withNeedsDisplayNameUpload(false))
     }
 
+    /// Skips the write when the Keychain holds another account or none, e.g. after a
+    /// sign-out or a different sign-in landed while this call was queued.
+    func storePublicUserId(_ publicUserId: String, forUserId userId: String) throws {
+        guard let latest = try keychainStore.getStoredAuthData(),
+              latest.userId == userId,
+              latest.userPublicId != publicUserId
+        else { return }
+        try keychainStore.save(latest.withUserPublicId(publicUserId))
+    }
+
+    /// Sign-out deletes here so it cannot land between this actor's read and save.
+    /// Restore and session invalidation still delete directly: restore runs before any save
+    /// can be pending, and a save racing invalidation can only write back a refresh token the
+    /// server already rejected, which the next restore deletes.
+    func clearStoredSession() throws {
+        try keychainStore.deleteTokens()
+    }
+
     private func executeRefresh() async throws -> StoredAuthData {
         let storedData: StoredAuthData
         do {

@@ -27,8 +27,10 @@ struct RemoteAuthenticationServiceTests {
 
         #expect(session.user.displayName == expectedName)
         #expect(session.user.email == "jane@example.com")
+        #expect(session.user.publicUserId == "JANEDOE123")
         #expect(keychain.stored?.userDisplayName == expectedName)
         #expect(keychain.stored?.userId == "user-1")
+        #expect(keychain.stored?.userPublicId == "JANEDOE123")
         #expect(keychain.stored?.needsDisplayNameUpload == false)
     }
 
@@ -248,6 +250,55 @@ struct RemoteAuthenticationServiceTests {
         #expect(keychain.stored?.userDisplayName == AppleUserDisplayName.formatted(from: appleName))
     }
 
+    @Test func persistAppleSessionTreatsBlankPublicUserIdAsMissing() throws {
+        let (service, keychain) = makeOfflineService(storing: nil)
+
+        let session = try service.persistAppleSession(
+            from: .sample(displayName: "Jane Doe", publicUserId: "  "),
+            appleFullName: nil
+        )
+
+        #expect(session.user.publicUserId == nil)
+        #expect(keychain.stored?.userPublicId == nil)
+    }
+
+    @Test func storePublicUserIdBackfillsKeychainAndKeepsEverythingElse() async throws {
+        let (service, keychain) = makeOfflineService(storing: .sample(needsDisplayNameUpload: true))
+
+        try await service.storePublicUserId("JANEDOE123", forUserId: "user-1")
+
+        #expect(keychain.stored?.userPublicId == "JANEDOE123")
+        #expect(keychain.stored?.accessToken == "access")
+        #expect(keychain.stored?.refreshToken == "refresh")
+        #expect(keychain.stored?.userDisplayName == "Jane Doe")
+        #expect(keychain.stored?.needsDisplayNameUpload == true)
+    }
+
+    @Test func storePublicUserIdDoesNothingWhenSignedOut() async throws {
+        let (service, keychain) = makeOfflineService(storing: nil)
+
+        try await service.storePublicUserId("JANEDOE123", forUserId: "user-1")
+
+        #expect(keychain.stored == nil)
+    }
+
+    @Test func storePublicUserIdSkipsWhenKeychainHoldsAnotherAccount() async throws {
+        let (service, keychain) = makeOfflineService(storing: .sample(userId: "user-2"))
+
+        try await service.storePublicUserId("JANEDOE123", forUserId: "user-1")
+
+        #expect(keychain.stored?.userId == "user-2")
+        #expect(keychain.stored?.userPublicId == nil)
+    }
+
+    @Test func signOutClearsStoredSession() async throws {
+        let (service, keychain) = makeOfflineService(storing: .sample())
+
+        try await service.signOut()
+
+        #expect(keychain.stored == nil)
+    }
+
     @Test func restoreSessionKeepsPersistedDisplayNameAfterRefresh() async throws {
         let keychain = InMemoryKeychainStore()
         keychain.stored = StoredAuthData(
@@ -255,7 +306,8 @@ struct RemoteAuthenticationServiceTests {
             refreshToken: "old-refresh",
             userId: "user-1",
             userEmail: "jane@example.com",
-            userDisplayName: "Jane Doe"
+            userDisplayName: "Jane Doe",
+            userPublicId: "JANEDOE123"
         )
         let client = AuthHTTPClient { _ in
             .success(Data(#"{"accessToken":"new-access","refreshToken":"new-refresh"}"#.utf8))
@@ -270,8 +322,10 @@ struct RemoteAuthenticationServiceTests {
         #expect(session?.user.id == "user-1")
         #expect(session?.user.displayName == "Jane Doe")
         #expect(session?.user.email == "jane@example.com")
+        #expect(session?.user.publicUserId == "JANEDOE123")
         #expect(keychain.stored?.accessToken == "new-access")
         #expect(keychain.stored?.userDisplayName == "Jane Doe")
+        #expect(keychain.stored?.userPublicId == "JANEDOE123")
     }
 
     @Test func storedAuthDataDecodesLegacyPayloadWithoutDisplayName() throws {
@@ -323,6 +377,16 @@ struct RemoteAuthenticationServiceTests {
         #expect(named.user.displayName == "Ada")
         #expect(unnamed.user.displayName == nil)
     }
+
+    /// A service whose Keychain holds `stored` and whose network calls all fail.
+    private func makeOfflineService(
+        storing stored: StoredAuthData?
+    ) -> (service: RemoteAuthenticationService, keychain: InMemoryKeychainStore) {
+        let keychain = InMemoryKeychainStore()
+        keychain.stored = stored
+        let service = RemoteAuthenticationService(httpClient: UnusedHTTPClient(), keychainStore: keychain)
+        return (service, keychain)
+    }
 }
 
 private actor RecordingUsersService: UsersService {
@@ -370,7 +434,7 @@ private actor RecordingUsersService: UsersService {
 }
 
 private extension AuthAPIResponse {
-    static func sample(displayName: String?) -> AuthAPIResponse {
+    static func sample(displayName: String?, publicUserId: String? = "JANEDOE123") -> AuthAPIResponse {
         AuthAPIResponse(
             accessToken: "access",
             refreshToken: "refresh",
@@ -378,8 +442,22 @@ private extension AuthAPIResponse {
                 id: "user-1",
                 email: "jane@example.com",
                 provider: "apple",
-                displayName: displayName
+                displayName: displayName,
+                publicUserId: publicUserId
             )
+        )
+    }
+}
+
+private extension StoredAuthData {
+    static func sample(userId: String = "user-1", needsDisplayNameUpload: Bool = false) -> StoredAuthData {
+        StoredAuthData(
+            accessToken: "access",
+            refreshToken: "refresh",
+            userId: userId,
+            userEmail: "jane@example.com",
+            userDisplayName: "Jane Doe",
+            needsDisplayNameUpload: needsDisplayNameUpload
         )
     }
 }

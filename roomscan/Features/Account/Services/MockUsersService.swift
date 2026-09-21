@@ -20,7 +20,8 @@ actor MockUsersService: UsersService {
         user: AuthenticatedUser = AuthenticatedUser(
             id: "mock-user",
             displayName: "Mock User",
-            email: "mock@example.com"
+            email: "mock@example.com",
+            publicUserId: "MOCKUSER01"
         ),
         scenario: Scenario = .success,
         simulatedDelayNanoseconds: UInt64 = 0
@@ -48,11 +49,13 @@ actor MockUsersService: UsersService {
         if scenario == .fetchFailure {
             throw UsersServiceError.network
         }
+        adoptCallerIfDifferentAccount(currentUser)
         return UserMeAPIResponse(
             id: self.currentUser.id,
             email: self.currentUser.email,
             displayName: self.currentUser.displayName,
-            provider: nil
+            provider: nil,
+            publicUserId: self.currentUser.publicUserId
         ).toAuthenticatedUser(fallingBackTo: currentUser)
     }
 
@@ -79,12 +82,23 @@ actor MockUsersService: UsersService {
             throw UsersServiceError.server
         }
 
+        adoptCallerIfDifferentAccount(currentUser)
         self.currentUser = AuthenticatedUser(
-            id: self.currentUser.id.isEmpty ? currentUser.id : self.currentUser.id,
+            id: self.currentUser.id,
             displayName: trimmed,
-            email: self.currentUser.email ?? currentUser.email
+            email: self.currentUser.email ?? currentUser.email,
+            publicUserId: self.currentUser.publicUserId ?? currentUser.publicUserId
         )
         return self.currentUser
+    }
+
+    /// Like the real `/users/me`, answers for whoever is signed in: a caller signed in as a
+    /// different account than the one held here becomes the account this mock serves.
+    /// A caller without an id identifies no account, so the held one is kept.
+    private func adoptCallerIfDifferentAccount(_ caller: AuthenticatedUser) {
+        if !caller.id.isEmpty, currentUser.id != caller.id {
+            currentUser = caller
+        }
     }
 
     private func simulateDelay() async throws {

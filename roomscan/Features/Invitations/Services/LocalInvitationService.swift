@@ -49,21 +49,19 @@ actor LocalInvitationService: InvitationService {
 
     func fetchInvitation(
         scope: InvitationScope,
-        token: String,
-        currentUserEmail: String?
+        token: String
     ) async throws -> InvitationDetails {
         try await simulateDelay()
-        try throwIfForcedScenario(token: token, currentUserEmail: currentUserEmail)
+        try throwIfForcedScenario(token: token)
         return try details(for: scope, token: token)
     }
 
     func acceptInvitation(
         scope: InvitationScope,
-        token: String,
-        currentUserEmail: String?
+        token: String
     ) async throws -> AcceptedInvitationDestination {
         try await simulateDelay()
-        try throwIfForcedScenario(token: token, currentUserEmail: currentUserEmail)
+        try throwIfForcedScenario(token: token)
         let invitation = try details(for: scope, token: token)
 
         switch scope {
@@ -95,15 +93,14 @@ actor LocalInvitationService: InvitationService {
 
     func declineInvitation(
         scope: InvitationScope,
-        token: String,
-        currentUserEmail: String?
+        token: String
     ) async throws {
         try await simulateDelay()
-        try throwIfForcedScenario(token: token, currentUserEmail: currentUserEmail)
+        try throwIfForcedScenario(token: token)
         declinedTokens.append(token)
     }
 
-    private func throwIfForcedScenario(token: String, currentUserEmail: String?) throws {
+    private func throwIfForcedScenario(token: String) throws {
         switch scenario {
         case .success:
             break
@@ -117,10 +114,10 @@ actor LocalInvitationService: InvitationService {
             throw InvitationServiceError.network
         }
 
-        try throwIfTokenOverride(token: token, currentUserEmail: currentUserEmail)
+        try throwIfTokenOverride(token: token)
     }
 
-    private func throwIfTokenOverride(token: String, currentUserEmail: String?) throws {
+    private func throwIfTokenOverride(token: String) throws {
         if token.hasPrefix("accepted-") {
             throw InvitationServiceError.alreadyAccepted
         }
@@ -133,12 +130,9 @@ actor LocalInvitationService: InvitationService {
         if token.hasPrefix("revoked-") || token.hasPrefix("deleted-") {
             throw InvitationServiceError.unavailable
         }
+        // Stands in for the server's 403 on an invitation bound to another user.
         if token.hasPrefix("mismatch-") {
-            let invitedEmail = "viewer@example.com"
-            let normalizedCurrent = currentUserEmail?.lowercased()
-            if normalizedCurrent != invitedEmail {
-                throw InvitationServiceError.accessDenied
-            }
+            throw InvitationServiceError.accessDenied
         }
     }
 

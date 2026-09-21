@@ -7,7 +7,7 @@ import Foundation
 
 nonisolated protocol ShareService: Sendable {
     func loadInvitedMembers(for input: ShareScreenInput) async throws -> ShareMembersSnapshot
-    func sendInvitation(for input: ShareScreenInput, email: String) async throws -> InvitedMember
+    func sendInvitation(for input: ShareScreenInput, publicUserID: String) async throws -> InvitedMember
     func resendInvitation(for input: ShareScreenInput, id: String) async throws -> InvitedMember
     func revokeInvitation(for input: ShareScreenInput, id: String) async throws
     func revokeAccess(for input: ShareScreenInput, userID: String) async throws
@@ -16,7 +16,10 @@ nonisolated protocol ShareService: Sendable {
 
 nonisolated enum ShareServiceError: Error, Equatable, Sendable {
     case offline
-    case duplicateEmail
+    case duplicateRecipient
+    case invalidRecipient
+    case recipientNotFound
+    case cannotInviteSelf
     case memberNotFound
     case unavailable
 }

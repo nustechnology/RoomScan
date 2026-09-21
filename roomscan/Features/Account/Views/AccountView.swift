@@ -44,6 +44,12 @@ struct AccountView: View {
                     viewModel.openEditNameSheet(currentDisplayName: session.user.displayName)
                 }
 
+                if let publicUserID = session.user.publicUserId {
+                    AccountPublicUserIDRow(publicUserID: publicUserID) {
+                        viewModel.copyPublicUserID(publicUserID)
+                    }
+                }
+
                 if let metrics = viewModel.metrics {
                     if metrics.showsSyncPendingBanner {
                         AccountSyncPendingBanner(pendingCount: metrics.pendingSyncCount)
@@ -86,6 +92,17 @@ struct AccountView: View {
                 .padding(.vertical, AppSpacing.small)
         }
         .background(AppColors.background)
+        .toast(
+            message: Binding(
+                get: { viewModel.toastMessage },
+                set: { if $0 == nil { viewModel.dismissToast() } }
+            ),
+            style: Binding(
+                get: { viewModel.toastStyle },
+                set: { _ in }
+            ),
+            presentationID: viewModel.toastPresentationID
+        )
         .task {
             async let profile: Void = viewModel.loadProfile(currentUser: session.user)
             async let metrics: Void = viewModel.loadMetrics()

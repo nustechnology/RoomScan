@@ -18,6 +18,7 @@ nonisolated struct UserMeAPIResponse: Decodable, Sendable {
     let email: String?
     let displayName: String?
     let provider: String?
+    let publicUserId: String?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -25,6 +26,7 @@ nonisolated struct UserMeAPIResponse: Decodable, Sendable {
         case email
         case displayName
         case provider
+        case publicUserId
         case user
         case data
     }
@@ -33,12 +35,14 @@ nonisolated struct UserMeAPIResponse: Decodable, Sendable {
         id: String? = nil,
         email: String? = nil,
         displayName: String? = nil,
-        provider: String? = nil
+        provider: String? = nil,
+        publicUserId: String? = nil
     ) {
         self.id = id
         self.email = email
         self.displayName = displayName
         self.provider = provider
+        self.publicUserId = publicUserId
     }
 
     init(from decoder: Decoder) throws {
@@ -61,10 +65,12 @@ nonisolated struct UserMeAPIResponse: Decodable, Sendable {
 
     func toAuthenticatedUser(fallingBackTo current: AuthenticatedUser) -> AuthenticatedUser {
         let resolvedID = id?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let resolvedPublicUserId = publicUserId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return AuthenticatedUser(
             id: resolvedID.isEmpty ? current.id : resolvedID,
             displayName: displayName ?? current.displayName,
-            email: email ?? current.email
+            email: email ?? current.email,
+            publicUserId: resolvedPublicUserId.isEmpty ? current.publicUserId : resolvedPublicUserId
         )
     }
 
@@ -76,11 +82,13 @@ nonisolated struct UserMeAPIResponse: Decodable, Sendable {
         let email = try container.decodeIfPresent(String.self, forKey: .email)
         let displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
         let provider = try container.decodeIfPresent(String.self, forKey: .provider)
+        let publicUserId = try container.decodeIfPresent(String.self, forKey: .publicUserId)
         return UserMeAPIResponse(
             id: id,
             email: email,
             displayName: displayName,
-            provider: provider
+            provider: provider,
+            publicUserId: publicUserId
         )
     }
 }

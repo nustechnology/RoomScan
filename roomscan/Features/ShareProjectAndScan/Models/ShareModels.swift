@@ -35,7 +35,10 @@ nonisolated enum ShareMemberAction: String, Equatable, Sendable {
 nonisolated struct InvitedMember: Identifiable, Equatable, Hashable, Sendable {
     let id: String
     let displayName: String?
-    let email: String
+    /// Nil for invitations addressed by public user id; set for members and for
+    /// invitations addressed by email before the switch to user ids.
+    let email: String?
+    let publicUserId: String?
     let initials: String
     let status: InvitationStatus
     let sentAt: Date
@@ -46,15 +49,49 @@ nonisolated struct InvitedMember: Identifiable, Equatable, Hashable, Sendable {
     }
 
     var rowTitle: String {
-        let trimmedName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !trimmedName.isEmpty {
-            return trimmedName
+        Self.nonBlank(displayName)
+            ?? Self.nonBlank(email)
+            ?? Self.nonBlank(publicUserId)
+            ?? Self.anonymousDisplayName
+    }
+
+    /// Resend responses omit the display name, and the recipient is unchanged, so this
+    /// keeps the row's identity and takes only the delivery state from the server.
+    func updatedByResend(_ resent: InvitedMember) -> InvitedMember {
+        InvitedMember(
+            id: resent.id,
+            displayName: displayName ?? resent.displayName,
+            email: email ?? resent.email,
+            publicUserId: publicUserId ?? resent.publicUserId,
+            initials: initials,
+            status: resent.status,
+            sentAt: resent.sentAt,
+            acceptedAt: resent.acceptedAt
+        )
+    }
+
+    /// Nil when there is no id, or when the id is already shown as the row title.
+    var publicUserIdLabel: String? {
+        guard let publicUserId = Self.nonBlank(publicUserId), publicUserId != rowTitle else {
+            return nil
         }
-        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedEmail.isEmpty {
-            return trimmedEmail
+        return String.localizedStringWithFormat(
+            String(localized: "share.member.publicUserId.format"),
+            publicUserId
+        )
+    }
+
+    static func initials(displayName: String?, email: String?, publicUserId: String?) -> String {
+        if let displayName = nonBlank(displayName) {
+            return AccountDisplayName.initials(from: displayName)
         }
-        return Self.anonymousDisplayName
+        if let email = nonBlank(email) {
+            return initials(for: email)
+        }
+        if let publicUserId = nonBlank(publicUserId) {
+            return String(publicUserId.prefix(2)).uppercased()
+        }
+        return "?"
     }
 
     static func initials(for email: String) -> String {
@@ -65,6 +102,16 @@ nonisolated struct InvitedMember: Identifiable, Equatable, Hashable, Sendable {
             .compactMap { $0.first.map { String($0).uppercased() } }
         let result = letters.joined()
         return result.isEmpty ? "?" : result
+    }
+
+    /// The feature's single rule for blank server strings: trimmed, or nil when empty.
+    static func nonBlank(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else {
+            return nil
+        }
+        return trimmed
     }
 
     var subtitle: String {

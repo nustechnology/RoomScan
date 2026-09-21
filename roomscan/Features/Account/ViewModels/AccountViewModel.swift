@@ -15,6 +15,7 @@ final class AccountViewModel {
     private let usersService: any UsersService
     private let scanStorageService: any ScanStorageService
     private let storageMeasuring: any AccountStorageMeasuring
+    private let pasteboard: any AccountPasteboard
     private let onUserUpdated: (AuthenticatedUser) -> Void
 
     private(set) var metrics: AccountMetrics?
@@ -28,6 +29,11 @@ final class AccountViewModel {
     private(set) var editValidationMessage: String?
     private(set) var saveErrorMessage: String?
 
+    private(set) var toastStyle: ToastStyle = .success
+    private(set) var toastMessage: String?
+    /// Bumped per copy so a repeat copy restarts the toast even though its text is unchanged.
+    private(set) var toastPresentationID = 0
+
     private var loadGeneration = 0
     private var profileLoadGeneration = 0
     private var saveGeneration = 0
@@ -40,6 +46,7 @@ final class AccountViewModel {
         usersService: any UsersService = MockUsersService(),
         scanStorageService: any ScanStorageService = LocalScanStorageService(),
         storageMeasuring: any AccountStorageMeasuring = MockAccountStorageMeasuring(),
+        pasteboard: any AccountPasteboard = RealAccountPasteboard(),
         onUserUpdated: @escaping (AuthenticatedUser) -> Void = { _ in }
     ) {
         self.projectsService = projectsService
@@ -48,6 +55,7 @@ final class AccountViewModel {
         self.usersService = usersService
         self.scanStorageService = scanStorageService
         self.storageMeasuring = storageMeasuring
+        self.pasteboard = pasteboard
         self.onUserUpdated = onUserUpdated
     }
 
@@ -183,6 +191,17 @@ final class AccountViewModel {
             isSavingDisplayName = false
             saveErrorMessage = String(localized: "account.editName.error")
         }
+    }
+
+    func copyPublicUserID(_ publicUserID: String) {
+        pasteboard.copy(publicUserID)
+        toastStyle = .success
+        toastMessage = String(localized: "account.toast.publicUserIdCopied")
+        toastPresentationID += 1
+    }
+
+    func dismissToast() {
+        toastMessage = nil
     }
 
     func requestSignOut() {

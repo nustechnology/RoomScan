@@ -20,6 +20,14 @@ struct MemberRow: View {
                         .foregroundStyle(AppColors.primaryText)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
+                    if let publicUserIdLabel = member.publicUserIdLabel {
+                        Text(publicUserIdLabel)
+                            .appTypography(AppTypography.bodySmall)
+                            .foregroundStyle(AppColors.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityIdentifier("share.member.publicUserId")
+                    }
+
                     Text(member.subtitle)
                         .appTypography(AppTypography.bodySmall)
                         .foregroundStyle(AppColors.secondaryText)

@@ -48,18 +48,18 @@ actor RemoteShareService: ShareService {
         }
     }
 
-    func sendInvitation(for input: ShareScreenInput, email: String) async throws -> InvitedMember {
-        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+    func sendInvitation(for input: ShareScreenInput, publicUserID: String) async throws -> InvitedMember {
+        let normalizedUserID = publicUserID.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let existingMembers = membersByInputID[input.id, default: []]
         if existingMembers.contains(where: {
-            $0.email.caseInsensitiveCompare(normalizedEmail) == .orderedSame
+            $0.publicUserId?.caseInsensitiveCompare(normalizedUserID) == .orderedSame
         }) {
-            throw ShareServiceError.duplicateEmail
+            throw ShareServiceError.duplicateRecipient
         }
 
         let requestBody = CreateProjectInvitationAPIRequest(
-            recipientEmail: normalizedEmail,
+            recipientPublicUserId: normalizedUserID,
             expiresInSeconds: invitationLifetimeSeconds
         )
         let body: Data
@@ -204,17 +204,31 @@ actor RemoteShareService: ShareService {
             if forLoad {
                 return .unavailable
             }
+            if let recipientError = recipientError(for: apiError) {
+                return recipientError
+            }
             switch statusCode {
             case 400, 409:
-                if isDuplicateInvitation(apiError) {
-                    return .duplicateEmail
-                }
-                return .unavailable
+                return isDuplicateInvitation(apiError) ? .duplicateRecipient : .unavailable
             case 404:
                 return .memberNotFound
             default:
                 return .unavailable
             }
+        }
+    }
+
+    /// Each of these codes has a single documented status, so the code alone identifies it.
+    private func recipientError(for apiError: APIErrorResponse?) -> ShareServiceError? {
+        switch apiError?.error.code.uppercased() {
+        case "VALIDATION_ERROR":
+            return .invalidRecipient
+        case "RECIPIENT_USER_NOT_FOUND":
+            return .recipientNotFound
+        case "CANNOT_INVITE_SELF":
+            return .cannotInviteSelf
+        default:
+            return nil
         }
     }
 

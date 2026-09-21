@@ -16,17 +16,20 @@ struct RemoteShareServiceTests {
             #expect(endpoint.method == .post)
             #expect(UUID(uuidString: endpoint.headers["Idempotency-Key"] ?? "") != nil)
             let object = try JSONSerialization.jsonObject(with: endpoint.body ?? Data()) as? [String: Any]
-            #expect(object?["recipientEmail"] as? String == "user@example.com")
+            #expect(object?["recipientPublicUserId"] as? String == "USERID1234")
+            #expect(object?["recipientEmail"] == nil)
             #expect((object?["expiresInSeconds"] as? NSNumber)?.intValue == 60)
             return .success(Self.invitationJSON())
         }
         let service = RemoteShareService(httpClient: client, invitationLifetimeSeconds: 60)
         let input = ShareScreenInput.project(id: "project-1", name: "Lakeside Remodel")
 
-        let member = try await service.sendInvitation(for: input, email: "user@example.com")
+        let member = try await service.sendInvitation(for: input, publicUserID: " USERID1234 ")
 
         #expect(member.id == "3fa85f64-5717-4562-b3fc-2c963f66afa6")
-        #expect(member.email == "user@example.com")
+        #expect(member.publicUserId == "USERID1234")
+        #expect(member.email == nil)
+        #expect(member.rowTitle == "USERID1234")
         #expect(member.status == .pending)
         #expect(await recorder.requests.count == 1)
     }
@@ -44,18 +47,49 @@ struct RemoteShareServiceTests {
 
         let snapshot = try await service.loadInvitedMembers(for: input)
 
-        #expect(snapshot.members.count == 2)
-        #expect(snapshot.members[0].id == "3fa85f64-5717-4562-b3fc-2c963f66afa6")
-        #expect(snapshot.members[0].email == "pending@example.com")
-        #expect(snapshot.members[0].status == .pending)
-        #expect(snapshot.members[1].id == "viewer-user-1")
-        #expect(snapshot.members[1].email == "viewer@example.com")
-        #expect(snapshot.members[1].displayName == "Viewer One")
-        #expect(snapshot.members[1].rowTitle == "Viewer One")
-        #expect(snapshot.members[1].initials == "V")
-        #expect(snapshot.members[1].status == .accepted)
-        #expect(snapshot.members[1].acceptedAt != nil)
+        #expect(snapshot.members.count == 3)
+
+        let legacyEmailInvite = snapshot.members[0]
+        #expect(legacyEmailInvite.id == "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+        #expect(legacyEmailInvite.email == "pending@example.com")
+        #expect(legacyEmailInvite.publicUserId == nil)
+        #expect(legacyEmailInvite.rowTitle == "pending@example.com")
+        #expect(legacyEmailInvite.initials == "P")
+        #expect(legacyEmailInvite.publicUserIdLabel == nil)
+        #expect(legacyEmailInvite.status == .pending)
+
+        let userIDInvite = snapshot.members[1]
+        #expect(userIDInvite.email == nil)
+        #expect(userIDInvite.publicUserId == "MORGAN1234")
+        #expect(userIDInvite.rowTitle == "Morgan Lee")
+        #expect(userIDInvite.initials == "ML")
+        #expect(userIDInvite.publicUserIdLabel != nil)
+        #expect(userIDInvite.status == .pending)
+
+        let viewer = snapshot.members[2]
+        #expect(viewer.id == "viewer-user-1")
+        #expect(viewer.email == "viewer@example.com")
+        #expect(viewer.publicUserId == "VIEWER0001")
+        #expect(viewer.displayName == "Viewer One")
+        #expect(viewer.rowTitle == "Viewer One")
+        #expect(viewer.initials == "VO")
+        #expect(viewer.status == .accepted)
+        #expect(viewer.acceptedAt != nil)
         #expect(await recorder.requests.count == 1)
+    }
+
+    @Test func loadInvitedMembers_showsPublicUserIDAsTitleWhenNothingElseIsKnown() async throws {
+        let client = FakeShareHTTPClient { _ in
+            .success(Self.sharesJSONWithBareUserIDInvite())
+        }
+        let service = RemoteShareService(httpClient: client)
+        let input = ShareScreenInput.project(id: "project-1", name: "Project")
+
+        let member = try #require(try await service.loadInvitedMembers(for: input).members.first)
+
+        #expect(member.rowTitle == "MORGAN1234")
+        #expect(member.initials == "MO")
+        #expect(member.publicUserIdLabel == nil)
     }
 
     @Test func loadInvitedMembers_fallsBackToDisplayNameThenAnonymous() async throws {
@@ -68,11 +102,11 @@ struct RemoteShareServiceTests {
         let snapshot = try await service.loadInvitedMembers(for: input)
 
         #expect(snapshot.members.count == 2)
-        #expect(snapshot.members[0].email.isEmpty)
+        #expect(snapshot.members[0].email == nil)
         #expect(snapshot.members[0].displayName == "BBBBBBB")
         #expect(snapshot.members[0].rowTitle == "BBBBBBB")
         #expect(snapshot.members[0].initials == "BB")
-        #expect(snapshot.members[1].email.isEmpty)
+        #expect(snapshot.members[1].email == nil)
         #expect(snapshot.members[1].displayName == nil)
         #expect(snapshot.members[1].rowTitle == "Anonymous")
         #expect(snapshot.members[1].initials == "?")
@@ -123,7 +157,7 @@ struct RemoteShareServiceTests {
             syncStatus: .synced
         )
 
-        _ = try await service.sendInvitation(for: input, email: "user@example.com")
+        _ = try await service.sendInvitation(for: input, publicUserID: "USERID1234")
 
         let requests = await recorder.requests
         #expect(requests.first?.path == "/api/v1/scans/scan-1/invitations")
@@ -190,9 +224,56 @@ struct RemoteShareServiceTests {
         let service = RemoteShareService(httpClient: client)
         let input = ShareScreenInput.project(id: "project-1", name: "Project")
 
-        await #expect(throws: ShareServiceError.duplicateEmail) {
-            try await service.sendInvitation(for: input, email: "user@example.com")
+        await #expect(throws: ShareServiceError.duplicateRecipient) {
+            try await service.sendInvitation(for: input, publicUserID: "USERID1234")
         }
+    }
+
+    @Test(arguments: [
+        (400, "VALIDATION_ERROR", ShareServiceError.invalidRecipient),
+        (404, "RECIPIENT_USER_NOT_FOUND", ShareServiceError.recipientNotFound),
+        (409, "CANNOT_INVITE_SELF", ShareServiceError.cannotInviteSelf)
+    ])
+    func sendInvitation_mapsRecipientServerErrors(statusCode: Int, code: String, expected: ShareServiceError) async {
+        let client = FakeShareHTTPClient { _ in
+            .failure(
+                .serverError(
+                    statusCode: statusCode,
+                    apiError: APIErrorResponse(
+                        error: APIErrorBody(code: code, message: "Rejected", details: nil),
+                        requestId: "req-1"
+                    )
+                )
+            )
+        }
+        let service = RemoteShareService(httpClient: client)
+        let input = ShareScreenInput.scan(
+            projectID: "project-1",
+            projectName: "Project",
+            scanID: "scan-1",
+            scanName: "Living Room",
+            syncStatus: .synced
+        )
+
+        await #expect(throws: expected) {
+            try await service.sendInvitation(for: input, publicUserID: "USERID1234")
+        }
+    }
+
+    @Test func sendInvitation_rejectsAlreadyListedUserIDWithoutRequest() async throws {
+        let recorder = ShareHTTPRecorder()
+        let client = FakeShareHTTPClient { endpoint in
+            await recorder.record(endpoint)
+            return .success(Self.sharesJSON())
+        }
+        let service = RemoteShareService(httpClient: client)
+        let input = ShareScreenInput.project(id: "project-1", name: "Project")
+        _ = try await service.loadInvitedMembers(for: input)
+
+        await #expect(throws: ShareServiceError.duplicateRecipient) {
+            try await service.sendInvitation(for: input, publicUserID: "morgan1234")
+        }
+        #expect(await recorder.requests.count == 1)
     }
 
     @Test func sendInvitation_mapsNetworkErrorToOffline() async {
@@ -201,7 +282,7 @@ struct RemoteShareServiceTests {
         let input = ShareScreenInput.project(id: "project-1", name: "Project")
 
         await #expect(throws: ShareServiceError.offline) {
-            try await service.sendInvitation(for: input, email: "user@example.com")
+            try await service.sendInvitation(for: input, publicUserID: "USERID1234")
         }
     }
 
@@ -377,7 +458,8 @@ struct RemoteShareServiceTests {
             {
               "invitationId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
               "invitationUrl": "https://example.com/",
-              "recipientEmail": "user@example.com",
+              "recipientEmail": null,
+              "recipientPublicUserId": "USERID1234",
               "expiresAt": "2026-08-14T09:23:11.425Z",
               "status": "PENDING",
               "sentAt": "2026-08-14T09:23:11.425Z"
@@ -420,9 +502,19 @@ struct RemoteShareServiceTests {
                 {
                   "invitationId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
                   "recipientEmail": "pending@example.com",
+                  "recipientPublicUserId": null,
                   "status": "PENDING",
                   "sentAt": "2026-08-14T10:05:13.883Z",
                   "expiresAt": "2026-08-14T10:05:13.883Z"
+                },
+                {
+                  "invitationId": "8c1f2e36-9d4b-4f0a-b1e2-5a6c7d8e9f01",
+                  "recipientEmail": null,
+                  "recipientPublicUserId": "MORGAN1234",
+                  "recipientDisplayName": "Morgan Lee",
+                  "status": "PENDING",
+                  "sentAt": "2026-08-15T10:05:13.883Z",
+                  "expiresAt": "2026-08-22T10:05:13.883Z"
                 }
               ],
               "viewers": [
@@ -431,11 +523,33 @@ struct RemoteShareServiceTests {
                   "recipientUser": {
                     "id": "viewer-user-1",
                     "email": "viewer@example.com",
-                    "displayName": "Viewer One"
+                    "displayName": "Viewer One",
+                    "publicUserId": "VIEWER0001"
                   },
                   "grantedAt": "2026-08-14T10:05:13.883Z"
                 }
               ]
+            }
+            """.utf8
+        )
+    }
+
+    private static func sharesJSONWithBareUserIDInvite() -> Data {
+        Data(
+            """
+            {
+              "pendingInvitations": [
+                {
+                  "invitationId": "8c1f2e36-9d4b-4f0a-b1e2-5a6c7d8e9f01",
+                  "recipientEmail": null,
+                  "recipientPublicUserId": "MORGAN1234",
+                  "recipientDisplayName": null,
+                  "status": "PENDING",
+                  "sentAt": "2026-08-15T10:05:13.883Z",
+                  "expiresAt": "2026-08-22T10:05:13.883Z"
+                }
+              ],
+              "viewers": []
             }
             """.utf8
         )

@@ -74,6 +74,92 @@ struct AppStateTests {
         #expect(appState.phase == .authenticated(.mockAppleUser))
     }
 
+    @Test func updateSignedInUserPersistsNewPublicUserIdForRestore() async {
+        let legacySession = AuthenticationSession(
+            user: AuthenticatedUser(id: "u1", displayName: "Jane", email: "jane@example.com"),
+            provider: .apple
+        )
+        let service = MockAuthenticationService(
+            configuration: .init(
+                initialSession: legacySession,
+                signInOutcome: .success,
+                restoreFails: false,
+                simulatedDelayNanoseconds: 0
+            )
+        )
+        let appState = AppState(authenticationService: service)
+        await appState.restoreSession()
+
+        await appState.updateSignedInUser(
+            AuthenticatedUser(id: "u1", displayName: "Jane", email: "jane@example.com", publicUserId: "JANE123456")
+        )
+
+        let restored = try? await service.restoreSession()
+        #expect(appState.currentSession?.user.publicUserId == "JANE123456")
+        #expect(appState.currentSession?.provider == .apple)
+        #expect(restored?.user.publicUserId == "JANE123456")
+    }
+
+    @Test func updateSignedInUserDoesNotSignBackInAfterSignOut() async {
+        let service = MockAuthenticationService(
+            configuration: .init(
+                initialSession: nil,
+                signInOutcome: .success,
+                restoreFails: false,
+                simulatedDelayNanoseconds: 0
+            )
+        )
+        let appState = AppState(authenticationService: service)
+        await appState.restoreSession()
+
+        await appState.updateSignedInUser(AuthenticationSession.mockAppleUser.user)
+
+        #expect(appState.phase == .signedOut)
+    }
+
+    @Test func updateSignedInUserIgnoresProfileFromAnotherAccount() async {
+        let service = MockAuthenticationService(
+            configuration: .init(
+                initialSession: .mockAppleUser,
+                signInOutcome: .success,
+                restoreFails: false,
+                simulatedDelayNanoseconds: 0
+            )
+        )
+        let appState = AppState(authenticationService: service)
+        await appState.restoreSession()
+
+        await appState.updateSignedInUser(
+            AuthenticatedUser(id: "previous-account", displayName: "Previous", email: nil, publicUserId: "PREV123456")
+        )
+
+        let restored = try? await service.restoreSession()
+        #expect(appState.currentSession == .mockAppleUser)
+        #expect(restored?.user.publicUserId == AuthenticationSession.mockAppleUser.user.publicUserId)
+    }
+
+    @Test func mockRenameAppliesToAnyMockSignedInAccount() async throws {
+        let googleSession = AuthenticationSession.mock(for: .google)
+        let service = MockAuthenticationService(
+            configuration: .init(
+                initialSession: googleSession,
+                signInOutcome: .success,
+                restoreFails: false,
+                simulatedDelayNanoseconds: 0
+            )
+        )
+        let appState = AppState(authenticationService: service)
+        await appState.restoreSession()
+        let usersService = MockUsersService(user: AuthenticationSession.mockAppleUser.user)
+
+        let renamed = try await usersService.updateMe(displayName: "Renamed", fallingBackTo: googleSession.user)
+        await appState.updateSignedInUser(renamed)
+
+        #expect(appState.currentSession?.user.id == googleSession.user.id)
+        #expect(appState.currentSession?.user.displayName == "Renamed")
+        #expect(appState.currentSession?.user.publicUserId == googleSession.user.publicUserId)
+    }
+
     @Test func signOutReturnsToSignedOut() async {
         let service = MockAuthenticationService(
             configuration: .init(

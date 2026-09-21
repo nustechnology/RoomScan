@@ -137,6 +137,20 @@ final class MockAuthenticationService: AuthenticationService {
         session = nil
     }
 
+    func storePublicUserId(_ publicUserId: String, forUserId userId: String) async throws {
+        guard let session, session.user.id == userId else { return }
+        let user = session.user
+        self.session = AuthenticationSession(
+            user: AuthenticatedUser(
+                id: user.id,
+                displayName: user.displayName,
+                email: user.email,
+                publicUserId: publicUserId
+            ),
+            provider: session.provider
+        )
+    }
+
     private func simulateDelay() async throws {
         let delay = configuration.simulatedDelayNanoseconds
         guard delay > 0 else { return }
@@ -158,7 +172,8 @@ extension AuthenticationSession {
         user: AuthenticatedUser(
             id: "mock-user-apple",
             displayName: "Mock Apple User",
-            email: "mock.user@example.com"
+            email: "mock.user@example.com",
+            publicUserId: "APPLEUSER1"
         ),
         provider: .apple
     )
@@ -172,7 +187,8 @@ extension AuthenticationSession {
                 user: AuthenticatedUser(
                     id: "mock-user-google",
                     displayName: "Mock Google User",
-                    email: "mock.google@example.com"
+                    email: "mock.google@example.com",
+                    publicUserId: "GOOGLEUSR1"
                 ),
                 provider: .google
             )
@@ -181,7 +197,8 @@ extension AuthenticationSession {
                 user: AuthenticatedUser(
                     id: "mock-user-facebook",
                     displayName: "Mock Facebook User",
-                    email: "mock.facebook@example.com"
+                    email: "mock.facebook@example.com",
+                    publicUserId: "FACEBKUSR1"
                 ),
                 provider: .facebook
             )

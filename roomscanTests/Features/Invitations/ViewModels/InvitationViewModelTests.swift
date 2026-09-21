@@ -13,8 +13,7 @@ struct InvitationViewModelTests {
         let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
         let viewModel = InvitationViewModel(
             pendingInvitation: PendingInvitation(scope: .project, token: "valid-project"),
-            service: service,
-            currentUserEmail: "anyone@example.com"
+            service: service
         )
 
         await viewModel.loadInvitation()
@@ -29,8 +28,7 @@ struct InvitationViewModelTests {
         let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
         let viewModel = InvitationViewModel(
             pendingInvitation: PendingInvitation(scope: .scan, token: "valid-scan"),
-            service: service,
-            currentUserEmail: "anyone@example.com"
+            service: service
         )
 
         await viewModel.loadInvitation()
@@ -43,8 +41,7 @@ struct InvitationViewModelTests {
     @Test func openExistingAccessNavigatesWithoutAcceptingInvitation() async {
         let viewModel = InvitationViewModel(
             pendingInvitation: PendingInvitation(scope: .project, token: "existing-access"),
-            service: ExistingAccessInvitationService(),
-            currentUserEmail: "viewer@example.com"
+            service: ExistingAccessInvitationService()
         )
 
         await viewModel.loadInvitation()
@@ -64,8 +61,7 @@ struct InvitationViewModelTests {
         let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
         let viewModel = InvitationViewModel(
             pendingInvitation: PendingInvitation(scope: .project, token: "expired-project"),
-            service: service,
-            currentUserEmail: nil
+            service: service
         )
 
         await viewModel.loadInvitation()
@@ -78,8 +74,7 @@ struct InvitationViewModelTests {
         let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
         let viewModel = InvitationViewModel(
             pendingInvitation: PendingInvitation(scope: .project, token: "accepted-project"),
-            service: service,
-            currentUserEmail: nil
+            service: service
         )
 
         await viewModel.loadInvitation()
@@ -92,8 +87,7 @@ struct InvitationViewModelTests {
         let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
         let viewModel = InvitationViewModel(
             pendingInvitation: PendingInvitation(scope: .project, token: "declined-project"),
-            service: service,
-            currentUserEmail: nil
+            service: service
         )
 
         await viewModel.loadInvitation()
@@ -106,8 +100,7 @@ struct InvitationViewModelTests {
         let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
         let viewModel = InvitationViewModel(
             pendingInvitation: PendingInvitation(scope: .scan, token: "revoked-scan"),
-            service: service,
-            currentUserEmail: nil
+            service: service
         )
 
         await viewModel.loadInvitation()
@@ -115,12 +108,11 @@ struct InvitationViewModelTests {
         #expect(viewModel.blockingAlert == .unavailable)
     }
 
-    @Test func mismatchedAccountSurfacesAccessDenied() async {
+    @Test func invitationForAnotherUserSurfacesAccessDenied() async {
         let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
         let viewModel = InvitationViewModel(
             pendingInvitation: PendingInvitation(scope: .project, token: "mismatch-project"),
-            service: service,
-            currentUserEmail: "other@example.com"
+            service: service
         )
 
         await viewModel.loadInvitation()
@@ -132,8 +124,7 @@ struct InvitationViewModelTests {
         let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
         let viewModel = InvitationViewModel(
             pendingInvitation: PendingInvitation(scope: .project, token: "valid-project"),
-            service: service,
-            currentUserEmail: nil
+            service: service
         )
 
         await viewModel.loadInvitation()
@@ -157,8 +148,7 @@ struct InvitationViewModelTests {
         let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
         let viewModel = InvitationViewModel(
             pendingInvitation: PendingInvitation(scope: .scan, token: "valid-scan"),
-            service: service,
-            currentUserEmail: nil
+            service: service
         )
 
         await viewModel.loadInvitation()
@@ -183,8 +173,7 @@ struct InvitationViewModelTests {
         let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
         let viewModel = InvitationViewModel(
             pendingInvitation: PendingInvitation(scope: .project, token: "share-link-project"),
-            service: service,
-            currentUserEmail: nil
+            service: service
         )
 
         await viewModel.loadInvitation()
@@ -206,8 +195,7 @@ struct InvitationViewModelTests {
         let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
         let viewModel = InvitationViewModel(
             pendingInvitation: PendingInvitation(scope: .project, token: "valid-project"),
-            service: service,
-            currentUserEmail: nil
+            service: service
         )
 
         await viewModel.loadInvitation()
@@ -230,8 +218,7 @@ struct InvitationViewModelTests {
         let service = LocalInvitationService(simulatedDelayNanoseconds: 0)
         let viewModel = InvitationViewModel(
             pendingInvitation: PendingInvitation(scope: .project, token: "expired-project"),
-            service: service,
-            currentUserEmail: nil
+            service: service
         )
 
         await viewModel.loadInvitation()
@@ -254,8 +241,7 @@ struct InvitationViewModelTests {
         )
         let viewModel = InvitationViewModel(
             pendingInvitation: PendingInvitation(scope: .project, token: "valid-project"),
-            service: service,
-            currentUserEmail: nil
+            service: service
         )
 
         await viewModel.accept()
@@ -274,8 +260,7 @@ struct InvitationViewModelTests {
         )
         let viewModel = InvitationViewModel(
             pendingInvitation: PendingInvitation(scope: .scan, token: "valid-scan"),
-            service: service,
-            currentUserEmail: nil
+            service: service
         )
 
         await viewModel.confirmDecline()
@@ -291,8 +276,7 @@ struct InvitationViewModelTests {
         let service = OneTimeFailingInvitationService()
         let viewModel = InvitationViewModel(
             pendingInvitation: PendingInvitation(scope: .scan, token: "valid-scan"),
-            service: service,
-            currentUserEmail: nil
+            service: service
         )
 
         await viewModel.accept()
@@ -576,8 +560,7 @@ struct AcceptedInvitationCollectionTests {
 private actor ExistingAccessInvitationService: InvitationService {
     func fetchInvitation(
         scope _: InvitationScope,
-        token: String,
-        currentUserEmail _: String?
+        token: String
     ) async throws -> InvitationDetails {
         let project = ProjectSummary(
             id: "existing-project",
@@ -603,16 +586,14 @@ private actor ExistingAccessInvitationService: InvitationService {
 
     func acceptInvitation(
         scope _: InvitationScope,
-        token _: String,
-        currentUserEmail _: String?
+        token _: String
     ) async throws -> AcceptedInvitationDestination {
         throw InvitationServiceError.unavailable
     }
 
     func declineInvitation(
         scope _: InvitationScope,
-        token _: String,
-        currentUserEmail _: String?
+        token _: String
     ) async throws {}
 }
 
@@ -621,16 +602,14 @@ private actor OneTimeFailingInvitationService: InvitationService {
 
     func fetchInvitation(
         scope: InvitationScope,
-        token: String,
-        currentUserEmail: String?
+        token: String
     ) async throws -> InvitationDetails {
         throw InvitationServiceError.notFound
     }
 
     func acceptInvitation(
         scope: InvitationScope,
-        token: String,
-        currentUserEmail: String?
+        token: String
     ) async throws -> AcceptedInvitationDestination {
         if shouldFailAccept {
             shouldFailAccept = false
@@ -663,7 +642,6 @@ private actor OneTimeFailingInvitationService: InvitationService {
 
     func declineInvitation(
         scope: InvitationScope,
-        token: String,
-        currentUserEmail: String?
+        token: String
     ) async throws {}
 }
