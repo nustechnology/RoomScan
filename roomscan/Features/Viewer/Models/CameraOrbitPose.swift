@@ -6,6 +6,33 @@
 import Foundation
 import simd
 
+/// Shared by focus and gestures so a focused pose remains valid on the next drag/zoom.
+nonisolated enum CameraOrbitLimits {
+    static let minDistance: Float = 2.5
+    static let maxDistance: Float = 14
+    static let maxPitch: Float = (.pi / 2) - 0.06
+    static let minPitch = -maxPitch
+    /// Gesture orbit starts above the target plane unless focus already placed the
+    /// camera below it with a clearance-checked pose.
+    static let minGesturePitch: Float = 0.08
+
+    static func clampedDistance(_ value: Float) -> Float {
+        max(minDistance, min(maxDistance, value))
+    }
+
+    static func clampedPitch(_ value: Float) -> Float {
+        max(minPitch, min(maxPitch, value))
+    }
+
+    static func gestureMinimumPitch(startingAt pitch: Float) -> Float {
+        min(minGesturePitch, pitch)
+    }
+
+    static func clampedGesturePitch(_ value: Float, minimumPitch: Float) -> Float {
+        max(minimumPitch, min(maxPitch, value))
+    }
+}
+
 /// Orbit-camera state used by the room viewer. Keeping this free of RealityKit
 /// lets unit tests cover lerp and interrupt policy without an `ARView`.
 nonisolated struct CameraOrbitPose: Equatable, Sendable {
