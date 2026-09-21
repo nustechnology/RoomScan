@@ -259,7 +259,11 @@ struct SharedWithMeViewModelTests {
         #expect(viewModel.toastMessage == nil)
     }
 
-    @Test func fetchReleaseGateReleaseBeforeOperationWaitsDoesNotHang() async {
+    // Bounded so a regression to edge-triggered semantics reports a normal test
+    // failure instead of stalling the run indefinitely (Swift Testing's time limit
+    // trait only accepts minute granularity, hence the coarse bound).
+    @Test(.timeLimit(.minutes(1)))
+    func fetchReleaseGateReleaseBeforeOperationWaitsDoesNotHang() async {
         let fetchGate = FetchReleaseGate()
 
         // Simulates release() winning the race to the `released` signal before the
