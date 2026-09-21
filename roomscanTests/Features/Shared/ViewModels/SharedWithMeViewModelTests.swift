@@ -259,6 +259,16 @@ struct SharedWithMeViewModelTests {
         #expect(viewModel.toastMessage == nil)
     }
 
+    @Test func fetchReleaseGateReleaseBeforeOperationWaitsDoesNotHang() async {
+        let fetchGate = FetchReleaseGate()
+
+        // Simulates release() winning the race to the `released` signal before the
+        // fetch operation calls markStartedAndWaitForRelease(). If the underlying
+        // OperationStartSignal were edge-triggered, this would hang forever.
+        await fetchGate.release()
+        await fetchGate.markStartedAndWaitForRelease()
+    }
+
     @Test func failedAcceptedProjectIngestAppearsAfterSuccessfulRefresh() async {
         let project = ProjectSummary(
             id: "accepted-project",
@@ -337,6 +347,11 @@ struct SharedWithMeViewModelTests {
     }
 }
 
+/// Level-triggered: once `markStarted()` has run, every subsequent (and in-flight)
+/// `waitUntilStarted()` call resumes immediately instead of waiting for a fresh signal.
+/// This makes the signal safe to fire before a waiter has registered, which matters
+/// because `FetchReleaseGate.release()` can legitimately race ahead of the operation's
+/// own call into `markStartedAndWaitForRelease()`.
 private actor OperationStartSignal {
     private var hasStarted = false
     private var continuations: [CheckedContinuation<Void, Never>] = []
