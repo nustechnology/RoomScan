@@ -29,4 +29,4 @@ xcodebuild test \
   -only-testing:roomscanTests \
   -derivedDataPath .derivedData \
   CODE_SIGNING_ALLOWED=NO \
-  -parallel-testing-enabled NO \
+  -parallel-testing-enabled NO

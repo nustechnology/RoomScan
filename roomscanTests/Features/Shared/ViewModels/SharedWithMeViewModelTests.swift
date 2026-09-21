@@ -214,11 +214,40 @@ struct SharedWithMeViewModelTests {
         #expect(viewModel.toastMessage == nil)
     }
 
-    @Test func cancelledInitialLoadResetsToIdleAndRetriesOnReappear() async {
+    /// The operation itself can throw `CancellationError` without the consumer's own
+    /// task ever being cancelled — e.g. `URLSession` invalidating an in-flight request
+    /// when the OS suspends the app. That is a real failure, not a view teardown, so it
+    /// must keep the retry affordance rather than silently resetting to `.idle` (which
+    /// has no retry button and nothing to re-trigger the load).
+    @Test func operationCancellationWithoutConsumerCancellationShowsFailedState() async {
         let service = MockSharedService(scenario: .cancelled, simulatedDelayNanoseconds: 0)
         let viewModel = SharedWithMeViewModel(service: service)
 
         await viewModel.loadInitialContent()
+
+        #expect(viewModel.projectsViewState == .failed)
+        #expect(viewModel.scansViewState == .failed)
+        #expect(viewModel.projects.isEmpty)
+        #expect(viewModel.scans.isEmpty)
+        #expect(viewModel.toastMessage == nil)
+    }
+
+    @Test func cancelledConsumerResetsToIdleAndRetriesOnReappear() async {
+        let fetchGate = FetchReleaseGate()
+        let service = MockSharedService(scenario: .cancelled, simulatedDelayNanoseconds: 0)
+        await service.setBeforeFetch {
+            await fetchGate.markStartedAndWaitForRelease()
+        }
+        let viewModel = SharedWithMeViewModel(service: service)
+
+        let loadTask = Task {
+            await viewModel.loadInitialContent()
+        }
+
+        await fetchGate.waitUntilStarted()
+        loadTask.cancel()
+        await fetchGate.release()
+        await loadTask.value
 
         #expect(viewModel.projectsViewState == .idle)
         #expect(viewModel.scansViewState == .idle)
@@ -226,6 +255,7 @@ struct SharedWithMeViewModelTests {
         #expect(viewModel.scans.isEmpty)
         #expect(viewModel.toastMessage == nil)
 
+        await service.setBeforeFetch(nil)
         await service.setScenario(.success)
         await viewModel.loadInitialContent()
 

@@ -195,20 +195,14 @@ final class SharedWithMeViewModel {
 
     /// Keeps a fetch alive if SwiftUI cancels the view `.task` while awaiting.
     ///
-    /// Uses a continuation instead of `Task.value` so a cancelled consumer still
-    /// receives the unstructured request’s result once it finishes.
+    /// The operation runs in its own unstructured `Task`, which does not inherit the
+    /// caller's cancellation. Awaiting its `.value` does not propagate the caller's
+    /// cancellation into that task either, so a cancelled consumer still receives the
+    /// result once the fetch finishes.
     private func fetchKeepingAlive<T: Sendable>(
         _ operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        try await withCheckedThrowingContinuation { continuation in
-            Task {
-                do {
-                    continuation.resume(returning: try await operation())
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
+        try await Task { try await operation() }.value
     }
 
     private func handleListLoadError(
@@ -216,7 +210,13 @@ final class SharedWithMeViewModel {
         isEmpty: Bool,
         updateViewState: (ViewState) -> Void
     ) {
-        if error is CancellationError {
+        // fetchKeepingAlive shields the fetch from the consumer's own cancellation, so
+        // Task.isCancelled here means the view's `.task` was cancelled (e.g. teardown) —
+        // not just that the underlying request happened to fail with CancellationError
+        // (e.g. URLSession invalidating in-flight requests on background suspension).
+        // Only the former is safe to reset to `.idle`; the latter is a real failure and
+        // should keep the retry affordance.
+        if error is CancellationError, Task.isCancelled {
             // Reset so load*IfNeeded can retry when the Shared tab reappears.
             if isEmpty {
                 updateViewState(.idle)
