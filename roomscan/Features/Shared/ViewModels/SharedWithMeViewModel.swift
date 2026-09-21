@@ -163,17 +163,15 @@ final class SharedWithMeViewModel {
         projectsViewState = projects.isEmpty ? .loading : projectsViewState
 
         do {
-            let fetched = try await service.fetchSharedProjects()
+            let fetched = try await fetchKeepingAlive { [service] in
+                try await service.fetchSharedProjects()
+            }
             guard generation == projectsRequestGeneration else { return }
             projects = fetched
             projectsViewState = fetched.isEmpty ? .empty : .loaded
         } catch {
             guard generation == projectsRequestGeneration else { return }
-            if projects.isEmpty {
-                projectsViewState = .failed
-            } else {
-                toastMessage = String(localized: "shared.action.error")
-            }
+            handleListLoadError(error, isEmpty: projects.isEmpty) { projectsViewState = $0 }
         }
     }
 
@@ -183,17 +181,53 @@ final class SharedWithMeViewModel {
         scansViewState = scans.isEmpty ? .loading : scansViewState
 
         do {
-            let fetched = try await service.fetchSharedScans()
+            let fetched = try await fetchKeepingAlive { [service] in
+                try await service.fetchSharedScans()
+            }
             guard generation == scansRequestGeneration else { return }
             scans = fetched
             scansViewState = fetched.isEmpty ? .empty : .loaded
         } catch {
             guard generation == scansRequestGeneration else { return }
-            if scans.isEmpty {
-                scansViewState = .failed
-            } else {
-                toastMessage = String(localized: "shared.action.error")
+            handleListLoadError(error, isEmpty: scans.isEmpty) { scansViewState = $0 }
+        }
+    }
+
+    /// Keeps a fetch alive if SwiftUI cancels the view `.task` while awaiting.
+    ///
+    /// The operation runs in its own unstructured `Task`, which does not inherit the
+    /// caller's cancellation. Awaiting its `.value` does not propagate the caller's
+    /// cancellation into that task either, so a cancelled consumer still receives the
+    /// result once the fetch finishes.
+    private func fetchKeepingAlive<T: Sendable>(
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await Task { try await operation() }.value
+    }
+
+    private func handleListLoadError(
+        _ error: Error,
+        isEmpty: Bool,
+        updateViewState: (ViewState) -> Void
+    ) {
+        // fetchKeepingAlive shields the fetch from the consumer's own cancellation, so
+        // Task.isCancelled here means the view's `.task` was cancelled (e.g. teardown) —
+        // not just that the underlying request happened to fail with CancellationError
+        // (e.g. URLSession invalidating in-flight requests on background suspension).
+        // Only the former is safe to reset to `.idle`; the latter is a real failure and
+        // should keep the retry affordance.
+        if error is CancellationError, Task.isCancelled {
+            // Reset so load*IfNeeded can retry when the Shared tab reappears.
+            if isEmpty {
+                updateViewState(.idle)
             }
+            return
+        }
+
+        if isEmpty {
+            updateViewState(.failed)
+        } else {
+            toastMessage = String(localized: "shared.action.error")
         }
     }
 

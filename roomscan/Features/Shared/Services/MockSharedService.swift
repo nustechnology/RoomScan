@@ -10,6 +10,7 @@ actor MockSharedService: SharedService {
         case success
         case empty
         case failLoad
+        case cancelled
     }
 
     private var scenario: Scenario
@@ -17,6 +18,10 @@ actor MockSharedService: SharedService {
     private var scans: [SharedScanItem]
     private let simulatedDelayNanoseconds: UInt64
     private let now: Date
+    #if DEBUG
+    private var beforeFetch: (@Sendable () async -> Void)?
+    private var beforeRemove: (@Sendable () async -> Void)?
+    #endif
 
     init(
         scenario: Scenario = .success,
@@ -35,6 +40,16 @@ actor MockSharedService: SharedService {
     func setScenario(_ scenario: Scenario) {
         self.scenario = scenario
     }
+
+    #if DEBUG
+    func setBeforeFetch(_ handler: (@Sendable () async -> Void)?) {
+        beforeFetch = handler
+    }
+
+    func setBeforeRemove(_ handler: (@Sendable () async -> Void)?) {
+        beforeRemove = handler
+    }
+    #endif
 
     static func makeForCurrentProcess() -> MockSharedService {
         let arguments = ProcessInfo.processInfo.arguments
@@ -60,6 +75,9 @@ actor MockSharedService: SharedService {
     }
 
     func fetchSharedProjects() async throws -> [SharedProjectItem] {
+        #if DEBUG
+        if let beforeFetch { await beforeFetch() }
+        #endif
         try await simulateDelay()
         try throwIfFailed()
 
@@ -77,6 +95,9 @@ actor MockSharedService: SharedService {
     }
 
     func fetchSharedScans() async throws -> [SharedScanItem] {
+        #if DEBUG
+        if let beforeFetch { await beforeFetch() }
+        #endif
         try await simulateDelay()
         try throwIfFailed()
 
@@ -94,6 +115,9 @@ actor MockSharedService: SharedService {
     }
 
     func removeSharedItem(id: String, scope: SharedItemScope) async throws {
+        #if DEBUG
+        if let beforeRemove { await beforeRemove() }
+        #endif
         try await simulateDelay()
         try throwIfFailed()
 
@@ -136,8 +160,13 @@ actor MockSharedService: SharedService {
     }
 
     private func throwIfFailed() throws {
-        if scenario == .failLoad {
+        switch scenario {
+        case .failLoad:
             throw SharedServiceError.network
+        case .cancelled:
+            throw CancellationError()
+        case .success, .empty:
+            break
         }
     }
 

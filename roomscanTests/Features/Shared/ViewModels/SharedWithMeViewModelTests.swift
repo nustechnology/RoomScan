@@ -99,15 +99,17 @@ struct SharedWithMeViewModelTests {
     }
 
     @Test func removalRequestIsIgnoredWhileAnotherRemovalIsRunning() async {
-        let service = RemovalBlockingSharedService(
-            base: MockSharedService(simulatedDelayNanoseconds: 100_000_000)
-        )
+        let removalStarted = OperationStartSignal()
+        let service = MockSharedService(simulatedDelayNanoseconds: 100_000_000)
+        await service.setBeforeRemove {
+            await removalStarted.markStarted()
+        }
         let viewModel = SharedWithMeViewModel(service: service)
         await viewModel.loadInitialContent()
         viewModel.requestRemove(scope: .project, id: "shared-project-active")
 
         let removalTask = Task { await viewModel.confirmPendingAlertAction() }
-        await service.waitForRemovalToStartForTesting()
+        await removalStarted.waitUntilStarted()
         #expect(viewModel.isRemovingItem)
 
         viewModel.requestRemove(scope: .scan, id: "shared-scan-active")
@@ -212,6 +214,95 @@ struct SharedWithMeViewModelTests {
         #expect(viewModel.toastMessage == nil)
     }
 
+    /// The operation itself can throw `CancellationError` without the consumer's own
+    /// task ever being cancelled — e.g. `URLSession` invalidating an in-flight request
+    /// when the OS suspends the app. That is a real failure, not a view teardown, so it
+    /// must keep the retry affordance rather than silently resetting to `.idle` (which
+    /// has no retry button and nothing to re-trigger the load).
+    @Test func operationCancellationWithoutConsumerCancellationShowsFailedState() async {
+        let service = MockSharedService(scenario: .cancelled, simulatedDelayNanoseconds: 0)
+        let viewModel = SharedWithMeViewModel(service: service)
+
+        await viewModel.loadInitialContent()
+
+        #expect(viewModel.projectsViewState == .failed)
+        #expect(viewModel.scansViewState == .failed)
+        #expect(viewModel.projects.isEmpty)
+        #expect(viewModel.scans.isEmpty)
+        #expect(viewModel.toastMessage == nil)
+    }
+
+    @Test func cancelledConsumerResetsToIdleAndRetriesOnReappear() async {
+        let fetchGate = FetchReleaseGate()
+        let service = MockSharedService(scenario: .cancelled, simulatedDelayNanoseconds: 0)
+        await service.setBeforeFetch {
+            await fetchGate.markStartedAndWaitForRelease()
+        }
+        let viewModel = SharedWithMeViewModel(service: service)
+
+        let loadTask = Task {
+            await viewModel.loadInitialContent()
+        }
+
+        await fetchGate.waitUntilStarted()
+        loadTask.cancel()
+        await fetchGate.release()
+        await loadTask.value
+
+        #expect(viewModel.projectsViewState == .idle)
+        #expect(viewModel.scansViewState == .idle)
+        #expect(viewModel.projects.isEmpty)
+        #expect(viewModel.scans.isEmpty)
+        #expect(viewModel.toastMessage == nil)
+
+        await service.setBeforeFetch(nil)
+        await service.setScenario(.success)
+        await viewModel.loadInitialContent()
+
+        #expect(viewModel.projectsViewState == .loaded)
+        #expect(viewModel.scansViewState == .loaded)
+        #expect(viewModel.projects.isEmpty == false)
+        #expect(viewModel.scans.isEmpty == false)
+    }
+
+    @Test func cancellingConsumingLoadTaskStillAppliesFetchKeepingAliveResults() async {
+        let fetchGate = FetchReleaseGate()
+        let service = MockSharedService(simulatedDelayNanoseconds: 0)
+        await service.setBeforeFetch {
+            await fetchGate.markStartedAndWaitForRelease()
+        }
+        let viewModel = SharedWithMeViewModel(service: service)
+
+        let loadTask = Task {
+            await viewModel.loadInitialContent()
+        }
+
+        await fetchGate.waitUntilStarted()
+        loadTask.cancel()
+        await fetchGate.release()
+        _ = await loadTask.result
+
+        #expect(viewModel.projectsViewState == .loaded)
+        #expect(viewModel.scansViewState == .loaded)
+        #expect(viewModel.projects.isEmpty == false)
+        #expect(viewModel.scans.isEmpty == false)
+        #expect(viewModel.toastMessage == nil)
+    }
+
+    // Bounded so a regression to edge-triggered semantics reports a normal test
+    // failure instead of stalling the run indefinitely (Swift Testing's time limit
+    // trait only accepts minute granularity, hence the coarse bound).
+    @Test(.timeLimit(.minutes(1)))
+    func fetchReleaseGateReleaseBeforeOperationWaitsDoesNotHang() async {
+        let fetchGate = FetchReleaseGate()
+
+        // Simulates release() winning the race to the `released` signal before the
+        // fetch operation calls markStartedAndWaitForRelease(). If the underlying
+        // OperationStartSignal were edge-triggered, this would hang forever.
+        await fetchGate.release()
+        await fetchGate.markStartedAndWaitForRelease()
+    }
+
     @Test func failedAcceptedProjectIngestAppearsAfterSuccessfulRefresh() async {
         let project = ProjectSummary(
             id: "accepted-project",
@@ -290,44 +381,50 @@ struct SharedWithMeViewModelTests {
     }
 }
 
-private actor RemovalBlockingSharedService: SharedService {
-    private let base: MockSharedService
-    private var hasStartedRemoval = false
-    private var removalStartContinuations: [CheckedContinuation<Void, Never>] = []
+/// Level-triggered: once `markStarted()` has run, every subsequent (and in-flight)
+/// `waitUntilStarted()` call resumes immediately instead of waiting for a fresh signal.
+/// This makes the signal safe to fire before a waiter has registered, which matters
+/// because `FetchReleaseGate.release()` can legitimately race ahead of the operation's
+/// own call into `markStartedAndWaitForRelease()`.
+private actor OperationStartSignal {
+    private var hasStarted = false
+    private var continuations: [CheckedContinuation<Void, Never>] = []
 
-    init(base: MockSharedService) {
-        self.base = base
-    }
-
-    func waitForRemovalToStartForTesting() async {
-        guard !hasStartedRemoval else { return }
+    func waitUntilStarted() async {
         await withCheckedContinuation { continuation in
-            removalStartContinuations.append(continuation)
+            if hasStarted {
+                continuation.resume()
+                return
+            }
+            continuations.append(continuation)
         }
     }
 
-    func fetchSharedProjects() async throws -> [SharedProjectItem] {
-        try await base.fetchSharedProjects()
+    func markStarted() {
+        guard !hasStarted else { return }
+        hasStarted = true
+        let pending = continuations
+        continuations.removeAll()
+        pending.forEach { $0.resume() }
+    }
+}
+
+/// Starts one signal, then waits on a second signal that `release()` fires.
+private actor FetchReleaseGate {
+    private let started = OperationStartSignal()
+    private let released = OperationStartSignal()
+
+    func waitUntilStarted() async {
+        await started.waitUntilStarted()
     }
 
-    func fetchSharedScans() async throws -> [SharedScanItem] {
-        try await base.fetchSharedScans()
+    func release() async {
+        await released.markStarted()
     }
 
-    func removeSharedItem(id: String, scope: SharedItemScope) async throws {
-        hasStartedRemoval = true
-        let continuations = removalStartContinuations
-        removalStartContinuations.removeAll()
-        continuations.forEach { $0.resume() }
-        try await base.removeSharedItem(id: id, scope: scope)
-    }
-
-    func ingestSharedProject(_ project: SharedProjectItem) async throws {
-        try await base.ingestSharedProject(project)
-    }
-
-    func ingestSharedScan(_ scan: SharedScanItem) async throws {
-        try await base.ingestSharedScan(scan)
+    func markStartedAndWaitForRelease() async {
+        await started.markStarted()
+        await released.waitUntilStarted()
     }
 }
 
