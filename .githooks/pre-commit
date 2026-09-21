@@ -25,7 +25,8 @@ echo "Running roomscan test suite..."
 xcodebuild test \
   -project roomscan.xcodeproj \
   -scheme roomscan \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
   -only-testing:roomscanTests \
   -derivedDataPath .derivedData \
-  CODE_SIGNING_ALLOWED=NO
+  CODE_SIGNING_ALLOWED=NO \
+  -parallel-testing-enabled NO \
