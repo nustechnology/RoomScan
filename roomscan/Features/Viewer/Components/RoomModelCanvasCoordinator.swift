@@ -63,6 +63,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     private var target = DefaultOrbit.target
     private let maxDistance = CameraOrbitLimits.maxDistance
     /// Positive pitch = camera above target (looking down). Near π/2 = top view.
+    /// Note focus may use a clearance-checked negative pitch.
     private let maxPitch = CameraOrbitLimits.maxPitch
 
     /// Pose currently drawn on screen. Differs from logical `yaw`/`pitch`/`distance`/
@@ -71,6 +72,7 @@ final class RoomModelCanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     /// `updateCamera` does not read start after the end pose was already written.
     private var displayedPose = DefaultOrbit.pose
     private var lastOrbitPoint: CGPoint?
+    private var orbitGestureMinimumPitch = CameraOrbitLimits.minGesturePitch
     private var lastPanPoint: CGPoint?
     private var activePinDrag: ActivePinDrag?
     var pinAppearanceStates: [ObjectIdentifier: PinAppearanceState] = [:]
@@ -466,6 +468,8 @@ extension RoomModelCanvasCoordinator {
                 applyViewModePose(for: currentViewMode)
                 updateAllPinModePresentations()
             case .focus(let position):
+                // Focus now also re-aims yaw and pitch, so animate from the displayed
+                // pose to avoid an abrupt cut. A gesture interruption resumes there.
                 shouldAnimate = applyNoteFocus(on: position)
             }
         }
@@ -501,11 +505,16 @@ extension RoomModelCanvasCoordinator {
             surfaceDistance: { self.openSurfaceDistance(from: $0, along: $1) },
             lineOfSight: { self.hasClearLineOfSight(from: $0, to: $1) }
         ) else {
-            // Keep what the user sees, not the old animation's destination. Selection
-            // remains active even when no safe view can be found within orbit limits.
+            // Preserve the displayed orbit while recentering, so a note tap still has
+            // visible feedback when tight geometry rejects every 3D candidate.
             cancelCameraMotion()
             syncLogicalPoseFromDisplayed()
-            return false
+            let fallback = NoteFocusSolver.topViewPose(from: logicalPose, note: notePosition)
+            yaw = fallback.yaw
+            pitch = fallback.pitch
+            distance = fallback.distance
+            target = fallback.target
+            return true
         }
         yaw = pose.yaw
         pitch = pose.pitch
@@ -656,6 +665,9 @@ extension RoomModelCanvasCoordinator {
         switch gesture.state {
         case .began:
             lastOrbitPoint = point
+            orbitGestureMinimumPitch = CameraOrbitLimits.gestureMinimumPitch(
+                startingAt: displayedPose.pitch
+            )
         case .changed:
             guard let lastOrbitPoint else { return }
             syncLogicalPoseFromDisplayed()
@@ -663,11 +675,15 @@ extension RoomModelCanvasCoordinator {
             let dy = Float(point.y - lastOrbitPoint.y)
             yaw += dx * 0.01
             // Drag up → lower camera elevation; drag down → raise toward top view.
-            pitch = CameraOrbitLimits.clampedPitch(pitch + dy * 0.01)
+            pitch = CameraOrbitLimits.clampedGesturePitch(
+                pitch + dy * 0.01,
+                minimumPitch: orbitGestureMinimumPitch
+            )
             self.lastOrbitPoint = point
             updateCamera(animated: false)
         default:
             lastOrbitPoint = nil
+            orbitGestureMinimumPitch = CameraOrbitLimits.minGesturePitch
         }
     }
 

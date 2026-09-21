@@ -12,6 +12,9 @@ nonisolated enum CameraOrbitLimits {
     static let maxDistance: Float = 14
     static let maxPitch: Float = (.pi / 2) - 0.06
     static let minPitch = -maxPitch
+    /// Gesture orbit starts above the target plane unless focus already placed the
+    /// camera below it with a clearance-checked pose.
+    static let minGesturePitch: Float = 0.08
 
     static func clampedDistance(_ value: Float) -> Float {
         max(minDistance, min(maxDistance, value))
@@ -19,6 +22,14 @@ nonisolated enum CameraOrbitLimits {
 
     static func clampedPitch(_ value: Float) -> Float {
         max(minPitch, min(maxPitch, value))
+    }
+
+    static func gestureMinimumPitch(startingAt pitch: Float) -> Float {
+        min(minGesturePitch, pitch)
+    }
+
+    static func clampedGesturePitch(_ value: Float, minimumPitch: Float) -> Float {
+        max(minimumPitch, min(maxPitch, value))
     }
 }
 

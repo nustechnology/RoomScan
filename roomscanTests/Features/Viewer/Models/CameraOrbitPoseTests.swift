@@ -27,6 +27,20 @@ struct CameraOrbitPoseTests {
         target: SIMD3<Float>(0, 1, 0)
     )
 
+    @Test func gesturePitchStaysAboveTargetFromDefaultOrbit() {
+        let minimum = CameraOrbitLimits.gestureMinimumPitch(startingAt: start.pitch)
+        let pitch = CameraOrbitLimits.clampedGesturePitch(-0.5, minimumPitch: minimum)
+        #expect(pitch == CameraOrbitLimits.minGesturePitch)
+    }
+
+    @Test func gestureKeepsFocusedNegativePitchWithoutLoweringIt() {
+        let focusedPitch: Float = -0.42
+        let minimum = CameraOrbitLimits.gestureMinimumPitch(startingAt: focusedPitch)
+        #expect(minimum == focusedPitch)
+        #expect(CameraOrbitLimits.clampedGesturePitch(-0.8, minimumPitch: minimum) == focusedPitch)
+        #expect(CameraOrbitLimits.clampedGesturePitch(-0.3, minimumPitch: minimum) == -0.3)
+    }
+
     @Test func offsetFromTargetMatchesYawPitchDistance() {
         let expectedOffset = SIMD3<Float>(
             start.distance * cos(start.pitch) * sin(start.yaw),
